@@ -288,6 +288,11 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, IShockableWithGun, IT
 	{
 		GameObject otherObject = other.gameObject;
 
+		if (hasExploded)
+		{
+			return;
+		}
+		
 		//PLAYER COLLISION
 		if (otherObject.layer == 3)
 		{
@@ -335,10 +340,10 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, IShockableWithGun, IT
 		//PROPS COLLISION
 		else if (otherObject.layer == 6)
 		{
-			Debug.Log("Detected collider on prop layer.");
+			Debug.Log("Artillery shell detected collider on prop layer.");
 			if (otherObject.name.StartsWith("explosionColliderDamage"))
 			{
-				Debug.Log("Detected explosion collider.");
+				Debug.Log("Artillery shell detected explosion collider.");
 				Detonate();
 			}
 		}
