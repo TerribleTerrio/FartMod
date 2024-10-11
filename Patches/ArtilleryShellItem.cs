@@ -1,11 +1,8 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using GameNetcodeStuff;
-using Unity.Netcode;
 using UnityEngine;
 
-public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable
+public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableObject
 {
     [Header("Artillery Shell Settings")]
     public float explodeHeight;
@@ -354,36 +351,19 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable
 
 	}
 
-	//SHOCKABLE PARAMS
-	// bool IShockableWithGun.CanBeShocked()
-	// {
-	// 	return explodeOnShockWithGun;
-	// }
-	// float IShockableWithGun.GetDifficultyMultiplier()
-	// {
-	// 	return 1;
-	// }
-	// NetworkObject IShockableWithGun.GetNetworkObject()
-	// {
-	// 	return base.NetworkObject;
-	// }
-	// Vector3 IShockableWithGun.GetShockablePosition()
-	// {
-	// 	return base.transform.position;
-	// }
-	// Transform IShockableWithGun.GetShockableTransform()
-	// {
-	// 	return base.transform;
-	// }
-	// void IShockableWithGun.ShockWithGun(PlayerControllerB shockedByPlayer)
-	// {
-	// 	if (explodeOnShockWithGun == true)
-	// 	{
-	// 		Detonate();
-	// 	}
-	// }
-	// void IShockableWithGun.StopShockingWithGun()
-	// {
-	// }
+	public float GetZapDifficulty()
+	{
+		return 1;
+	}
+
+	public void StopShockingWithGun()
+	{
+
+	}
+
+	public void ShockWithGun(PlayerControllerB playerControllerB)
+	{
+		DelayDetonate(0.3f);
+	}
 
 }
