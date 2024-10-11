@@ -243,8 +243,6 @@ public class HydraulicStabilizer : GrabbableObject, IHittable, ITouchable
 
 		if (otherObject.layer == 17)
 		{
-			// Debug.Log("Hydraulic detected collider on prop layer.");
-            // Debug.Log("Other object: " + otherObject.name);
 			if (otherObject.name.StartsWith("explosionColliderDamage"))
 			{
 				// Debug.Log("Hydraulic detected explosion collider.");

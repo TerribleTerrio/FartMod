@@ -337,7 +337,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		//PROPS COLLISION
 		else if (otherObject.layer == 17)
 		{
-			Debug.Log("Artillery shell detected collider on prop layer.");
+			Debug.Log("Artillery shell detected collider on anomaly layer.");
 			if (otherObject.name.StartsWith("explosionColliderDamage"))
 			{
 				Debug.Log("Artillery shell detected explosion collider.");
@@ -363,7 +363,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void ShockWithGun(PlayerControllerB playerControllerB)
 	{
-		DelayDetonate(0.3f);
+		StartCoroutine(DelayDetonate(delayedDetonationTime));
 	}
 
 }
