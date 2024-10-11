@@ -241,7 +241,7 @@ public class HydraulicStabilizer : GrabbableObject, IHittable, ITouchable
 	{
         GameObject otherObject = other.gameObject;
 
-		if (otherObject.layer == 6)
+		if (otherObject.layer == 17)
 		{
 			// Debug.Log("Hydraulic detected collider on prop layer.");
             // Debug.Log("Other object: " + otherObject.name);

@@ -596,10 +596,16 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                     Shatter(explodePrefab);
                 }
             }
-            else if (otherObject.name.StartsWith("explosionCollider"))
-            {
+        }
+
+        //EXPLOSION COLLISION
+        else if (otherObject.layer == 17)
+        {
+			if (otherObject.name.StartsWith("explosionColliderDamage"))
+			{
+				// Debug.Log("Hydraulic detected explosion collider.");
                 Shatter(explodePrefab);
-            }
+			}
         }
     }
 

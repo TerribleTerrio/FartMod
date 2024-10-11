@@ -5,7 +5,7 @@ using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
 
-public class ArtilleryShellItem : AnimatedItem, IHittable, IShockableWithGun, ITouchable
+public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable
 {
     [Header("Artillery Shell Settings")]
     public float explodeHeight;
@@ -286,13 +286,13 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, IShockableWithGun, IT
 	//TOUCHABLE PARAMS
 	public void OnTouch(Collider other)
 	{
-		GameObject otherObject = other.gameObject;
-
 		if (hasExploded)
 		{
 			return;
 		}
-		
+
+		GameObject otherObject = other.gameObject;
+
 		//PLAYER COLLISION
 		if (otherObject.layer == 3)
 		{
@@ -338,7 +338,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, IShockableWithGun, IT
 		// }
 
 		//PROPS COLLISION
-		else if (otherObject.layer == 6)
+		else if (otherObject.layer == 17)
 		{
 			Debug.Log("Artillery shell detected collider on prop layer.");
 			if (otherObject.name.StartsWith("explosionColliderDamage"))
@@ -355,35 +355,35 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, IShockableWithGun, IT
 	}
 
 	//SHOCKABLE PARAMS
-	bool IShockableWithGun.CanBeShocked()
-	{
-		return explodeOnShockWithGun;
-	}
-	float IShockableWithGun.GetDifficultyMultiplier()
-	{
-		return 1;
-	}
-	NetworkObject IShockableWithGun.GetNetworkObject()
-	{
-		return base.NetworkObject;
-	}
-	Vector3 IShockableWithGun.GetShockablePosition()
-	{
-		return base.transform.position;
-	}
-	Transform IShockableWithGun.GetShockableTransform()
-	{
-		return base.transform;
-	}
-	void IShockableWithGun.ShockWithGun(PlayerControllerB shockedByPlayer)
-	{
-		if (explodeOnShockWithGun == true)
-		{
-			Detonate();
-		}
-	}
-	void IShockableWithGun.StopShockingWithGun()
-	{
-	}
+	// bool IShockableWithGun.CanBeShocked()
+	// {
+	// 	return explodeOnShockWithGun;
+	// }
+	// float IShockableWithGun.GetDifficultyMultiplier()
+	// {
+	// 	return 1;
+	// }
+	// NetworkObject IShockableWithGun.GetNetworkObject()
+	// {
+	// 	return base.NetworkObject;
+	// }
+	// Vector3 IShockableWithGun.GetShockablePosition()
+	// {
+	// 	return base.transform.position;
+	// }
+	// Transform IShockableWithGun.GetShockableTransform()
+	// {
+	// 	return base.transform;
+	// }
+	// void IShockableWithGun.ShockWithGun(PlayerControllerB shockedByPlayer)
+	// {
+	// 	if (explodeOnShockWithGun == true)
+	// 	{
+	// 		Detonate();
+	// 	}
+	// }
+	// void IShockableWithGun.StopShockingWithGun()
+	// {
+	// }
 
 }

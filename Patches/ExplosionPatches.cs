@@ -25,31 +25,31 @@ namespace CoronaMod.Patches
         {
             GameObject colObject = new GameObject();
             colObject.name = name;
-            int layer = LayerMask.NameToLayer("Props");
+            int layer = LayerMask.NameToLayer("Anomaly");
             colObject.layer = layer;
-            colObject.tag = "PhysicsProp";
+            colObject.tag = "DoNotSet";
             colObject.AddComponent<Rigidbody>();
             colObject.AddComponent<SphereCollider>();
             colObject.GetComponent<SphereCollider>().radius = size;
             return GameObject.Instantiate(colObject, position, Quaternion.Euler(-90f, 0f, 0f));
         }
 
-        [HarmonyPatch("Update")]
-        [HarmonyPrefix]
-        static void Update(Landmine __instance)
-        {
-            GameObject[] explosionColliders = GameObject.FindGameObjectsWithTag("PhysicsProp");
-            if (explosionColliders.Length > 0)
-            {
-                for (int i = 0; i < explosionColliders.Length; i++)
-                {
-                    if (explosionColliders[i].name.StartsWith("explosionCollider"))
-                    {
-                        GameObject.Destroy(explosionColliders[i]);
-                    }
-                }
-            }
-        }
+        // [HarmonyPatch("Update")]
+        // [HarmonyPrefix]
+        // static void Update(Landmine __instance)
+        // {
+        //     GameObject[] explosionColliders = GameObject.FindGameObjectsWithTag("DoNotSet");
+        //     if (explosionColliders.Length > 0)
+        //     {
+        //         for (int i = 0; i < explosionColliders.Length; i++)
+        //         {
+        //             if (explosionColliders[i].name.StartsWith("explosionCollider"))
+        //             {
+        //                 GameObject.Destroy(explosionColliders[i]);
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     // [HarmonyPatch(typeof(StartOfRound))]
@@ -59,7 +59,7 @@ namespace CoronaMod.Patches
     //     [HarmonyPrefix]
     //     static void LateUpdate(Landmine __instance)
     //     {
-    //         GameObject[] explosionColliders = GameObject.FindGameObjectsWithTag("PhysicsProp");
+    //         GameObject[] explosionColliders = GameObject.FindGameObjectsWithTag("DoNotSet");
     //         if (explosionColliders.Length > 0)
     //         {
     //             for (int i = 0; i < explosionColliders.Length; i++)
