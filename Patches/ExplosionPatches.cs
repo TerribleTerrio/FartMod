@@ -36,7 +36,7 @@ namespace CoronaMod.Patches
                     otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShell();
                 }
 
-                if (otherObject.GetComponent<Vase>() != null)
+                if (otherObject.GetComponentInParent<Vase>() != null)
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
                     {
@@ -45,10 +45,10 @@ namespace CoronaMod.Patches
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
-                    otherObject.GetComponent<Vase>().Shatter(otherObject.GetComponent<Vase>().explodePrefab);
+                    otherObject.GetComponentInParent<Vase>().Shatter(otherObject.GetComponentInParent<Vase>().explodePrefab);
                 }
 
-                if (otherObject.GetComponent<HydraulicStabilizer>() != null)
+                if (otherObject.GetComponentInParent<HydraulicStabilizer>() != null)
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
                     {
@@ -57,7 +57,7 @@ namespace CoronaMod.Patches
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
-                    otherObject.GetComponent<HydraulicStabilizer>().GoPsycho();
+                    otherObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
                 }
 
             }
