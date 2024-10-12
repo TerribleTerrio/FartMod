@@ -82,7 +82,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		Debug.Log($"Shell explosion layer mask: {layerMask}");
 		layers = (1 << layerMask);
 		Debug.Log($"Shell explosion layer mask hash: {layers}");
-		int mask = 1 << 3 | 1 << 6 | 1 << 19 | 1 << 21 | 1 << 30;
+		int mask = 1 << 2 | 1 << 3 | 1 << 4| 1 << 5 | 1 << 6 | 1 << 7 | 1 << 9 | 1 << 10 | 1 << 13 | 1 << 14 | 1 << 15 | 1 << 16 | 1 << 17 | 1 << 18 | 1 << 19 | 1 << 20 | 1 << 21 | 1 << 22 | 1 << 23 | 1 << 27 | 1 << 28 | 1 << 29;
 		Debug.Log($"mask: {mask}");
 
 		float f1 = 55f*0.4f;
@@ -209,6 +209,10 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void ArmShell()
 	{
+		if (hasExploded)
+		{
+			return;
+		}
 		Debug.Log("Shell armed.");
 		RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
         RoundManager.PlayRandomClip(itemAudio, shellArmed, randomize: false, 1f, -1);
@@ -334,16 +338,16 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		// 	return;
 		// }
 
-		//PROPS COLLISION
-		else if (otherObject.layer == 17)
-		{
-			Debug.Log("Artillery shell detected collider on anomaly layer.");
-			if (otherObject.name.StartsWith("explosionColliderDamage"))
-			{
-				Debug.Log("Artillery shell detected explosion collider.");
-				Detonate();
-			}
-		}
+		//EXPLOSION COLLIDER
+		// else if (otherObject.layer == 17)
+		// {
+		// 	Debug.Log("Artillery shell detected collider on anomaly layer.");
+		// 	if (otherObject.name.StartsWith("explosionColliderDamage"))
+		// 	{
+		// 		Debug.Log("Artillery shell detected explosion collider.");
+		// 		Detonate();
+		// 	}
+		// }
 	}
 
 	public void OnExit(Collider other)
