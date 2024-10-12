@@ -240,6 +240,33 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		hasExploded = true;
 		Landmine.SpawnExplosion(this.gameObject.transform.position + Vector3.up, true, killRange, damageRange, nonLethalDamage, physicsForce, explosionPrefab, true);
 
+		Collider[] colliders = Physics.OverlapSphere(this.gameObject.transform.position, pushRange, 3, QueryTriggerInteraction.Collide);
+		for (int i = 0; i < colliders.Length; i++)
+		{
+			GameObject otherObject = colliders[i].gameObject;
+			if (otherObject.GetComponent<PlayerControllerB>() != null)
+			{
+				RaycastHit hitInfo;
+				PlayerControllerB playerControllerB = otherObject.GetComponent<PlayerControllerB>();
+				if (physicsForce > 0f && !Physics.Linecast(base.transform.position, playerControllerB.transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
+				{
+					float dist = Vector3.Distance(playerControllerB.transform.position, base.transform.position);
+					Vector3 vector = Vector3.Normalize(playerControllerB.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+					if (vector.magnitude > 2f)
+					{
+						if (vector.magnitude > 10f)
+						{
+							playerControllerB.CancelSpecialTriggerAnimations();
+						}
+						if (!playerControllerB.inVehicleAnimation || (playerControllerB.externalForceAutoFade + vector).magnitude > 50f)
+						{
+								playerControllerB.externalForceAutoFade += vector;
+						}
+					}
+				}
+			}
+		}
+
 		EnableItemMeshes(enable: false);
         grabbable = false;
         grabbableToEnemies = false;
