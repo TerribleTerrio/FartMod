@@ -394,7 +394,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void ShockWithGun(PlayerControllerB playerControllerB)
 	{
-		StartCoroutine(DelayDetonate(delayedDetonationTime));
+		ArmShell();
 	}
 
 }
