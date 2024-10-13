@@ -42,7 +42,14 @@ namespace CoronaMod.Patches
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
-                    otherObject.GetComponent<Vase>().Shatter(otherObject.GetComponent<Vase>().explodePrefab);
+                    if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
+                    {
+                        otherObject.GetComponent<Vase>().Shatter(otherObject.GetComponent<Vase>().explodePrefab);
+                    }
+                    else
+                    {
+                        otherObject.GetComponent<Vase>().SprintWobble();
+                    }
                 }
 
                 if (otherObject.GetComponent<PlayerControllerB>() != null)
@@ -50,8 +57,12 @@ namespace CoronaMod.Patches
                     PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
                     if (player.isHoldingObject)
                     {
-                        if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null)
+                        if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null && Vector3.Distance(explosionPosition, player.currentlyHeldObjectServer.gameObject.transform.position) < killRange)
                         {
+                            if (Physics.Linecast(explosionPosition, player.currentlyHeldObjectServer.gameObject.transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+                            {
+                                continue;
+                            }
                             Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
                             vase.Shatter(vase.explodePrefab);
                             continue;
