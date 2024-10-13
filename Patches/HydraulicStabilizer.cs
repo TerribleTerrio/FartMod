@@ -11,6 +11,8 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable
 
 	public AnimationClip hydraulicOn;
 
+	public AnimationClip hydraulicLoop;
+
     public override void Update()
     {
         base.Update();
@@ -41,7 +43,19 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable
     public override void DiscardItem()
     {
         base.DiscardItem();
+
+		if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("HydraulicLoop"))
+		{
+			StartCoroutine(DelayAnimation("SteamOff", hydraulicLoop.length - GetCurrentAnimatorTime(itemAnimator)));
+		}
     }
+
+	private float GetCurrentAnimatorTime(Animator targetAnim, int layer = 0)
+	{
+		AnimatorStateInfo animState = targetAnim.GetCurrentAnimatorStateInfo(layer);
+		float currentTime = animState.normalizedTime % 1;
+		return currentTime;
+	}
 
     private IEnumerator LoopNoiseOnCooldown(float delay)
     {
