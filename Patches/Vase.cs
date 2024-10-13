@@ -170,16 +170,18 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public void Shatter(GameObject prefab)
     {
-        if (shattered || heldByPlayerOnServer)
+        if (shattered)
         {
             return;
         }
 
         Debug.Log("Vase shattered!");
+
         shattered = true;
         grabbable = false;
         grabbableToEnemies = false;
         scrapValue = 0;
+        itemProperties.creditsWorth = 0;
         if (isInShipRoom)
         {
             RoundManager.Instance.valueOfFoundScrapItems = RoundManager.Instance.valueOfFoundScrapItems - scrapValue;
@@ -196,13 +198,21 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         RoundManager.PlayRandomClip(vaseAudio, vaseBreak, randomize: true, 1f, -1);
 
         Vector3 shatterPosition;
-        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 80f, -2130704000, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 80f, 1073742080, QueryTriggerInteraction.Ignore))
 		{
+            Debug.Log("---VASE SHATTER INFO---");
+            Debug.Log($"vase vertical offset: {itemProperties.verticalOffset}");
+            Debug.Log($"vase position: {base.transform.position}");
+            Debug.Log($"raycast start position: {base.transform.position + itemProperties.verticalOffset * Vector3.up}");
+            Debug.Log($"raycast direction: {Vector3.down}");
+            Debug.Log($"raycast hit: {hitInfo.collider.gameObject}");
+            Debug.Log($"raycast point: {hitInfo.point}");
+            Debug.Log($"vase new position: {hitInfo.point + itemProperties.verticalOffset * Vector3.up}");
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
-			if (base.transform.parent != null)
-			{
-				shatterPosition = base.transform.parent.InverseTransformPoint(targetFloorPosition);
-			}
+			// if (base.transform.parent != null)
+			// {
+			// 	shatterPosition = base.transform.parent.InverseTransformPoint(targetFloorPosition);
+			// }
             Debug.Log($"Raycast set shatter position to: {shatterPosition}");
 		}
 		else
@@ -211,19 +221,30 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 			shatterPosition = base.transform.localPosition;
 		}
 
-        GameObject brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, this.transform.rotation, RoundManager.Instance.mapPropsContainer.transform);
-        if(isInShipRoom)
+        GameObject brokenVase;
+
+        if (heldByPlayerOnServer)
+        {
+            base.playerHeldBy.DiscardHeldObject();
+            brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, new Quaternion(0,0,0,0), RoundManager.Instance.mapPropsContainer.transform);
+        }
+        else if (isHeldByEnemy)
+        {
+            base.DiscardItemFromEnemy();
+            brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, new Quaternion(0,0,0,0), RoundManager.Instance.mapPropsContainer.transform);
+        }
+        else
+        {
+            brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, this.transform.rotation, RoundManager.Instance.mapPropsContainer.transform);
+        }
+
+        if (isInShipRoom)
         {
             brokenVase.transform.SetParent(base.gameObject.transform.parent);
         }
         if (isInElevator)
         {
             brokenVase.transform.SetParent(base.gameObject.transform.parent);
-        }
-
-        if (isHeld)
-        {
-            DiscardItem();
         }
 
         UnityEngine.Object.Destroy(this.gameObject);
@@ -371,23 +392,26 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 WalkWobble();
             }
 
-            //PHYSICS FORCE
-            RaycastHit hitInfo;
-            PlayerControllerB playerControllerB = player;
-
-            if (physicsForce > 0f && !Physics.Linecast(base.transform.position, playerControllerB.transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
+            if (!(isHeld || isHeldByEnemy))
             {
-                float dist = Vector3.Distance(playerControllerB.transform.position, base.transform.position);
-                Vector3 vector = Vector3.Normalize(playerControllerB.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
-                if (vector.magnitude > 2f)
+                //PHYSICS FORCE
+                RaycastHit hitInfo;
+                PlayerControllerB playerControllerB = player;
+
+                if (physicsForce > 0f && !Physics.Linecast(base.transform.position, playerControllerB.transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
                 {
-                    if (vector.magnitude > 10f)
+                    float dist = Vector3.Distance(playerControllerB.transform.position, base.transform.position);
+                    Vector3 vector = Vector3.Normalize(playerControllerB.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+                    if (vector.magnitude > 2f)
                     {
-                        playerControllerB.CancelSpecialTriggerAnimations();
-                    }
-                    if (!playerControllerB.inVehicleAnimation || (playerControllerB.externalForceAutoFade + vector).magnitude > 50f)
-                    {
-                            playerControllerB.externalForceAutoFade += vector;
+                        if (vector.magnitude > 10f)
+                        {
+                            playerControllerB.CancelSpecialTriggerAnimations();
+                        }
+                        if (!playerControllerB.inVehicleAnimation || (playerControllerB.externalForceAutoFade + vector).magnitude > 50f)
+                        {
+                                playerControllerB.externalForceAutoFade += vector;
+                        }
                     }
                 }
             }
@@ -596,16 +620,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                     Shatter(explodePrefab);
                 }
             }
-        }
-
-        //EXPLOSION COLLISION
-        else if (otherObject.layer == 17)
-        {
-			if (otherObject.name.StartsWith("explosionColliderDamage"))
-			{
-				// Debug.Log("Hydraulic detected explosion collider.");
-                Shatter(explodePrefab);
-			}
         }
     }
 

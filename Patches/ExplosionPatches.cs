@@ -2,6 +2,7 @@ using UnityEngine;
 using HarmonyLib;
 using System.Collections;
 using Steamworks.ServerList;
+using GameNetcodeStuff;
 
 namespace CoronaMod.Patches
 {
@@ -28,8 +29,6 @@ namespace CoronaMod.Patches
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
                     {
-                        Debug.Log($"Ray hit {hitInfo.collider}.");
-                        Debug.Log("Aborting detonation.");
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
@@ -40,20 +39,30 @@ namespace CoronaMod.Patches
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
                     {
-                        Debug.Log($"Ray hit {hitInfo.collider}.");
-                        Debug.Log("Aborting detonation.");
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
                     otherObject.GetComponent<Vase>().Shatter(otherObject.GetComponent<Vase>().explodePrefab);
                 }
 
+                if (otherObject.GetComponent<PlayerControllerB>() != null)
+                {
+                    PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
+                    if (player.isHoldingObject)
+                    {
+                        if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null)
+                        {
+                            Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
+                            vase.Shatter(vase.explodePrefab);
+                            continue;
+                        }
+                    }
+                }
+
                 if (otherObject.GetComponent<HydraulicStabilizer>() != null)
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
                     {
-                        Debug.Log($"Ray hit {hitInfo.collider}.");
-                        Debug.Log("Aborting detonation.");
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
