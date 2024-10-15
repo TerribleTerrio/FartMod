@@ -2,16 +2,20 @@ using System.Collections;
 using GameNetcodeStuff;
 using UnityEngine;
 
-public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable
+public class HydraulicStabilizer : AnimatedItem, IHittable
 {
     [Header("Hydraulic Stabilizer Settings")]
     public float audibleNoiseCooldown = 2f;
 
+	public bool physicsForceOnSteam;
+
+    public float physicsForce;
+
+    public float physicsForceRange;
+
     private bool noiseOnCooldown;
 
-	public AnimationClip hydraulicOn;
-
-	public AnimationClip hydraulicLoop;
+    private bool isSteaming;
 
     public override void Update()
     {
@@ -23,39 +27,52 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable
                 StartCoroutine(LoopNoiseOnCooldown(audibleNoiseCooldown));
             }
         }
+
+        if (itemAnimator.GetCurrentAnimatorStateInfo(1).IsName("SteamOn") && !isSteaming)
+        {
+            isSteaming = true;
+            if (physicsForceOnSteam)
+            {
+                PushNearbyPlayers();
+            }
+        }
+
+        if (itemAnimator.GetCurrentAnimatorStateInfo(1).IsName("SteamOffIdle") && isSteaming)
+        {
+            isSteaming = false;
+        }
     }
 
-    public override void GrabItem()
+    private void PushNearbyPlayers()
     {
-        base.GrabItem();
-		if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("HydraulicIdle"))
-		{
-			StartCoroutine(DelayAnimation("SteamOn", hydraulicOn.length));
-		}
+        Collider[] colliders = Physics.OverlapSphere(transform.position, physicsForceRange, 1076363336, QueryTriggerInteraction.Collide);
+        RaycastHit hitInfo;
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i].gameObject.GetComponent<PlayerControllerB>() != null)
+            {
+                PlayerControllerB playerControllerB = colliders[i].gameObject.GetComponent<PlayerControllerB>();
+
+                if (physicsForce > 0f && !Physics.Linecast(base.transform.position, playerControllerB.transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
+                {
+                    float dist = Vector3.Distance(playerControllerB.transform.position, base.transform.position);
+                    Vector3 vector = Vector3.Normalize(playerControllerB.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+                    if (vector.magnitude > 2f)
+                    {
+                        if (vector.magnitude > 10f)
+                        {
+                            playerControllerB.CancelSpecialTriggerAnimations();
+                        }
+                        if (!playerControllerB.inVehicleAnimation || (playerControllerB.externalForceAutoFade + vector).magnitude > 50f)
+                        {
+                                playerControllerB.externalForceAutoFade += vector;
+                        }
+                    }
+                }
+            }
+        }
     }
-
-	private IEnumerator DelayAnimation(string state, float delay)
-	{
-		yield return new WaitForSeconds(delay);
-		itemAnimator.Play(state);
-	}
-
-    public override void DiscardItem()
-    {
-        base.DiscardItem();
-
-		if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("HydraulicLoop"))
-		{
-			StartCoroutine(DelayAnimation("SteamOff", hydraulicLoop.length - GetCurrentAnimatorTime(itemAnimator)));
-		}
-    }
-
-	private float GetCurrentAnimatorTime(Animator targetAnim, int layer = 0)
-	{
-		AnimatorStateInfo animState = targetAnim.GetCurrentAnimatorStateInfo(layer);
-		float currentTime = animState.normalizedTime % 1;
-		return currentTime;
-	}
 
     private IEnumerator LoopNoiseOnCooldown(float delay)
     {
@@ -78,6 +95,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
 	{
         GoPsycho();
+        PushNearbyPlayers();
         return true;
     }
 
@@ -90,27 +108,10 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable
 		timesPlayedInOneSpot++;
 		lastPosition = base.transform.position;
 
+        RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange*1.5f, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+
 		itemAnimator.Play("HydraulicPsycho", -1, 0f);
 
-		if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("SteamIdleOn"))
-		{
-			return;
-		}
-		else if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("SteamOff"))
-		{
-			itemAnimator.Play("SteamIdleOn");
-		}
-		else
-		{
-			itemAnimator.Play("SteamOn");
-		}
+		itemAnimator.SetBool("steaming", true);
     }
-
-	public void OnTouch(Collider other)
-	{
-    }
-
-	public void OnExit(Collider other)
-	{
-	}
 }
