@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class HydraulicStabilizerBehaviour : StateMachineBehaviour
+public class SetBoolOnStateBehaviour : StateMachineBehaviour
 {
     public string boolOnEnter;
 
