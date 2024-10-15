@@ -15,7 +15,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable
 
     private bool noiseOnCooldown;
 
-    private bool isSteaming;
+    private bool startedSteaming;
 
     public override void Update()
     {
@@ -28,18 +28,18 @@ public class HydraulicStabilizer : AnimatedItem, IHittable
             }
         }
 
-        if (itemAnimator.GetCurrentAnimatorStateInfo(1).IsName("SteamOn") && !isSteaming)
+        if (itemAnimator.GetBool("steaming") && !startedSteaming)
         {
-            isSteaming = true;
+            startedSteaming = true;
             if (physicsForceOnSteam)
             {
                 PushNearbyPlayers();
             }
         }
 
-        if (itemAnimator.GetCurrentAnimatorStateInfo(1).IsName("SteamOffIdle") && isSteaming)
+        if (!itemAnimator.GetBool("steaming") && startedSteaming)
         {
-            isSteaming = false;
+            startedSteaming = false;
         }
     }
 
@@ -111,7 +111,5 @@ public class HydraulicStabilizer : AnimatedItem, IHittable
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange*1.5f, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 
 		itemAnimator.Play("HydraulicPsycho", -1, 0f);
-
-		itemAnimator.SetBool("steaming", true);
     }
 }
