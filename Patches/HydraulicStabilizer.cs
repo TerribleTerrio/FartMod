@@ -150,7 +150,12 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 			itemAnimator.Play("HydraulicPsycho4", -1, 0f);
 			PsychoStage++;
 		}
-		if (ZapPsycho || PsychoStage == 4)
+		else if (PsychoStage == 4)
+		{
+			itemAnimator.Play("HydraulicThunderPsycho", -1, 0f);
+			PsychoStage = 0;
+		}
+		if (ZapPsycho)
 		{
 			itemAnimator.Play("HydraulicThunderPsycho", -1, 0f);
 			ZapPsycho = false;
