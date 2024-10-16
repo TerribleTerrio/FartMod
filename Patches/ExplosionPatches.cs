@@ -70,14 +70,14 @@ namespace CoronaMod.Patches
                     }
                 }
 
-                if (otherObject.GetComponent<HydraulicStabilizer>() != null)
+                if (otherObject.GetComponentInParent<HydraulicStabilizer>() != null)
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
                     {
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
-                    otherObject.GetComponent<HydraulicStabilizer>().GoPsycho();
+                    otherObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
                 }
 
             }
