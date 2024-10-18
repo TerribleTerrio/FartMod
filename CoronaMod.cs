@@ -25,7 +25,7 @@ public class CoronaMod : BaseUnityPlugin
         nls = BepInEx.Logging.Logger.CreateLogSource(modGUID);
 
         harmony.PatchAll(typeof(LandminePatch));
-        harmony.PatchAll(typeof(StartOfRoundPatch));
+        harmony.PatchAll(typeof(ShotgunPatch));
 
         nls.LogInfo("CoronaMod is loaded!");
     }

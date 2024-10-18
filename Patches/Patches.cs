@@ -1,7 +1,5 @@
 using UnityEngine;
 using HarmonyLib;
-using System.Collections;
-using Steamworks.ServerList;
 using GameNetcodeStuff;
 
 namespace CoronaMod.Patches
@@ -81,62 +79,63 @@ namespace CoronaMod.Patches
                 }
 
             }
-            // float size = killRange;
-            // GameObject killCollider = SpawnExplosionCollider(position, size, "explosionColliderKillRange");
-            // size = damageRange;
-            // GameObject damageCollider = SpawnExplosionCollider(position, size, "explosionColliderDamageRange");
         }
-
-        // private static GameObject SpawnExplosionCollider(Vector3 position, float size, string name)
-        // {
-        //     GameObject colObject = new GameObject();
-        //     colObject.name = name;
-        //     int layer = LayerMask.NameToLayer("Anomaly");
-        //     colObject.layer = layer;
-        //     colObject.tag = "DoNotSet";
-        //     colObject.AddComponent<Rigidbody>();
-        //     colObject.AddComponent<SphereCollider>();
-        //     colObject.GetComponent<SphereCollider>().radius = size;
-        //     return GameObject.Instantiate(colObject, position, Quaternion.Euler(-90f, 0f, 0f));
-        // }
-
-        // [HarmonyPatch("Update")]
-        // [HarmonyPrefix]
-        // static void Update(Landmine __instance)
-        // {
-        //     GameObject[] explosionColliders = GameObject.FindGameObjectsWithTag("DoNotSet");
-        //     if (explosionColliders.Length > 0)
-        //     {
-        //         for (int i = 0; i < explosionColliders.Length; i++)
-        //         {
-        //             if (explosionColliders[i].name.StartsWith("explosionCollider"))
-        //             {
-        //                 GameObject.Destroy(explosionColliders[i]);
-        //             }
-        //         }
-        //     }
-        // }
     }
 
-    [HarmonyPatch(typeof(StartOfRound))]
-    internal class StartOfRoundPatch
+    [HarmonyPatch(typeof(ShotgunItem))]
+    internal class ShotgunPatch
     {
-        [HarmonyPatch("LateUpdate")]
-        [HarmonyPrefix]
-        static void LateUpdate(StartOfRound __instance)
+
+        [HarmonyPatch("ShootGun")]
+        [HarmonyPostfix]
+
+        static void ShootGun(ShotgunItem __instance, Vector3 shotgunPosition, Vector3 shotgunForward)
         {
-            GameObject[] explosionColliders = GameObject.FindGameObjectsWithTag("DoNotSet");
-            if (explosionColliders.Length > 0)
+            RaycastHit[] colliders = Physics.SphereCastAll(shotgunPosition, 5f, shotgunForward, 15f, 1076363336, QueryTriggerInteraction.Ignore);
+
+            for (int i = 0; i < colliders.Length; i++)
             {
-                for (int i = 0; i < explosionColliders.Length; i++)
+                GameObject otherObject = colliders[i].collider.gameObject;
+
+                if (Physics.Linecast(shotgunPosition, colliders[i].transform.position + Vector3.up * 0.3f, 1073742080, QueryTriggerInteraction.Ignore))
                 {
-                    if (explosionColliders[i].name.StartsWith("explosionCollider"))
+                    continue;
+                }
+
+                if (otherObject.GetComponentInParent<ArtilleryShellItem>() != null)
+                {
+                    otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShell();
+                    continue;
+                }
+
+                if (otherObject.GetComponentInParent<Vase>() != null)
+                {
+                    Vase vase = otherObject.GetComponentInParent<Vase>();
+                    vase.Shatter(vase.explodePrefab);
+                    continue;
+                }
+
+                if (otherObject.GetComponent<PlayerControllerB>() != null)
+                {
+                    PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
+                    if (player.isHoldingObject)
                     {
-                        Debug.Log($"Cleared {explosionColliders[i]}.");
-                        GameObject.Destroy(explosionColliders[i]);
+                        if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null && Vector3.Distance(shotgunPosition, player.currentlyHeldObjectServer.gameObject.transform.position) < 25f)
+                        {
+                            Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
+                            vase.Shatter(vase.explodePrefab);
+                            continue;
+                        }
                     }
+                }
+
+                if (otherObject.GetComponentInParent<HydraulicStabilizer>() != null)
+                {
+                    otherObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
+                    continue;
                 }
             }
         }
+
     }
 }
