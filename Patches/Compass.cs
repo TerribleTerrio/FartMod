@@ -1,6 +1,6 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using GameNetcodeStuff;
 using UnityEngine;
 
@@ -26,18 +26,12 @@ public class Compass : AnimatedItem, IHittable
     public override void Start()
     {
         base.Start();
-        Debug.Log("---COMPASS DETECTABLE ITEMS---");
-        for (int i = 0; i < detectableItems.Length; i++)
-        {
-            Debug.Log($"{i}: {detectableItems[i].itemName}");
-        }
+        LoadDetectedItems();
     }
 
     public override void Update()
     {
         base.Update();
-
-        DetectItems();
 
         if (detectedItems.Count > 0)
         {
@@ -53,78 +47,34 @@ public class Compass : AnimatedItem, IHittable
                 }
             }
         }
+
+        else
+        {
+            itemAnimator.speed = 0;
+        }
     }
 
-    private void DetectItems()
+    public override void GrabItem()
     {
-        Collider[] colliders = Physics.OverlapSphere(base.transform.position, detectRange, 67634176, QueryTriggerInteraction.Collide);
-        
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            Debug.Log($"{i}: {colliders[i].gameObject}");
-            if (colliders[i].gameObject.GetComponent<GrabbableObject>() != null)
-            {
-                GrabbableObject gObject = colliders[i].gameObject.GetComponent<GrabbableObject>();
-                for (int j = 0; j < detectableItems.Length; j++)
-                {
-                    if (gObject.itemProperties.itemId == detectableItems[j].itemId && !detectedItems.Contains(gObject.gameObject))
-                    {
-                        detectedItems.Add(gObject.gameObject);
-                        Debug.Log($"{gObject} added to detected items.");
-                    }
-                }
-            }
-        }
-
-        for (int i = 0; i < detectedItems.Count; i++)
-        {
-            for (int j = 0; j < colliders.Length; j++)
-            {
-                if (detectedItems[i] == colliders[j].gameObject)
-                {
-                    return;
-                }
-            }
-            Debug.Log($"{detectedItems[i]} removed from detected items.");
-            detectedItems.Remove(detectedItems[i]);
-        }
+        base.GrabItem();
+        LoadDetectedItems();
     }
 
-    // public void OnTouch(Collider other)
-    // {
-    //     Debug.Log($"Collider {other} entered range of compass.");
-    //     if (other.gameObject.GetComponent<GrabbableObject>() != null)
-    //     {
-    //         Debug.Log($"Item {other.gameObject.GetComponent<GrabbableObject>()} entered range of compass.");
-    //         for (int i = 0; i < detectableItems.Length; i++)
-    //         {
-    //             Debug.Log($"Checking if item is of detectable type {detectableItems[i]}.");
-    //             GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
-    //             if (gObject.itemProperties.itemName == detectableItems[i].itemName)
-    //             {
-    //                 Debug.Log($"Adding {other.gameObject} to detected items.");
-    //                 detectedItems.Add(other.gameObject);
-    //             }
-    //         }
-    //         if (detectedItems.Count > 0 && Vector3.Distance(ClosestItem().transform.position, base.transform.position) > alertRange)
-    //         {
-    //             itemAnimator.Play("loop");
-    //         }
-    //     }
-    // }
-
-    // public void OnExit(Collider other)
-    // {
-    //     if (detectedItems.Contains(other.gameObject))
-    //     {
-    //         Debug.Log($"Removing {other.gameObject} from detected items.");
-    //         detectedItems.Remove(other.gameObject);
-    //     }
-    //     if (detectedItems.Count < 1)
-    //     {
-    //         itemAnimator.Play("idle");
-    //     }
-    // }
+    public void LoadDetectedItems()
+    {
+        GrabbableObject[] allItems = FindObjectsOfType<GrabbableObject>();
+        
+        for (int i = 0; i < allItems.Length; i++)
+        {
+            for (int j = 0; j < detectableItems.Length; j++)
+            {
+                if (allItems[i].itemProperties.itemName == detectableItems[j].itemName)
+                {
+                    detectedItems.Add(allItems[i].gameObject);
+                }
+            }
+        }
+    }
 
     public GameObject ClosestItem()
     {
@@ -163,9 +113,6 @@ public class Compass : AnimatedItem, IHittable
 
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
         RoundManager.PlayRandomClip(itemAudio, alert, randomize: true, 1f, -1);
-
-        //ALERT ANIMATION
-        itemAnimator.Play("alert");
     }
 
     public IEnumerator AlertTimer(float seconds)
