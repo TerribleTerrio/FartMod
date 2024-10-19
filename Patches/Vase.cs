@@ -167,6 +167,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             return;
         }
 
+        if (isHeld)
+        {
+            playerHeldBy.DiscardHeldObject();
+        }
+
         Debug.Log("Vase shattered!");
 
         shattered = true;
@@ -374,13 +379,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 Debug.Log("Player was crouching.");
                 CrouchWobble();
             }
-            else if (player.isWalking && !player.isSprinting && !player.isCrouching)
+            else
             {
                 Debug.Log("Player was walking.");
                 WalkWobble();
             }
 
-            if (!(isHeld || isHeldByEnemy))
+            if (!(isHeld || isHeldByEnemy || !hasHitGround))
             {
                 //PHYSICS FORCE
                 RaycastHit hitInfo;
@@ -591,10 +596,19 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
 
         //VEHICLE COLLISION
-        else if (otherObject.layer == 30)
-        {
-            Debug.Log("Bumped by vehicle.");
-        }
+        else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30)
+		{
+			VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
+			if (vehicle.averageVelocity.magnitude < 2)
+			{
+				SprintWobble();
+			}
+            else
+            {
+                Shatter(explodePrefab);
+            }
+			return;
+		}
 
         //ITEM COLLISION
         else if (otherObject.layer == 6)
