@@ -20,7 +20,6 @@ public class ItemTrigger : MonoBehaviour
 
     public void Start()
     {
-        // itemComponent = parentObject.GetComponent<ITouchable>();
         Type itemType = objectScript.GetType();
 
         onEnter = itemType.GetMethod(callOnTriggerEnter);
@@ -32,7 +31,6 @@ public class ItemTrigger : MonoBehaviour
     
     public void OnTriggerEnter(Collider other)
     {
-        // itemComponent.OnTouch(other);
         if (onEnterParameters.Length == 0)
         {
             onEnter.Invoke(objectScript, null);
@@ -47,7 +45,6 @@ public class ItemTrigger : MonoBehaviour
 
     public void OnTriggerExit(Collider other)
     {
-        // itemComponent.OnExit(other);
         if (onExitParameters.Length == 0)
         {
             onExit.Invoke(objectScript, null);
