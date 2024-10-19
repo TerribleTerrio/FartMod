@@ -325,7 +325,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
         }
 
 		//VEHICLE COLLISION
-		else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30) //REWRITE THIS!!
+		else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30)
 		{
 			VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
 			if (vehicle.averageVelocity.magnitude > 17)
