@@ -1,6 +1,7 @@
 using System.Collections;
 using GameNetcodeStuff;
 using UnityEngine;
+using Unity.Netcode;
 
 public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableObject
 {
@@ -19,8 +20,6 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	private int layers;
 
-	private int mask;
-
     public int nonLethalDamage;
 
     public float physicsForce;
@@ -28,8 +27,6 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	public float delayedDetonationTime;
 
 	public bool hasExploded;
-
-	private Vector3 startPosition;
 
 	[Space(5f)]
 	public GameObject explosionPrefab;
@@ -98,33 +95,10 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		hasExploded = false;
 	}
 
-	// private void OnTriggerEnter(Collider other)
-	// {
-	// 	if (other.gameObject.name == "ItemDropRegion")
-	// 	{
-	// 		base.isInElevator == true;
-	// 	}
-	// }
-
-	// private void OnTriggerExit(Collider other)
-	// {
-	// 	if (other.gameObject.name == "ItemDropRegion")
-	// 	{
-	// 		base.isInElevator == false;
-	// 	}
-	// }
-
 	public override void DiscardItem()
 	{
-		startPosition = base.transform.position;
-		if (base.transform.parent != null)
-		{
-			startPosition = base.transform.parent.InverseTransformPoint(startPosition);
-		}
-
 		if (playerHeldBy.isPlayerDead == true)
 		{
-
 			//DIED BY BLAST
 			if (explodeOnBlast && playerHeldBy.causeOfDeath == CauseOfDeath.Blast)
 			{
@@ -163,14 +137,9 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	{
 		base.OnHitGround();
 
-		Vector3 fallPosition = base.transform.position;
-		if (base.transform.parent != null)
-		{
-			fallPosition = base.transform.parent.InverseTransformPoint(fallPosition);
-		}
+		Debug.Log("Shell dropped.");
 
-		fallHeight = Vector3.Distance(fallPosition,startPosition);
-		Debug.Log($"Shell fell: {fallHeight}");
+		fallHeight = startFallingPosition.y - targetFloorPosition.y;
 
 		float c = UnityEngine.Random.Range(0,100);
 
@@ -190,6 +159,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 			}
 		}
 	}
+
     public void Detonate()
     {
 		if (!explodeInOrbit)
@@ -355,26 +325,15 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
         }
 
 		//VEHICLE COLLISION
-		// else if (otherObject.transform.parent.gameObject.layer == 30) //REWRITE THIS!!
-		// {
-		// 	VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
-		// 	if (vehicle.averageVelocity.magnitude > 17)
-		// 	{
-		// 		Detonate();
-		// 	}
-		// 	return;
-		// }
-
-		//EXPLOSION COLLIDER
-		// else if (otherObject.layer == 17)
-		// {
-		// 	Debug.Log("Artillery shell detected collider on anomaly layer.");
-		// 	if (otherObject.name.StartsWith("explosionColliderDamage"))
-		// 	{
-		// 		Debug.Log("Artillery shell detected explosion collider.");
-		// 		Detonate();
-		// 	}
-		// }
+		else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30) //REWRITE THIS!!
+		{
+			VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
+			if (vehicle.averageVelocity.magnitude > 17)
+			{
+				Detonate();
+			}
+			return;
+		}
 	}
 
 	public void OnExit(Collider other)

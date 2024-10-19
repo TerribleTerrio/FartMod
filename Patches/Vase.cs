@@ -7,8 +7,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     [Header("Vase Settings")]
     public float breakHeight;
 
-    private Vector3 startPosition;
-
     public float safePlaceTime;
 
     public float physicsForce;
@@ -103,12 +101,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public override void DiscardItem()
     {
-        startPosition = base.gameObject.transform.position;
-		if (base.gameObject.transform.parent != null)
-		{
-			startPosition = base.gameObject.transform.parent.InverseTransformPoint(startPosition);
-		}
-
         if (playerHeldBy.isPlayerDead && breakOnDeath)
         {
             Shatter(explodePrefab);
@@ -209,10 +201,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             Debug.Log($"raycast point: {hitInfo.point}");
             Debug.Log($"vase new position: {hitInfo.point + itemProperties.verticalOffset * Vector3.up}");
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
-			// if (base.transform.parent != null)
-			// {
-			// 	shatterPosition = base.transform.parent.InverseTransformPoint(targetFloorPosition);
-			// }
             Debug.Log($"Raycast set shatter position to: {shatterPosition}");
 		}
 		else
