@@ -16,6 +16,8 @@ public class Compass : AnimatedItem, IHittable
 
     private bool alertOnCooldown;
 
+    private bool broken;
+
     public Item[] detectableItems;
 
     public List<GameObject> detectedItems;
@@ -27,17 +29,27 @@ public class Compass : AnimatedItem, IHittable
     {
         base.Start();
         LoadDetectedItems();
+
+        if (broken)
+        {
+            itemAnimator.Play("broken");
+        }
     }
 
     public override void Update()
     {
         base.Update();
 
+        if (broken)
+        {
+            return;
+        }
+
         if (detectedItems.Count > 0)
         {
             //SET SPIN SPEED TO DISTANCE FROM CLOSEST ITEM
             float distance = Vector3.Distance(ClosestItem().transform.position, base.transform.position);
-            itemAnimator.speed = Remap(distance, 0, detectRange, 3, 0);
+            itemAnimator.SetFloat("spinSpeed", Remap(distance, 0, detectRange, 5, 0));
 
             if (Vector3.Distance(ClosestItem().transform.position, base.transform.position) < alertRange)
             {
@@ -50,7 +62,7 @@ public class Compass : AnimatedItem, IHittable
 
         else
         {
-            itemAnimator.speed = 0;
+            itemAnimator.SetFloat("spinSpeed", 0);
         }
     }
 
@@ -113,6 +125,8 @@ public class Compass : AnimatedItem, IHittable
 
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
         RoundManager.PlayRandomClip(itemAudio, alert, randomize: true, 1f, -1);
+
+        itemAnimator.Play("alert");
     }
 
     public IEnumerator AlertTimer(float seconds)
@@ -123,6 +137,9 @@ public class Compass : AnimatedItem, IHittable
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
+        broken = true;
+        itemAnimator.Play("break");
+
         if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
         {
             timesPlayedInOneSpot = 0;
