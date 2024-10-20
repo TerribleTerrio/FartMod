@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using GameNetcodeStuff;
 using UnityEngine;
 
@@ -20,7 +21,7 @@ public class Compass : AnimatedItem, IHittable
 
     public Item[] detectableItems;
 
-    public List<GameObject> detectedItems;
+    public List<GrabbableObject> detectedItems;
 
     [Space(5f)]
     public AudioClip[] alert;
@@ -30,7 +31,7 @@ public class Compass : AnimatedItem, IHittable
     public override void Start()
     {
         base.Start();
-        // LoadDetectedItems();
+        LoadDetectedItems();
 
         if (broken)
         {
@@ -47,19 +48,27 @@ public class Compass : AnimatedItem, IHittable
             return;
         }
 
-        LoadDetectedItems();
-
         if (detectedItems.Count > 0)
         {
-            //SET SPIN SPEED TO DISTANCE FROM CLOSEST ITEM
-            float distance = Vector3.Distance(ClosestItem().transform.position, base.transform.position);
-            itemAnimator.SetFloat("spinSpeed", Remap(distance, 0, detectRange, 5, 0));
-
-            if (Vector3.Distance(ClosestItem().transform.position, base.transform.position) < alertRange)
+            for (int i = 0; i < detectedItems.Count; i++)
             {
-                if (!alertOnCooldown)
+                if (detectedItems[i].gameObject == null)
                 {
-                    Alert();
+                    detectedItems.Remove(detectedItems[i]);
+                }
+            }
+
+            if (ClosestItem() != null)
+            {
+                float distance = Vector3.Distance(ClosestItem().transform.position, base.transform.position);
+                itemAnimator.SetFloat("spinSpeed", Remap(distance, 0, detectRange, 5, 0));
+
+                if (Vector3.Distance(ClosestItem().transform.position, base.transform.position) < alertRange)
+                {
+                    if (!alertOnCooldown)
+                    {
+                        Alert();
+                    }
                 }
             }
         }
@@ -70,44 +79,59 @@ public class Compass : AnimatedItem, IHittable
         }
     }
 
+    public void OnEnterTrigger(Collider other = null)
+    {
+        if (other == null || other.gameObject.GetComponent<PlayerControllerB>() != null)
+        {
+            LoadDetectedItems();
+        }
+    }
+
     public override void GrabItem()
     {
         base.GrabItem();
-        // LoadDetectedItems();
+        LoadDetectedItems();
     }
 
     public void LoadDetectedItems()
     {
         GrabbableObject[] allItems = FindObjectsOfType<GrabbableObject>();
-        
-        for (int i = 0; i < allItems.Length; i++)
+        detectedItems = allItems.ToList();
+
+        for (int i = 0; i < detectedItems.Count; i++)
         {
-            if (detectedItems.Contains(allItems[i].gameObject))
-            {
-                continue;
-            }
-            
+            bool detected = false;
             for (int j = 0; j < detectableItems.Length; j++)
             {
-                if (allItems[i].itemProperties.itemName == detectableItems[j].itemName)
+                if (detectedItems[i].itemProperties.itemName != detectableItems[j].itemName)
                 {
-                    detectedItems.Add(allItems[i].gameObject);
+                    continue;
                 }
+                else
+                {
+                    detected = true;
+                }
+            }
+            if (!detected)
+            {
+                detectedItems.Remove(detectedItems[i]);
             }
         }
     }
 
     public GameObject ClosestItem()
     {
-        if (detectedItems.Count > 0)
+        if (detectedItems.Count > 0 && detectedItems[0] != null)
         {
-            GameObject closestItem = detectedItems[0];
-            float distance = 10000f;
+            GameObject closestItem = detectedItems[0].gameObject;
             for (int i = 0; i < detectedItems.Count; i++)
             {
-                if (Vector3.Distance(detectedItems[i].transform.position, base.transform.position) < distance)
+                if (detectedItems[i] != null)
                 {
-                    closestItem = detectedItems[i];
+                    if (Vector3.Distance(detectedItems[i].transform.position, base.transform.position) < Vector3.Distance(closestItem.transform.position, base.transform.position))
+                    {
+                        closestItem = detectedItems[i].gameObject;
+                    }
                 }
             }
             return closestItem;
@@ -161,7 +185,7 @@ public class Compass : AnimatedItem, IHittable
             RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
             RoundManager.PlayRandomClip(itemAudio, breakSFX, randomize: true, 1f, -1);
         }
-
+        
         return true;
 	}
 
