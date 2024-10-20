@@ -25,10 +25,12 @@ public class Compass : AnimatedItem, IHittable
     [Space(5f)]
     public AudioClip[] alert;
 
+    public AudioClip[] breakSFX;
+
     public override void Start()
     {
         base.Start();
-        LoadDetectedItems();
+        // LoadDetectedItems();
 
         if (broken)
         {
@@ -44,6 +46,8 @@ public class Compass : AnimatedItem, IHittable
         {
             return;
         }
+
+        LoadDetectedItems();
 
         if (detectedItems.Count > 0)
         {
@@ -69,7 +73,7 @@ public class Compass : AnimatedItem, IHittable
     public override void GrabItem()
     {
         base.GrabItem();
-        LoadDetectedItems();
+        // LoadDetectedItems();
     }
 
     public void LoadDetectedItems()
@@ -78,6 +82,11 @@ public class Compass : AnimatedItem, IHittable
         
         for (int i = 0; i < allItems.Length; i++)
         {
+            if (detectedItems.Contains(allItems[i].gameObject))
+            {
+                continue;
+            }
+            
             for (int j = 0; j < detectableItems.Length; j++)
             {
                 if (allItems[i].itemProperties.itemName == detectableItems[j].itemName)
@@ -137,18 +146,22 @@ public class Compass : AnimatedItem, IHittable
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
-        broken = true;
-        itemAnimator.Play("break");
-
-        if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
+        if (!broken)
         {
-            timesPlayedInOneSpot = 0;
-        }
-        timesPlayedInOneSpot++;
-        lastPosition = base.transform.position;
+            broken = true;
+            itemAnimator.SetBool("broken", true);
 
-        RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        RoundManager.PlayRandomClip(itemAudio, alert, randomize: true, 1f, -1);
+            if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
+            {
+                timesPlayedInOneSpot = 0;
+            }
+            timesPlayedInOneSpot++;
+            lastPosition = base.transform.position;
+
+            RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+            RoundManager.PlayRandomClip(itemAudio, breakSFX, randomize: true, 1f, -1);
+        }
+
         return true;
 	}
 
