@@ -1,10 +1,11 @@
 using System;
 using System.Reflection;
+using Unity.Netcode;
 using UnityEngine;
 
-public class ItemTrigger : MonoBehaviour
+public class TriggerScript : MonoBehaviour
 {
-    public GrabbableObject objectScript;
+    public NetworkBehaviour objectScript;
 
     public String callOnTriggerEnter;
 
