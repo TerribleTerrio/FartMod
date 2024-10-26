@@ -264,7 +264,12 @@ public class Scarecrow : EnemyAI
             creatureAnimator.SetInteger("WindLevel", level);
         }
 
-        if (creatureAnimator.GetInteger("WindLevel") < 2 && StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Rainy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
+        {
+            creatureAnimator.SetInteger("WindLevel", 1);
+        }
+
+        else if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
         {
             creatureAnimator.SetInteger("WindLevel", 2);
         }
