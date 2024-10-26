@@ -10,6 +10,8 @@ public class Scarecrow : EnemyAI
     [Space(15f)]
     [Header("Scarecrow Settings")]
 
+    public int daysBeforeScarecrowSpawns = 5;
+
     [Range(0f, 1f)]
     public float normalizedTimeInDayToBecomeActive;
 
@@ -18,6 +20,8 @@ public class Scarecrow : EnemyAI
     public Item zapItem;
 
     public Transform dropItemTransform;
+
+    public Transform meshContainer;
 
     private List<PlayerControllerB> playersInRange;
 
@@ -35,27 +39,64 @@ public class Scarecrow : EnemyAI
 
     private List<PlayerControllerB> playersWithLineOfSight;
 
+    public Transform[] lineOfSightTriggers;
+
+    [Space(10f)]
+    [Header("Chances & Cooldowns")]
+
     [Space(5f)]
-    [Header("Cooldowns")]
+    [Range(0f, 100f)]
+    public float tweakOutChance = 20;
+
+    public float tweakOutCooldown = 10f;
+
+    private float tweakOutTimer;
+
+    [Space(5f)]
+    [Range(0f, 100f)]
+    public float facePlayerChance = 20;
+
+    public float facePlayerCooldown = 10f;
+
+    private float facePlayerTimer;
+
+    [Space(5f)]
+    [Range(0f, 100f)]
+    public float detectAudioChance = 20;
+
+    public float detectSoundCooldown = 10f;
+
+    private float detectSoundTimer;
+
+    [Space(5f)]
+    [Range(0f, 100f)]
+    public float moveChance = 20;
+
     public float minMoveCooldown = 60f;
 
     public float maxMoveCooldown = 360f;
 
-    public bool tryMoveOnCooldown;
+    private float moveTimer;
+
+    [Space(5f)]
+    [Range(0f, 100f)]
+    public float scarePlayerChance = 20;
 
     public float scarePlayerCooldown = 5f;
 
-    public bool scarePlayerOnCooldown;
+    private float scarePlayerTimer;
 
-    public float detectSoundCooldown = 5f;
-
-    public bool detectSoundOnCooldown;
+    [Space(5f)]
+    [Range(0f, 100f)]
+    public float decoySoundChance = 20;
 
     public float decoySoundCooldown = 5f;
 
-    public bool decoySoundOnCooldown;
+    private float decoySoundTimer;
 
-    [Space(5f)]
+    private float audibleSoundCooldown = 10f;
+
+    [Space(10f)]
     [Header("Danger Values")]
     public float dangerValue;
 
@@ -71,7 +112,7 @@ public class Scarecrow : EnemyAI
 
     private int enemySpawnIncrease;
 
-    [Space(5f)]
+    [Space(10f)]
     [Header("Credit Values")]
     public int currentValue;
 
@@ -91,14 +132,11 @@ public class Scarecrow : EnemyAI
 
     public float rotAmount;
 
-    [Space(5f)]
+    [Space(10f)]
     [Header("Audio")]
     public float noiseRange;
 
     [Space(5f)]
-    [Range(0f, 100f)]
-    public float detectAudioChance = 20;
-
     public AudioSource detectAudio;
 
     public AudioClip[] detectSounds;
@@ -107,6 +145,11 @@ public class Scarecrow : EnemyAI
     public AudioSource scareAudio;
 
     public AudioClip[] scareSounds;
+
+    [Space(5f)]
+    public AudioSource tweakOutAudio;
+
+    public AudioClip[] tweakOutSounds;
 
     [Space(5f)]
     public AudioSource warningAudio;
@@ -120,6 +163,17 @@ public class Scarecrow : EnemyAI
 
     public override void Start()
     {
+        if (StartOfRound.Instance.daysPlayersSurvivedInARow < daysBeforeScarecrowSpawns)
+        {
+            Debug.Log($"Tried to spawn scarecrow before {daysBeforeScarecrowSpawns} days!");
+            RoundManager.Instance.currentDaytimeEnemyPower -= enemyType.PowerLevel;
+            GameObject[] spawnPoints = GameObject.FindGameObjectsWithTag("OutsideAINode");
+            float num = RoundManager.Instance.timeScript.lengthOfHours * (float)RoundManager.Instance.currentHour;
+            RoundManager.Instance.SpawnRandomDaytimeEnemy(spawnPoints, num);
+            RoundManager.Instance.DespawnEnemyOnServer(base.NetworkObject);
+            return;
+        }
+
         base.Start();
         normalizedTimeInDayToBecomeActive += 1 / RoundManager.Instance.timeScript.numberOfHours * Random.Range(-1, 1);
 
@@ -150,7 +204,7 @@ public class Scarecrow : EnemyAI
             }
         }
 
-        base.transform.eulerAngles = new Vector3(Random.Range(-10f,10f), transform.eulerAngles.y, Random.Range(-10f,10f));
+        GiveRandomTilt();
 
         Debug.Log("---Scarecrow Spawn Values---");
         Debug.Log($"Danger value: {dangerValue}");
@@ -160,11 +214,42 @@ public class Scarecrow : EnemyAI
         Debug.Log($"End value: {endValue}");
     }
 
+    public void GiveRandomTilt()
+    {
+        meshContainer.localEulerAngles = new Vector3(Random.Range(-5f,5f), 0f, Random.Range(-12f,12f));
+        Debug.Log($"Mesh container rotation: {meshContainer.eulerAngles}");
+    }
+
+    public bool CheckLineOfSightForScarecrow(PlayerControllerB player)
+    {
+        for (int i = 0; i < lineOfSightTriggers.Length; i++)
+        {
+            if (player.HasLineOfSightToPosition(lineOfSightTriggers[i].position, range: 100))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public override void Update()
     {
-        if (stunnedByPlayer != null && stunnedIndefinitely < 1)
+        if (stunnedByPlayer)
         {
-            KillEnemyOnOwnerClient();
+            if (stunnedIndefinitely < 1)
+            {
+                KillEnemyOnOwnerClient();
+            }
+            else
+            {
+                audibleSoundCooldown--;
+                if (audibleSoundCooldown <= 0)
+                {
+                    audibleSoundCooldown = 20;
+                    RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
+                    Debug.Log("Played audible sound!");
+                }
+            }
         }
 
         if (!base.IsOwner)
@@ -289,15 +374,40 @@ public class Scarecrow : EnemyAI
         float dayProgress = RoundManager.Instance.timeScript.normalizedTimeOfDay;
         currentValue = RemapInt(dayProgress, 0f, 1f, startValue, endValue);
 
+        if (moveTimer > 0)
+        {
+            moveTimer--;
+        }
+        if (facePlayerTimer > 0)
+        {
+            facePlayerTimer--;
+        }
+        if (scarePlayerTimer > 0)
+        {
+            scarePlayerTimer--;
+        }
+        if (detectSoundTimer > 0)
+        {
+            detectSoundTimer--;
+        }
+        if (tweakOutTimer > 0)
+        {
+            tweakOutTimer--;
+        }
+        if (decoySoundTimer > 0)
+        {
+            decoySoundTimer--;
+        }
+
         for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
         {
             PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
-            if (player.HasLineOfSightToPosition(transform.position) && !playersWithLineOfSight.Contains(player))
+            if (CheckLineOfSightForScarecrow(player) && !playersWithLineOfSight.Contains(player))
             {
                 Debug.Log($"Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} has line of sight to scarecrow.");
                 playersWithLineOfSight.Add(player);
             }
-            if (!player.HasLineOfSightToPosition(transform.position) && playersWithLineOfSight.Contains(player))
+            if (!CheckLineOfSightForScarecrow(player) && playersWithLineOfSight.Contains(player))
             {
                 Debug.Log($"Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} lost line of sight to scarecrow.");
                 playersWithLineOfSight.Remove(player);
@@ -326,19 +436,20 @@ public class Scarecrow : EnemyAI
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
-                float cooldown = Random.Range(minMoveCooldown, maxMoveCooldown);
-                tryMoveOnCooldown = true;
-                StartCoroutine(StartMoveCooldown(cooldown));
-                Debug.Log($"Scarecrow move cooldown set to {cooldown}s.");
+                float moveCooldown = Random.Range(minMoveCooldown, maxMoveCooldown);
+                moveTimer = moveCooldown;
+                Debug.Log($"Scarecrow move cooldown set to {moveCooldown}s.");
             }
 
-            if (!tryMoveOnCooldown)
+            if (moveTimer <= 0)
             {
-                TryMoveToPosition(GetRandomNavMeshPositionNearAINode());
-                float cooldown = Random.Range(minMoveCooldown, maxMoveCooldown);
-                tryMoveOnCooldown = true;
-                StartCoroutine(StartMoveCooldown(cooldown));
-                Debug.Log($"Scarecrow move cooldown set to {cooldown}s.");
+                float moveCooldown = Random.Range(minMoveCooldown, maxMoveCooldown);
+                moveTimer = moveCooldown;
+                if (Random.Range(0f,100f) < moveChance)
+                {
+                    TryMoveToPosition(GetRandomNavMeshPositionNearAINode());
+                }
+                Debug.Log($"Scarecrow move cooldown set to {moveCooldown}s.");
             }
 
             break;
@@ -347,6 +458,16 @@ public class Scarecrow : EnemyAI
         case 2:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
+                if (previousBehaviourStateIndex != 3 && detectSoundTimer <= 0)
+                {
+                    detectSoundTimer = detectSoundCooldown;
+                    if (Random.Range(0f,100f) < detectAudioChance)
+                    {
+                        AudioClip clip = detectSounds[Random.Range(0, detectSounds.Length)];
+                        detectAudio.PlayOneShot(clip);
+                    }
+                }
+
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
 
                 if (playersInRange[0] != null)
@@ -354,17 +475,31 @@ public class Scarecrow : EnemyAI
                     targetPlayer = playersInRange[0];
                 }
 
-                if (targetPlayer.HasLineOfSightToPosition(transform.position))
+                if (CheckLineOfSightForScarecrow(targetPlayer))
                 {
                     targetPlayerWatching = true;
                     Debug.Log("Target player entered range with scarecrow in view.");
                 }
+            }
 
-                if (Random.Range(0f, 100f) < detectAudioChance && !detectSoundOnCooldown)
+            bool hasTurnedToFacePlayer = false;
+
+            if (!CheckLineOfSightForScarecrow(targetPlayer) && facePlayerTimer <= 0)
+            {
+                facePlayerTimer = facePlayerCooldown;
+                if (Random.Range(0f,100f) < 100f)
                 {
-                    AudioClip clip = detectSounds[Random.Range(0, detectSounds.Length)];
-                    detectAudio.PlayOneShot(clip);
-                    StartCoroutine(StartDetectCooldown(detectSoundCooldown));
+                    FacePosition(targetPlayer.transform.position);
+                    if (tweakOutTimer <= 0)
+                    {
+                        tweakOutTimer = tweakOutCooldown;
+                        if (Random.Range(0f,100f) < 100f)
+                        {
+                            TweakOut(targetPlayer);
+                        }
+                    }
+                    GiveRandomTilt();
+                    hasTurnedToFacePlayer = true;
                 }
             }
 
@@ -372,20 +507,20 @@ public class Scarecrow : EnemyAI
             {
                 if (targetPlayerWatching)
                 {
-                    if (!targetPlayer.HasLineOfSightToPosition(transform.position))
+                    if (!CheckLineOfSightForScarecrow(targetPlayer))
                     {
                         targetPlayerWatching = false;
 
-                        if (playersWithLineOfSight.Count == 0)
+                        if (playersWithLineOfSight.Count == 0 && scarePlayerTimer <= 0)
                         {
-                            if (Random.Range(0f,100f) < 100f)
+                            scarePlayerTimer = scarePlayerCooldown;
+                            if (Random.Range(0f,100f) < scarePlayerChance)
                             {
-                                FacePosition(targetPlayer.transform.position);
-                            }
-
-                            if (Random.Range(0f,100f) < 100f)
-                            {
-                                FacePosition(targetPlayer.transform.position);
+                                if (!hasTurnedToFacePlayer)
+                                {
+                                    FacePosition(targetPlayer.transform.position);
+                                    GiveRandomTilt();
+                                }
                                 Debug.Log("Scarecrow scare primed!");
                                 scarePrimed = true;
                             }
@@ -395,12 +530,11 @@ public class Scarecrow : EnemyAI
                 
                 else
                 {
-                    if (targetPlayer.HasLineOfSightToPosition(transform.position))
+                    if (CheckLineOfSightForScarecrow(targetPlayer))
                     {
-                        if (playersWithLineOfSight.Count == 1 && !scarePlayerOnCooldown && scarePrimed)
+                        if (playersWithLineOfSight.Count == 1 && scarePrimed)
                         {
                             ScarePlayer(targetPlayer);
-                            StartCoroutine(StartScareCooldown(scarePlayerCooldown));
                         }
                         targetPlayerWatching = true;
                     }
@@ -414,13 +548,43 @@ public class Scarecrow : EnemyAI
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
-                StartCoroutine(StartDecoyCooldown(decoySoundCooldown));
+                decoySoundTimer = decoySoundCooldown;
             }
 
-            if (!decoySoundOnCooldown && Random.Range(0f,100f) < 100f)
+            List<PlayerControllerB> playersInRangeWithLineOfSight = playersInRange;
+            for (int i = 0; i < playersInRangeWithLineOfSight.Count; i++)
             {
-                PlayDecoySound();
-                StartCoroutine(StartDecoyCooldown(decoySoundCooldown));
+                PlayerControllerB player = playersInRangeWithLineOfSight[i];
+                if (!CheckLineOfSightForScarecrow(player))
+                {
+                    playersInRangeWithLineOfSight.Remove(player);
+                }
+            }
+
+            if (playersInRangeWithLineOfSight.Count == 1)
+            {
+                targetPlayer = playersInRangeWithLineOfSight[0];
+
+                if (playersWithLineOfSight.Count == 1)
+                {
+                    if (tweakOutTimer <= 0f)
+                    {
+                        tweakOutTimer = tweakOutCooldown;
+                        if (Random.Range(0f,100f) < 100f)
+                        {
+                            TweakOut(targetPlayer);
+                        }
+                    }
+                }
+            }
+
+            if (decoySoundTimer <= 0)
+            {
+                decoySoundTimer = decoySoundCooldown;
+                if (Random.Range(0f,100f) < decoySoundChance)
+                {
+                    PlayDecoySound();
+                }
             }
 
             break;
@@ -434,7 +598,7 @@ public class Scarecrow : EnemyAI
 
         for (int i = 0; i < players.Length; i++)
         {
-            if (players[i].HasLineOfSightToPosition(transform.position, range: 100))
+            if (CheckLineOfSightForScarecrow(players[i]))
             {
                 Debug.Log($"Current position in view of {players[i].playerUsername}, scarecrow did not move.");
                 return;
@@ -480,7 +644,7 @@ public class Scarecrow : EnemyAI
         }
 
         transform.position = newPosition;
-        base.transform.eulerAngles = new Vector3(Random.Range(-10f,10f), transform.eulerAngles.y, Random.Range(-10f,10f));
+        GiveRandomTilt();
     }
 
     public Vector3 GetRandomNavMeshPositionNearAINode(float radius = 20f)
@@ -506,42 +670,17 @@ public class Scarecrow : EnemyAI
     public void TweakOut(PlayerControllerB player)
     {
         Debug.Log("Scarecrow tweaked out!");
+        AudioClip clip = tweakOutSounds[Random.Range(0, tweakOutSounds.Length)];
+        tweakOutAudio.PlayOneShot(clip);
+        player.insanityLevel += player.maxInsanityLevel * 0.1f;
         creatureAnimator.SetTrigger("TweakOut");
-    }
-
-    public IEnumerator StartMoveCooldown(float time)
-    {
-        tryMoveOnCooldown = true;
-        yield return new WaitForSeconds(time);
-        tryMoveOnCooldown = false;
-    }
-
-    public IEnumerator StartScareCooldown(float time)
-    {
-        scarePlayerOnCooldown = true;
-        yield return new WaitForSeconds(time);
-        scarePlayerOnCooldown = false;
-    }
-
-    public IEnumerator StartDecoyCooldown(float time)
-    {
-        decoySoundOnCooldown = true;
-        yield return new WaitForSeconds(time);
-        decoySoundOnCooldown = false;
-    }
-
-    public IEnumerator StartDetectCooldown(float time)
-    {
-        detectSoundOnCooldown = true;
-        yield return new WaitForSeconds(time);
-        detectSoundOnCooldown = false;
     }
 
     public void FacePosition(Vector3 lookPosition)
     {
         Transform tempTransform = base.transform;
         tempTransform.LookAt(lookPosition);
-        tempTransform.eulerAngles = new Vector3(base.transform.eulerAngles.x, tempTransform.eulerAngles.y, base.transform.eulerAngles.z);
+        tempTransform.eulerAngles = new Vector3(0f, tempTransform.eulerAngles.y, 0f);
         base.transform.eulerAngles = tempTransform.eulerAngles;
     }
 
@@ -605,6 +744,7 @@ public class Scarecrow : EnemyAI
     {
         base.KillEnemy(destroy);
         creatureAnimator.SetBool("IsDead", value: true);
+        RoundManager.Instance.PlayAudibleNoise(transform.position, 5, 1, 0, false, -1);
         IncreaseEnemySpawnRate();
         DropItem();
         SubtractFromPowerLevel();
