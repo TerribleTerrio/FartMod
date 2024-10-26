@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using GameNetcodeStuff;
@@ -40,6 +39,14 @@ public class Scarecrow : EnemyAI
     private List<PlayerControllerB> playersWithLineOfSight;
 
     public Transform[] lineOfSightTriggers;
+
+    [Space(10f)]
+    [Header("Wind Levels On Moons")]
+    public SelectableLevel[] noWindMoons;
+
+    public SelectableLevel[] lightWindMoons;
+
+    public SelectableLevel[] heavyWindMoons;
 
     [Space(10f)]
     [Header("Chances & Cooldowns")]
@@ -175,6 +182,9 @@ public class Scarecrow : EnemyAI
         }
 
         base.Start();
+
+        SetWindLevel();
+
         normalizedTimeInDayToBecomeActive += 1 / RoundManager.Instance.timeScript.numberOfHours * Random.Range(-1, 1);
 
         playersInRange = new List<PlayerControllerB>();
@@ -212,6 +222,52 @@ public class Scarecrow : EnemyAI
         Debug.Log($"Max enemy power increase: {enemyPowerIncrease}");
         Debug.Log($"Start value: {startValue}");
         Debug.Log($"End value: {endValue}");
+    }
+
+    public void SetWindLevel(int level = -1)
+    {
+        if (level == -1)
+        {
+            for (int i = 0; i < noWindMoons.Length; i++)
+            {
+                if (StartOfRound.Instance.currentLevel == noWindMoons[i])
+                {
+                    creatureAnimator.SetInteger("WindLevel", 0);
+                }
+            }
+
+            for (int i = 0; i < lightWindMoons.Length; i++)
+            {
+                if (StartOfRound.Instance.currentLevel == lightWindMoons[i])
+                {
+                    creatureAnimator.SetInteger("WindLevel", 1);
+                }
+            }
+
+            for (int i = 0; i < heavyWindMoons.Length; i++)
+            {
+                if (StartOfRound.Instance.currentLevel == heavyWindMoons[i])
+                {
+                    creatureAnimator.SetInteger("WindLevel", 2);
+                    return;
+                }
+            }
+
+            if (StartOfRound.Instance.currentLevel.PlanetName == "91 Bellow")
+            {
+                creatureAnimator.SetInteger("WindLevel", 2);
+            }
+        }
+
+        else
+        {
+            creatureAnimator.SetInteger("WindLevel", level);
+        }
+
+        if (creatureAnimator.GetInteger("WindLevel") < 2 && StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
+        {
+            creatureAnimator.SetInteger("WindLevel", 2);
+        }
     }
 
     public void GiveRandomTilt()
@@ -735,7 +791,7 @@ public class Scarecrow : EnemyAI
         else
         {
             dropItem = zapItem;
-            creatureAnimator.SetTrigger("Exploded");
+            creatureAnimator.SetTrigger("Explode");
             KillEnemyOnOwnerClient();
         }
     }
@@ -763,7 +819,7 @@ public class Scarecrow : EnemyAI
             if (stunnedByPlayer)
             {
                 //BEHAVIOUR WHEN STUNNED BY GUN
-                creatureAnimator.SetTrigger("Electrocuted");
+                creatureAnimator.SetTrigger("Electrocute");
                 dropItem = zapItem;
             }
             else
