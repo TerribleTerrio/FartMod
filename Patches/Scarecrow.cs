@@ -548,13 +548,13 @@ public class Scarecrow : EnemyAI
             if (!CheckLineOfSightForScarecrow(targetPlayer) && facePlayerTimer <= 0)
             {
                 facePlayerTimer = facePlayerCooldown;
-                if (Random.Range(0f,100f) < 100f)
+                if (Random.Range(0f,100f) < facePlayerChance)
                 {
                     FacePosition(targetPlayer.transform.position);
                     if (tweakOutTimer <= 0)
                     {
                         tweakOutTimer = tweakOutCooldown;
-                        if (Random.Range(0f,100f) < 100f)
+                        if (Random.Range(0f,100f) < tweakOutChance)
                         {
                             TweakOut(targetPlayer);
                         }
@@ -632,7 +632,7 @@ public class Scarecrow : EnemyAI
                     if (tweakOutTimer <= 0f)
                     {
                         tweakOutTimer = tweakOutCooldown;
-                        if (Random.Range(0f,100f) < 100f)
+                        if (Random.Range(0f,100f) < tweakOutChance)
                         {
                             TweakOut(targetPlayer);
                         }
