@@ -596,6 +596,7 @@ public class Scarecrow : EnemyAI
                         if (playersWithLineOfSight.Count == 1 && scarePrimed)
                         {
                             ScarePlayer(targetPlayer);
+                            scarePrimed = false;
                         }
                         targetPlayerWatching = true;
                     }
