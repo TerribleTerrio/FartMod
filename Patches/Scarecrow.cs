@@ -40,6 +40,8 @@ public class Scarecrow : EnemyAI
 
     public Transform[] lineOfSightTriggers;
 
+    public Transform scareTriggerTransform;
+
     [Space(10f)]
     [Header("Wind Levels On Moons")]
     public SelectableLevel[] noWindMoons;
@@ -593,7 +595,7 @@ public class Scarecrow : EnemyAI
                 {
                     if (CheckLineOfSightForScarecrow(targetPlayer))
                     {
-                        if (playersWithLineOfSight.Count == 1 && scarePrimed)
+                        if (playersWithLineOfSight.Count == 1 && scarePrimed && targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position))
                         {
                             ScarePlayer(targetPlayer);
                             scarePrimed = false;
