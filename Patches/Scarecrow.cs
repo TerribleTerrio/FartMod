@@ -827,7 +827,7 @@ public class Scarecrow : EnemyAI
             if (stunnedByPlayer)
             {
                 //BEHAVIOUR WHEN STUNNED BY GUN
-                creatureAnimator.SetTrigger("Electrocute");
+                creatureAnimator.SetBool("Electrocuting", true);
                 dropItem = zapItem;
             }
             else
