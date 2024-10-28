@@ -172,7 +172,7 @@ public class Scarecrow : EnemyAI
 
     public override void Start()
     {
-        if (StartOfRound.Instance.daysPlayersSurvivedInARow < daysBeforeScarecrowSpawns)
+        if (StartOfRound.Instance.gameStats.daysSpent < daysBeforeScarecrowSpawns)
         {
             Debug.Log($"Tried to spawn scarecrow before {daysBeforeScarecrowSpawns} days!");
             RoundManager.Instance.currentDaytimeEnemyPower -= enemyType.PowerLevel;
