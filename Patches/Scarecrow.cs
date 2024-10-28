@@ -28,7 +28,11 @@ public class Scarecrow : EnemyAI
 
     public string[] invalidTerrainTags;
 
-    private bool targetPlayerWatching;
+    private bool targetPlayerEnteredDetectWhileWatching;
+
+    private bool targetPlayerEnteredScareWhileWatching;
+
+    private bool playerEnteredScareRange;
 
     private bool scarePrimed;
 
@@ -540,68 +544,114 @@ public class Scarecrow : EnemyAI
 
                 if (CheckLineOfSightForScarecrow(targetPlayer))
                 {
-                    targetPlayerWatching = true;
-                    Debug.Log("Target player entered range with scarecrow in view.");
+                    targetPlayerEnteredDetectWhileWatching = true;
+                    Debug.Log("Target player entered detect range with scarecrow in view.");
                 }
-            }
 
-            bool hasTurnedToFacePlayer = false;
-
-            if (!CheckLineOfSightForScarecrow(targetPlayer) && facePlayerTimer <= 0)
-            {
-                facePlayerTimer = facePlayerCooldown;
-                if (Random.Range(0f,100f) < facePlayerChance)
+                if (Vector3.Distance(targetPlayer.transform.position, transform.position) < scareRange)
                 {
-                    FacePosition(targetPlayer.transform.position);
-                    if (tweakOutTimer <= 0)
+                    if (CheckLineOfSightForScarecrow(targetPlayer))
                     {
-                        tweakOutTimer = tweakOutCooldown;
-                        if (Random.Range(0f,100f) < tweakOutChance)
-                        {
-                            TweakOut(targetPlayer);
-                        }
+                        targetPlayerEnteredScareWhileWatching = true;
                     }
-                    GiveRandomTilt();
-                    hasTurnedToFacePlayer = true;
+                    playerEnteredScareRange = true;
+                }
+                else
+                {
+                    playerEnteredScareRange = false;
                 }
             }
 
-            if (Vector3.Distance(targetPlayer.transform.position, transform.position) < scareRange)
+            //ANY TIME THE PLAYER LOOKS AWAY FROM THE SCARECROW WHILE ANYWHERE WITHIN RANGE
+            if (!CheckLineOfSightForScarecrow(targetPlayer))
             {
-                if (targetPlayerWatching)
+                //CHANCE TO FACE PLAYER (FAILS IF ANYONE IS LOOKING)
+                if (facePlayerTimer <= 0)
                 {
-                    if (!CheckLineOfSightForScarecrow(targetPlayer))
+                    facePlayerTimer = facePlayerCooldown;
+                    if (Random.Range(0f,100f) < facePlayerChance && playersWithLineOfSight.Count == 0)
                     {
-                        targetPlayerWatching = false;
+                        FacePosition(targetPlayer.transform.position);
+                        GiveRandomTilt();
 
-                        if (playersWithLineOfSight.Count == 0 && scarePlayerTimer <= 0)
+                        //CHANCE TO TWEAK OUT WHILE FACING PLAYER
+                        if (tweakOutTimer <= 0)
                         {
-                            scarePlayerTimer = scarePlayerCooldown;
-                            if (Random.Range(0f,100f) < scarePlayerChance)
+                            tweakOutTimer = tweakOutCooldown;
+                            if (Random.Range(0f,100f) < tweakOutChance)
                             {
-                                if (!hasTurnedToFacePlayer)
-                                {
-                                    FacePosition(targetPlayer.transform.position);
-                                    GiveRandomTilt();
-                                }
-                                Debug.Log("Scarecrow scare primed!");
-                                scarePrimed = true;
+                                TweakOut(targetPlayer);
                             }
                         }
                     }
                 }
+            }
+
+            //ANY TIME PLAYER IS WITHIN SCARE RANGE
+            if (Vector3.Distance(targetPlayer.transform.position, transform.position) < scareRange)
+            {
+                //IF PLAYER ENTERED FOR FIRST TIME WHILE WATCHING SCARECROW
+                if (CheckLineOfSightForScarecrow(targetPlayer) && !playerEnteredScareRange)
+                {
+                    targetPlayerEnteredScareWhileWatching = true;
+                    Debug.Log("Target player entered scare range with scarecrow in view.");
+                    playerEnteredScareRange = true;
+                }
+
+                //ANY TIME THE PLAYER LOSES LINE OF SIGHT WHILE IN SCARE RANGE
+                if (!CheckLineOfSightForScarecrow(targetPlayer))
+                {
+                    targetPlayerEnteredDetectWhileWatching = false;
+                    targetPlayerEnteredScareWhileWatching = false;
+
+                    //CHANCE TO PRIME SCARE (FAILS IF ANYONE IS LOOKING)
+                    if (scarePlayerTimer <= 0)
+                    {
+                        scarePlayerTimer = scarePlayerCooldown;
+                        if (Random.Range(0f,100f) < scarePlayerChance && playersWithLineOfSight.Count == 0)
+                        {
+                            FacePosition(targetPlayer.transform.position);
+                            GiveRandomTilt();
+                            Debug.Log("Scarecrow scare primed!");
+                            scarePrimed = true;
+                        }
+                    }
+                }
                 
+                //ANY TIME THE PLAYER HAS LINE OF SIGHT WHILE IN SCARE RANGE
                 else
                 {
-                    if (CheckLineOfSightForScarecrow(targetPlayer))
+                    //IF PLAYER IS NOT ENTERING SCARE RANGE WHILE LOOKING
+                    if (!targetPlayerEnteredScareWhileWatching)
                     {
-                        if (playersWithLineOfSight.Count == 1 && scarePrimed && targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position))
+                        if (scarePrimed && targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position) && playersWithLineOfSight.Count == 1)
                         {
                             ScarePlayer(targetPlayer);
                             scarePrimed = false;
                         }
-                        targetPlayerWatching = true;
                     }
+
+                    //IF PLAYER IS ENTERING SCARE RANGE WHILE LOOKING
+                    else
+                    {
+                        if (scarePrimed && targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position) && playersWithLineOfSight.Count == 1)
+                        {
+                            if (Random.Range(0f,100f) < scarePlayerChance / 3f)
+                            {
+                                ScarePlayer(targetPlayer);
+                            }
+                        }
+                        scarePrimed = false;
+                    }
+                }
+            }
+
+            if (decoySoundTimer <= 0)
+            {
+                decoySoundTimer = decoySoundCooldown;
+                if (Random.Range(0f,100f) < decoySoundChance)
+                {
+                    PlayDecoySound();
                 }
             }
 
