@@ -1,21 +1,35 @@
+using System;
 using GameNetcodeStuff;
 using UnityEngine;
 
 public class Tire : AnimatedItem, IHittable, ITouchable
 {
+    [Space(15f)]
     [Header("Tire Settings")]
+    public GameObject rollingTirePrefab;
+
+    private GameObject rollingTire;
+
+    public GameObject physicsTirePrefab;
+
+    private GameObject physicsTire;
+
+    public int currentBehaviourStateIndex = 0;
+
+    public int previousBehaviourStateIndex;
+
     public float tireRadius;
 
-    private bool rolling;
+    public float physicsForce = 5;
 
-    private bool rollingUp;
+    private float baseWeight;
 
-    private float speed;
+    private bool boost;
 
-    private float rollRotation;
+    private PlayerControllerB previousPlayerHeldBy;
 
-    private GameObject rollObject;
-
+    [Space(10f)]
+    [Header("Audio")]
     public AudioSource tireSource;
 
     public AudioClip[] switchToRollingSFX;
@@ -24,236 +38,397 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
     public AudioClip[] rollingSFX;
 
-    public AudioClip[] bounceSFX;
-
     public AudioClip[] hitSFX;
 
     public override void Start()
     {
         base.Start();
-        rollObject = new GameObject();
-        rollObject.transform.position = transform.position;
+
+        physicsTirePrefab.gameObject.GetComponentInChildren<Rigidbody>().maxAngularVelocity = 20f;
     }
 
     public override void Update()
     {
         base.Update();
 
-        if (playerHeldBy != null)
+        if (playerHeldBy != null && previousPlayerHeldBy != playerHeldBy)
         {
-            rollObject.transform.position = playerHeldBy.transform.position + Vector3.up + playerHeldBy.transform.forward;
-            rollObject.transform.rotation = playerHeldBy.transform.rotation;
-            rollObject.transform.Rotate(90, 90, 0);
-            rollObject.transform.Rotate(Vector3.down * rollRotation);
+            previousPlayerHeldBy = playerHeldBy;
+        }
 
-            //MOVE ROLLOBJECT UP WITH FLOOR
-            if (Physics.Raycast(rollObject.transform.position - Vector3.down * 0.5f, Vector3.down, out var hitInfo, 3f, 1073742080, QueryTriggerInteraction.Ignore))
+        switch (currentBehaviourStateIndex)
+        {
+
+        //ITEM TIRE
+        case 0:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                //IF NEW POSITION IS HIGHER THAN LAST
-                if (rollObject.transform.position.y < hitInfo.point.y)
+                if (playerHeldBy != null)
                 {
-                    rollingUp = true;
+                    playerHeldBy.carryWeight = Mathf.Clamp(baseWeight + (itemProperties.weight - 1f), 1f, 10f);
+
+                    if (previousBehaviourStateIndex == 1)
+                    {
+                        parentObject = playerHeldBy.localItemHolder;
+                    }
                 }
-                //IF NEW POSITION IS LOWER THAN LAST
                 else
                 {
-                    rollingUp = false;
+                    previousPlayerHeldBy.carryWeight = baseWeight;
                 }
+
+                Debug.Log("Tire entered holding state.");
+                EnableItemTire(meshEnabled: true, grabEnabled: true);
+                EnableRollingTire(enabled: false);
+                EnablePhysicsTire(enabled: false);
+
+                if (radarIcon != null)
+                {
+                    radarIcon.position = base.transform.position;
+                }
+
+                previousBehaviourStateIndex = currentBehaviourStateIndex;
+            }
+
+            break;
+
+        //ROLLING TIRE
+        case 1:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
+            {
+                Debug.Log("Tire entered rolling state.");
+                EnableItemTire(meshEnabled: false, grabEnabled: false);
+                EnableRollingTire(enabled: true);
+                parentObject = rollingTire.transform;
+
+                playerHeldBy.carryWeight = baseWeight;
+
+                previousBehaviourStateIndex = currentBehaviourStateIndex;
+            }
+
+            if (playerHeldBy == null)
+            {
+                currentBehaviourStateIndex = 0;
+                break;
+            }
+
+            //GET GROUND INFO
+            RaycastHit rollGroundInfo;
+            Physics.Raycast(rollingTire.transform.position, Vector3.down, out rollGroundInfo, 1f, 268438273, QueryTriggerInteraction.Ignore);
+
+            //SET POSITION OF ROLLING TIRE
+            Vector3 rollingPosition = playerHeldBy.transform.position + playerHeldBy.transform.forward * 1.2f;
+            rollingPosition.y = rollGroundInfo.point.y + tireRadius;
+            rollingTire.transform.position = rollingPosition;
+
+            //SET PLAYER SPEED BASED ON GROUND ANGLE USING WEIGHT
+            float groundAngle = Vector3.Angle(playerHeldBy.transform.forward, rollGroundInfo.normal) - 90f;
+            float groundAngleBackward = Vector3.Angle(playerHeldBy.transform.forward * -1, rollGroundInfo.normal) - 90f;
+            float slopeWeight;
+            if (playerHeldBy.moveInputVector.y >= 0)
+            {
+                slopeWeight = Remap(groundAngle, -15f, 15f, -2f, 2f);
             }
             else
             {
-                playerHeldBy.DiscardHeldObject();
+                slopeWeight = Remap(groundAngleBackward, -15f, 15f, -2f, 2f);
+            }
+            playerHeldBy.carryWeight = Mathf.Clamp(baseWeight + slopeWeight, 1f, 10f);
+
+            //SET ROLL SPEED BASED ON MOVEMENT SPEED
+            float rollSpeed = playerHeldBy.walkForce.magnitude / playerHeldBy.carryWeight * 0.85f;
+            if (!playerHeldBy.movingForward)
+            {
+                rollSpeed *= -1f;
+            }
+            if (playerHeldBy.isSprinting)
+            {
+                rollSpeed *= 1.25f;
+            }
+            rollingTire.GetComponent<Animator>().SetFloat("RollSpeed", rollSpeed);
+
+            //LET GO OF TIRE IF PULLING UP HILL
+            if (groundAngle < -20f && playerHeldBy.moveInputVector.y < 0)
+            {
+                currentBehaviourStateIndex = 2;
+                break;
             }
 
-            if (rolling)
+            //CHECK IF EXTERNAL FORCE IS ENOUGH TO LET GO OF TIRE
+            if ((playerHeldBy.externalForces + playerHeldBy.externalForceAutoFade).magnitude > 10f)
             {
-                //CHECK AHEAD FOR WALL TO PREVENT MOVEMENT
-                if (Physics.Raycast(rollObject.transform.position, playerHeldBy.transform.forward, out var hitPoint, 3f, 1073742080, QueryTriggerInteraction.Ignore))
-                {
-                    if (Vector3.Distance(rollObject.transform.position, hitPoint.transform.position) < tireRadius)
-                    {
-                        Debug.Log("Tire hit wall!");
-                    }
-                }
+                currentBehaviourStateIndex = 2;
+                break;
+            }
 
-                //ROTATE WHEN PLAYER WALKS
-                float rollSpeed = 1f;
-                if (playerHeldBy.isSprinting)
-                {
-                    rollSpeed *= 1.75f;
-                }
-                if (playerHeldBy.movingForward)
-                {
-                    rollRotation -= playerHeldBy.averageVelocity * rollSpeed;
-                }
-                else
-                {
-                    rollRotation += playerHeldBy.averageVelocity * rollSpeed;
-                }
+            if (radarIcon != null)
+            {
+                radarIcon.position = rollingTire.transform.position;
+            }
 
-                //ROLL AWAY WHEN JUMPING
-                if (playerHeldBy.isJumping)
+            //INSTANCES WHERE THE TIRE ROLLS AWAY (jumping, no floor, dropping)
+            if (playerHeldBy.isJumping || playerHeldBy.isCrouching || !Physics.Raycast(rollingTire.transform.position, Vector3.down, 1f, 268438273, QueryTriggerInteraction.Ignore) || playerHeldBy.isPlayerDead || groundAngle < -30f && playerHeldBy.moveInputVector.y < 0)
+            {
+                currentBehaviourStateIndex = 2;
+                break;
+            }
+
+            break;
+
+        //PHYSICS TIRE
+        case 2:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
+            {
+                Debug.Log("Tire entered physics state.");
+
+                if (playerHeldBy != null)
                 {
-                    Debug.Log("Player jumped, discarding.");
                     playerHeldBy.DiscardHeldObject();
                 }
 
-                //ROLL AWAY WHEN NO FLOOR
-                // if (!Physics.Raycast(transform.position, Vector3.down, out var hitInfo, 10f, 1073742080, QueryTriggerInteraction.Ignore))
-                // {
-                //     Debug.Log("No floor detected under tire, rolling away from player.");
-                //     RollAwayFromPlayer();
-                // }
+                previousPlayerHeldBy.carryWeight = baseWeight;
+
+                previousBehaviourStateIndex = currentBehaviourStateIndex;
+
+                EnableItemTire(meshEnabled: false, grabEnabled: true);
+                EnableRollingTire(enabled: false);
+                EnablePhysicsTire(enabled: true);
+                parentObject = physicsTire.GetComponentInChildren<Collider>().gameObject.transform;
+
+                //GIVE TIRE MOVE SPEED OF PLAYER
+                Rigidbody rigidbody = physicsTire.GetComponentInChildren<Rigidbody>();
+                Rigidbody playerRigidbody = previousPlayerHeldBy.playerRigidbody;
+                rigidbody.AddForce(playerRigidbody.velocity * 2f, ForceMode.Impulse);
+
+                //GIVE TIRE SLIGHT BOOST FORWARD
+                if (boost)
+                {
+                    Vector3 forward = previousPlayerHeldBy.transform.forward;
+                    Vector3 boostForce = forward;
+                    if (previousPlayerHeldBy.isSprinting && previousPlayerHeldBy.movingForward)
+                    {
+                        boostForce = forward * 12;
+                    }
+                    else if (previousPlayerHeldBy.isWalking && previousPlayerHeldBy.movingForward)
+                    {
+                        boostForce = forward * 6;
+                    }
+                    boostForce += Vector3.up * 1;
+
+                    rigidbody.AddForce(boostForce, ForceMode.Impulse);
+                }
             }
+
+            break;
         }
     }
 
     public override void LateUpdate()
     {
-        if (parentObject != null)
-        {
-            base.transform.rotation = parentObject.rotation;
-            base.transform.position = parentObject.position;
+        base.LateUpdate();
 
-            if (rolling)
+        switch (currentBehaviourStateIndex)
+        {
+
+        //ITEM TIRE
+        case 0:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                //SET POSITION TO HEIGHT OF FLOOR
-                if (Physics.Raycast(transform.position + Vector3.up, Vector3.down, out var hitInfo, 3f, 1073742080, QueryTriggerInteraction.Ignore))
-                {
-                    transform.position = hitInfo.point + Vector3.up * tireRadius;
-                }
+                
             }
-            else if (playerHeldBy != null)
+            break;
+            
+        //ROLLING TIRE
+        case 1:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                base.transform.Rotate(itemProperties.rotationOffset);
-                Vector3 positionOffset = itemProperties.positionOffset;
-                positionOffset = parentObject.rotation * positionOffset;
-                base.transform.position += positionOffset;
+
             }
+            break;
+
+        //PHYSICS TIRE
+        case 2:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
+            {
+
+            }
+            break;
+
+        }
+    }
+
+    public void EnableItemTire(bool meshEnabled, bool grabEnabled)
+    {
+        if (grabEnabled)
+        {
+            grabbable = true;
+            grabbableToEnemies = true;
+        }
+        else
+        {
+            grabbable = false;
+            grabbableToEnemies = false;
         }
 
-        if (radarIcon != null)
-		{
-			radarIcon.position = base.transform.position;
-		}
+        if (meshEnabled)
+        {
+            EnableItemMeshes(enable: true);
+        }
+        else
+        {
+            EnableItemMeshes(enable: false);
+        }
+    }
+
+    public void EnableRollingTire(bool enabled)
+    {
+        if (enabled && rollingTire == null)
+        {
+            rollingTire = Instantiate(rollingTirePrefab, playerHeldBy.transform);
+        }
+        else if (!enabled && rollingTire != null)
+        {
+            Destroy(rollingTire);
+        }
+    }
+
+    public void EnablePhysicsTire(bool enabled)
+    {
+        if (enabled && physicsTire == null)
+        {
+            physicsTire = Instantiate(physicsTirePrefab);
+            physicsTire.transform.position = rollingTire.transform.position;
+            physicsTire.transform.eulerAngles = rollingTire.gameObject.transform.GetChild(0).transform.rotation.eulerAngles + new Vector3(90f, 0f, 90f);
+            Rigidbody rigidbody = physicsTire.GetComponentInChildren<Rigidbody>();
+            rigidbody.maxAngularVelocity = 20f;
+            rigidbody.maxLinearVelocity = 20f;
+        }
+        else if (!enabled && physicsTire != null)
+        {
+            Destroy(physicsTire);
+        }
+    }
+
+    public void EnableClampLook(bool enabled)
+    {
+        if (enabled)
+        {
+            playerHeldBy.clampLooking = true;
+            playerHeldBy.minVerticalClamp = 25f;
+            playerHeldBy.maxVerticalClamp = -60f;
+            playerHeldBy.horizontalClamp = 60f;
+        }
+        else
+        {
+            playerHeldBy.clampLooking = false;
+        }
     }
 
     public override void ItemActivate(bool used, bool buttonDown = true)
     {
-        if (rolling)
+        if (currentBehaviourStateIndex == 0)
         {
-            SwitchToHolding();
+            Debug.Log("Tire activated in state 0.");
+            currentBehaviourStateIndex = 1;
+            return;
         }
-
-        else
+        if (currentBehaviourStateIndex == 1)
         {
-            SwitchToRolling();
+            Debug.Log("Tire activated in state 1.");
+            boost = true;
+            currentBehaviourStateIndex = 2;
+            return;
         }
-    }
-
-    public void SwitchToRolling()
-    {
-        Debug.Log("Tire switched to rolling.");
-        rolling = true;
-
-        //CHANGE PLAYER ANIMATION
-
-        //LIMIT MOUSE LOOK OF PLAYER
-        playerHeldBy.horizontalClamp = 90;
-        playerHeldBy.clampLooking = true;
-
-        //CHANGE TIRE LOCATION & PARENT
-        parentObject = rollObject.transform;
-
-        //ROTATE TIRE WHEN PLAYER WALKS
-        itemAnimator.Play("roll");
-
-        //REMOVE TIRE WEIGHT FROM PLAYER
-        playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight - (itemProperties.weight - 1f), 1f, 10f);
-
-        //PLAY SOUND
-        RoundManager.PlayRandomClip(itemAudio, switchToRollingSFX, randomize: true, 1f, -1);
-    }
-
-    public void SwitchToHolding()
-    {
-        Debug.Log("Tire switched to holding.");
-        rolling = false;
-
-        //CHANGE PLAYER ANIMATION
-
-        //REMOVE MOUSE LOOK LIMIT FROM PLAYER
-        playerHeldBy.clampLooking = false;
-
-        //RESET TIRE INTO HANDS
-        transform.SetParent(null);
-        parentObject = playerHeldBy.localItemHolder;
-
-        //STOP ROTATION OF TIRE
-        itemAnimator.speed = 1;
-        itemAnimator.Play("stop");
-
-        //ADD TIRE WEIGHT TO PLAYER
-        playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (itemProperties.weight - 1f), 1f, 10f);
-
-        //PLAY SOUND
-        RoundManager.PlayRandomClip(itemAudio, switchToHoldingSFX, randomize: true, 1f, -1);
     }
 
     public override void GrabItem()
     {
-        if (rolling)
-        {
-            base.GrabItem();
-            SwitchToRolling();
-        }
+        baseWeight = Mathf.Clamp(playerHeldBy.carryWeight - (itemProperties.weight - 1f), 1f, 10f);
 
-        else
+        if (currentBehaviourStateIndex == 0)
         {
             base.GrabItem();
         }
-    }
-
-    public override void DiscardItem()
-    {
-        if (rolling)
+        if (currentBehaviourStateIndex == 2)
         {
-            RollAwayFromPlayer();
-            base.DiscardItem();
+            base.GrabItem();
+            currentBehaviourStateIndex = 0;
         }
-        
-        else
-        {
-            base.DiscardItem();
-        }
-    }
-
-    public void RollAwayFromPlayer()
-    {
-        Debug.Log("Tire rolled away from player.");
-
-        //CHANGE PLAYER ANIMATION
-
-        //SET TIRE TO USE RIGIDBODY
     }
 
     public void OnTouch(Collider other)
     {
         GameObject otherObject = other.gameObject;
+        Rigidbody rigidbody = physicsTire.GetComponentInChildren<Rigidbody>();
+        PlayerControllerB player = null;
 
-        if (rolling)
+        if (otherObject.GetComponent<PlayerControllerB>() != null)
         {
-            //PHYSICS FORCE TO OTHER PLAYERS
+            player = otherObject.GetComponent<PlayerControllerB>();
+        }
 
-            //WOBBLE VASES
+        if (currentBehaviourStateIndex == 0)
+        {
+            return;
+        }
 
-            if (speed > 10)
+        if (currentBehaviourStateIndex == 1)
+        {
+            if (player != null)
+            {    
+                if (!Physics.Linecast(base.transform.position, player.transform.position, 256, QueryTriggerInteraction.Ignore))
+                {
+                    float dist = Vector3.Distance(player.transform.position, base.transform.position);
+                    Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+                    if (vector.magnitude > 2f)
+                    {
+                        if (vector.magnitude > 10f)
+                        {
+                            player.CancelSpecialTriggerAnimations();
+                        }
+                        if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
+                        {
+                                player.externalForceAutoFade += vector;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (currentBehaviourStateIndex == 2)
+        {
+            if (player != null)
+            {    
+                if (!Physics.Linecast(base.transform.position, player.transform.position, 256, QueryTriggerInteraction.Ignore))
+                {
+                    float dist = Vector3.Distance(player.transform.position, base.transform.position);
+                    Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+                    if (vector.magnitude > 2f)
+                    {
+                        if (vector.magnitude > 10f)
+                        {
+                            player.CancelSpecialTriggerAnimations();
+                        }
+                        if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
+                        {
+                                player.externalForceAutoFade += vector;
+                        }
+                    }
+
+                    if (rigidbody.velocity.magnitude > 5f)
+                    {
+                        Vector3 hitVector = Vector3.Normalize(player.transform.position - rigidbody.transform.position);
+                        player.playerRigidbody.AddForce(hitVector * 5f, ForceMode.Impulse);
+                        player.DamagePlayer(2, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning, 0, fallDamage:false);
+                    }
+                }
+            }
+
+            if (otherObject.GetComponent<EnemyAICollisionDetect>() != null)
             {
-                //DEAL DAMAGE TO PLAYERS
+                EnemyAI enemy = otherObject.GetComponentInParent<EnemyAI>();
 
-                //DEAL DAMAGE TO ENEMIES
-
-                //BREAK VASES
+                //DEAL DAMAGE BASED ON SPEED OF PHYSICS TIRE
             }
         }
     }
@@ -275,4 +450,9 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         RoundManager.PlayRandomClip(itemAudio, hitSFX, randomize: true, 1f, -1);
         return true;
 	}
+
+    public float Remap(float value, float min1, float max1, float min2, float max2)
+    {
+        return (value - min1) / (max1 - min1) * (max2 - min2) + min2;
+    }
 }
