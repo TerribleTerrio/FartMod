@@ -1,9 +1,106 @@
 using UnityEngine;
 using HarmonyLib;
 using GameNetcodeStuff;
+using Unity.Netcode;
 
 namespace CoronaMod.Patches
 {
+
+    internal class NetworkPatches
+    {
+        [HarmonyPatch(typeof(GameNetworkManager))]
+    
+        internal class GameNetworkManagerPatch
+        {
+            [HarmonyPostfix]
+            [HarmonyPatch("Start")]
+            static void AddToPrefabs(ref GameNetworkManager __instance)
+            {
+                NetworkManager.Singleton.AddNetworkPrefab(CoronaMod.Instance.networkPrefab);
+                Debug.Log("Network prefab added to network manager!");
+            }
+        }
+
+        [HarmonyPatch(typeof(StartOfRound))]
+
+        internal class StartOfRoundPatch
+        {
+            [HarmonyPostfix]
+            [HarmonyPatch("Awake")]
+
+            static void SpawnNetworkHandler()
+            {
+                if (NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer)
+                {
+                    var networkHandlerHost = Object.Instantiate(CoronaMod.Instance.networkPrefab, Vector3.zero, Quaternion.identity);
+                    networkHandlerHost.GetComponent<NetworkObject>().Spawn();
+                    Debug.Log("Network prefab spawned during StartOfRound Start!");
+                }
+            }
+
+        }
+
+    }
+
+    // [HarmonyPatch]
+    // public class NetworkObjectManager
+    // {
+        //SPAWN CUSTOM NETWORK HANDLER AT BEGINNING OF GAME
+        // static GameObject networkPrefab;
+
+        // [HarmonyPostfix, HarmonyPatch(typeof(GameNetworkManager), nameof(GameNetworkManager.Start))] 
+        // public static void Init()
+        // {
+        //     if (networkPrefab != null)
+        //         return;
+            
+        //     networkPrefab = (GameObject)CoronaMod.networkbundle.LoadAsset("NetworkHandler");
+        //     networkPrefab.AddComponent<NetworkHandler>();
+            
+        //     NetworkManager.Singleton.AddNetworkPrefab(networkPrefab);
+        // }
+
+        // [HarmonyPostfix, HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.Awake))]
+        // static void SpawnNetworkHandler()
+        // {
+        //     if(NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer)
+        //     {
+        //         var networkHandlerHost = Object.Instantiate(networkPrefab, Vector3.zero, Quaternion.identity);
+        //         networkHandlerHost.GetComponent<NetworkObject>().Spawn();
+        //     }
+        // }
+
+        // //SUBSCRIBE EVENTS AT START OF GAME
+        // static void SubscribeToHandler()
+        // {
+        //     NetworkHandler.SyncEvent += ReceivedEventFromServer;
+        // }
+
+        // //UNSUBSCRIBE EVENTS ON DISCONNECT
+        // [HarmonyPostfix, HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.OnLocalDisconnect))]
+        // static void UnsubscribeFromHandler()
+        // {
+        //     NetworkHandler.SyncEvent -= ReceivedEventFromServer;
+        // }
+
+        // static void ReceivedEventFromServer(string eventName)
+        // {
+        //     // Event Code Here
+        // }
+
+        // static void SendEventToClients(string eventName)
+        // {
+        //     if (!(NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer))
+        //     {
+        //         return;
+        //     }
+
+        //     NetworkHandler.Instance.EventClientRpc(eventName);
+        // }
+    // }
+
+
+
     [HarmonyPatch(typeof(Landmine))]
     internal class LandminePatch
     {
