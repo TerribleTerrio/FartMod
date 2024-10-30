@@ -42,65 +42,6 @@ namespace CoronaMod.Patches
 
     }
 
-    // [HarmonyPatch]
-    // public class NetworkObjectManager
-    // {
-        //SPAWN CUSTOM NETWORK HANDLER AT BEGINNING OF GAME
-        // static GameObject networkPrefab;
-
-        // [HarmonyPostfix, HarmonyPatch(typeof(GameNetworkManager), nameof(GameNetworkManager.Start))] 
-        // public static void Init()
-        // {
-        //     if (networkPrefab != null)
-        //         return;
-            
-        //     networkPrefab = (GameObject)CoronaMod.networkbundle.LoadAsset("NetworkHandler");
-        //     networkPrefab.AddComponent<NetworkHandler>();
-            
-        //     NetworkManager.Singleton.AddNetworkPrefab(networkPrefab);
-        // }
-
-        // [HarmonyPostfix, HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.Awake))]
-        // static void SpawnNetworkHandler()
-        // {
-        //     if(NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer)
-        //     {
-        //         var networkHandlerHost = Object.Instantiate(networkPrefab, Vector3.zero, Quaternion.identity);
-        //         networkHandlerHost.GetComponent<NetworkObject>().Spawn();
-        //     }
-        // }
-
-        // //SUBSCRIBE EVENTS AT START OF GAME
-        // static void SubscribeToHandler()
-        // {
-        //     NetworkHandler.SyncEvent += ReceivedEventFromServer;
-        // }
-
-        // //UNSUBSCRIBE EVENTS ON DISCONNECT
-        // [HarmonyPostfix, HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.OnLocalDisconnect))]
-        // static void UnsubscribeFromHandler()
-        // {
-        //     NetworkHandler.SyncEvent -= ReceivedEventFromServer;
-        // }
-
-        // static void ReceivedEventFromServer(string eventName)
-        // {
-        //     // Event Code Here
-        // }
-
-        // static void SendEventToClients(string eventName)
-        // {
-        //     if (!(NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer))
-        //     {
-        //         return;
-        //     }
-
-        //     NetworkHandler.Instance.EventClientRpc(eventName);
-        // }
-    // }
-
-
-
     [HarmonyPatch(typeof(Landmine))]
     internal class LandminePatch
     {
@@ -119,6 +60,16 @@ namespace CoronaMod.Patches
             {
                 GameObject otherObject = colliders[i].gameObject;
                 Debug.Log($"Explosion found object {otherObject} on layer {otherObject.layer}.");
+
+                if (otherObject.GetComponent<Toaster>() != null)
+                {
+                    if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+                    {
+                        continue;
+                    }
+                    otherObject.GetComponent<Toaster>().Eject();
+                    otherObject.GetComponent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                }
 
                 if (otherObject.GetComponentInParent<ArtilleryShellItem>() != null)
                 {
@@ -139,11 +90,12 @@ namespace CoronaMod.Patches
                     Debug.Log($"Ray hit {hitInfo.collider}.");
                     if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
                     {
-                        otherObject.GetComponent<Vase>().Shatter(otherObject.GetComponent<Vase>().explodePrefab);
+                        otherObject.GetComponent<Vase>().itemAnimator.SetTrigger("Explode");
                     }
                     else
                     {
-                        otherObject.GetComponent<Vase>().SprintWobble();
+                        otherObject.GetComponent<Vase>().Wobble(2);
+                        otherObject.GetComponent<Vase>().WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                     }
                 }
 
@@ -159,7 +111,7 @@ namespace CoronaMod.Patches
                                 continue;
                             }
                             Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
-                            vase.Shatter(vase.explodePrefab);
+                            vase.itemAnimator.SetTrigger("Explode");
                             continue;
                         }
                     }
@@ -208,7 +160,7 @@ namespace CoronaMod.Patches
                 if (otherObject.GetComponentInParent<Vase>() != null)
                 {
                     Vase vase = otherObject.GetComponentInParent<Vase>();
-                    vase.Shatter(vase.explodePrefab);
+                    vase.itemAnimator.SetTrigger("Explode");
                     continue;
                 }
 
@@ -220,7 +172,7 @@ namespace CoronaMod.Patches
                         if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null && Vector3.Distance(shotgunPosition, player.currentlyHeldObjectServer.gameObject.transform.position) < 25f)
                         {
                             Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
-                            vase.Shatter(vase.explodePrefab);
+                            vase.itemAnimator.SetTrigger("Explode");
                             continue;
                         }
                     }

@@ -58,7 +58,6 @@ public class Toaster : AnimatedItem, IHittable
 
     public void Insert()
     {
-        Debug.Log("Toaster inserted.");
         isBeingUsed = true;
         itemAnimator.Play("insert");
 
@@ -74,12 +73,10 @@ public class Toaster : AnimatedItem, IHittable
 
     public IEnumerator WaitToEject(float delay)
     {
-        Debug.Log("Wait to eject started.");
         yield return new WaitForSeconds(delay);
 
         if (inserted)
         {
-            Debug.Log("Calling Eject() and EjectServerRpc()");
             Eject();
             EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
         }
@@ -88,7 +85,6 @@ public class Toaster : AnimatedItem, IHittable
     [ServerRpc]
     public void EjectServerRpc(int clientWhoSentRpc)
     {
-        Debug.Log("EjectServerRpc: Calling EjectClientRpc()");
         EjectClientRpc(clientWhoSentRpc);
     }
 
@@ -103,7 +99,6 @@ public class Toaster : AnimatedItem, IHittable
 
     public void Eject()
     {
-        Debug.Log("Toaster ejected.");
         isBeingUsed = false;
         itemAnimator.Play("eject");
         inserted = false;
@@ -113,7 +108,6 @@ public class Toaster : AnimatedItem, IHittable
 
         if (base.playerHeldBy != null)
         {
-            Debug.Log("Toaster held by player, attempting to deal damage.");
             base.playerHeldBy.DamagePlayer(playerDamage);
         }
 
@@ -131,8 +125,6 @@ public class Toaster : AnimatedItem, IHittable
         for (int i = 0; i < playersInPopRange.Count; i++)
         {
             PlayerControllerB player = playersInPopRange[i];
-
-            Debug.Log($"Toaster found player {player.playerUsername} in pop range.");
 
             if (jumpOnPop)
             {
