@@ -78,7 +78,7 @@ namespace CoronaMod.Patches
                         continue;
                     }
                     Debug.Log($"Ray hit {hitInfo.collider}.");
-                    otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShell();
+                    otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
                 }
 
                 if (otherObject.GetComponent<Vase>() != null)
@@ -90,7 +90,7 @@ namespace CoronaMod.Patches
                     Debug.Log($"Ray hit {hitInfo.collider}.");
                     if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
                     {
-                        otherObject.GetComponent<Vase>().itemAnimator.SetTrigger("Explode");
+                        otherObject.GetComponent<Vase>().ExplodeAndSync();
                     }
                     else
                     {
@@ -111,7 +111,7 @@ namespace CoronaMod.Patches
                                 continue;
                             }
                             Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
-                            vase.itemAnimator.SetTrigger("Explode");
+                            vase.ExplodeAndSync();
                             continue;
                         }
                     }
@@ -153,14 +153,14 @@ namespace CoronaMod.Patches
 
                 if (otherObject.GetComponentInParent<ArtilleryShellItem>() != null)
                 {
-                    otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShell();
+                    otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
                     continue;
                 }
 
                 if (otherObject.GetComponentInParent<Vase>() != null)
                 {
                     Vase vase = otherObject.GetComponentInParent<Vase>();
-                    vase.itemAnimator.SetTrigger("Explode");
+                    vase.ExplodeAndSync();
                     continue;
                 }
 
@@ -172,7 +172,7 @@ namespace CoronaMod.Patches
                         if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null && Vector3.Distance(shotgunPosition, player.currentlyHeldObjectServer.gameObject.transform.position) < 25f)
                         {
                             Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
-                            vase.itemAnimator.SetTrigger("Explode");
+                            vase.ExplodeAndSync();
                             continue;
                         }
                     }
