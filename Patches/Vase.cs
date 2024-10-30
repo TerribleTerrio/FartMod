@@ -5,6 +5,7 @@ using UnityEngine;
 
 public class Vase : AnimatedItem, IHittable, ITouchable
 {
+    [Space(15f)]
     [Header("Vase Settings")]
     public float breakHeight;
 
@@ -16,7 +17,8 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     private bool hasBeenSeen;
 
-    [Space(5f)]
+    [Space(10f)]
+    [Header("Break When...")]
     public bool breakOnHit = true;
 
     public bool breakOnDrop = true;
@@ -29,6 +31,16 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public bool breakInOrbit = false;
 
+    [Space(10f)]
+    [Header("Shatter Prefabs")]
+    public GameObject walkShatterPrefab;
+
+    public GameObject sprintShatterPrefab;
+
+    public GameObject explodeShatterPrefab;
+
+    private GameObject shatterPrefab;
+
     public override void Start()
     {
         base.Start();
@@ -40,9 +52,9 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         if (!hasBeenSeen)
         {
-            for (int i = 0; i < StartOfRound.Instance.connectedPlayersAmount; i++)
+            for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
             {
-                if (StartOfRound.Instance.allPlayerScripts[i].isPlayerControlled && StartOfRound.Instance.allPlayerScripts[i].HasLineOfSightToPosition(base.transform.position))
+                if (StartOfRound.Instance.allPlayerScripts[i].HasLineOfSightToPosition(transform.position))
                 {
                     hasBeenSeen = true;
                     Debug.Log($"Vase seen by {StartOfRound.Instance.allPlayerScripts[i]}.");
@@ -65,7 +77,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         Debug.Log($"Drop SFX found in item properties: {itemProperties.dropSFX}");
         AudioClip[] dropSFX = new AudioClip[1];
         dropSFX[0] = itemProperties.dropSFX;
-        RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+        RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange/4, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
         RoundManager.PlayRandomClip(itemAudio, dropSFX, randomize: true, 1f, -1);
 
         hasHitGround = true;
@@ -96,7 +108,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     {
         if (playerHeldBy.isPlayerDead && breakOnDeath)
         {
-            itemAnimator.SetTrigger("Explode");
+            ExplodeAndSync();
         }
 
         base.DiscardItem();
@@ -127,7 +139,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         if (fallHeight > breakHeight && breakOnDrop)
         {
-            itemAnimator.SetTrigger("Explode");
+            ExplodeAndSync();
         }
         else
         {
@@ -156,9 +168,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             break;
         case 1:
             itemAnimator.SetTrigger("WobbleWalk");
+            shatterPrefab = walkShatterPrefab;
             break;
         case 2:
             itemAnimator.SetTrigger("WobbleSprint");
+            shatterPrefab = sprintShatterPrefab;
             break;
         }
 
@@ -180,10 +194,46 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
     }
 
-    public void Shatter()
+    public void ExplodeAndSync()
+    {
+        Shatter(explode: true);
+        ShatterServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, explode: true);
+    }
+
+    public void ShatterAndSync()
+    {
+        Shatter();
+        ShatterServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void ShatterServerRpc(int clientWhoSentRpc, bool explode = false)
+    {
+        ShatterClientRpc(clientWhoSentRpc, explode);
+
+        //DESPAWN ORIGINAL VASE
+        if (playerHeldBy)
+        {
+            playerHeldBy.DestroyItemInSlotAndSync(playerHeldBy.currentItemSlot);
+        }
+
+        base.gameObject.GetComponent<NetworkObject>().Despawn();
+    }
+
+    [ClientRpc]
+    public void ShatterClientRpc(int clientWhoSentRpc, bool explode = false)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            Shatter(explode);
+        }
+    }
+
+    public void Shatter(bool explode = false)
     {
         Debug.Log("Vase shattered!");
 
+        //SET FLAGS
         grabbable = false;
         grabbableToEnemies = false;
         scrapValue = 0;
@@ -194,6 +244,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             RoundManager.Instance.valueOfFoundScrapItems = RoundManager.Instance.valueOfFoundScrapItems - scrapValue;
         }
 
+        //PLAY AUDIBLE NOISE
         if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
         {
             timesPlayedInOneSpot = 0;
@@ -202,8 +253,9 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         lastPosition = base.transform.position;
         RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 
+        //SET POSITION FOR SHATTER PREFAB
         Vector3 shatterPosition;
-        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 80f, 1073742080, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, 1073742080, QueryTriggerInteraction.Ignore))
 		{
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
 		}
@@ -212,15 +264,35 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 			shatterPosition = base.transform.localPosition;
 		}
 
-        transform.position = shatterPosition;
+        //CHECK IF EXPLODING
+        if (explode)
+        {
+            shatterPrefab = explodeShatterPrefab;
+        }
 
-        if (heldByPlayerOnServer)
+        //SPAWN SHATTER PREFAB AT SHATTER POSITION
+        GameObject brokenVase;
+        Vector3 shatterRotation = new Vector3(0, transform.eulerAngles.y, 0);
+
+        if (playerHeldBy)
         {
             base.playerHeldBy.DiscardHeldObject();
         }
         else if (isHeldByEnemy)
         {
             base.DiscardItemFromEnemy();
+        }
+
+        brokenVase = UnityEngine.Object.Instantiate(shatterPrefab, shatterPosition, Quaternion.Euler(shatterRotation), RoundManager.Instance.mapPropsContainer.transform);
+
+        //PARENT PREFAB PROPERLY
+        if (isInShipRoom)
+        {
+            brokenVase.transform.SetParent(base.gameObject.transform.parent);
+        }
+        if (isInElevator)
+        {
+            brokenVase.transform.SetParent(base.gameObject.transform.parent);
         }
     }
 
@@ -267,21 +339,16 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             Debug.Log("Wobbling aborted, vase is midair.");
             return;
         }
-        else if (safePlaced)
-        {
-            Debug.Log("Wobbling aborted, vase placed safely and is on cooldown.");
-            return;
-        }
         else if (itemAnimator.GetBool("Shattered"))
         {
             Debug.Log("Wobbling aborted, vase is shattered.");
             return;
         }
-        // else if (!hasBeenSeen)
-        // {
-        //     Debug.Log("Wobbling aborted, vase has not been seen yet.");
-        //     return;
-        // }
+        else if (!hasBeenSeen)
+        {
+            Debug.Log("Wobbling aborted, vase has not been seen yet.");
+            return;
+        }
 
         //PLAYER COLLISION
         if (otherObject.layer == 3 && otherObject.GetComponent<PlayerControllerB>() != null)
@@ -289,7 +356,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             Debug.Log("Vase bumped by player.");
             PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
 
-            if (player.isSprinting)
+            if (safePlaced)
+            {
+                Debug.Log("Vase was in safely placed state.");
+                Wobble(0);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+            }
+            else if (player.isSprinting)
             {
                 Debug.Log("Player was sprinting.");
                 Wobble(2);
@@ -443,14 +516,14 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             }
             else if (enemy.mainScript.enemyType.enemyName == "Earth Leviathan")
             {
-                itemAnimator.SetTrigger("Explode");
+                ExplodeAndSync();
             }
             else if (enemy.mainScript.enemyType.enemyName == "MouthDog")
             {
                 MouthDogAI mouthDog = enemy.mainScript as MouthDogAI;
                 if (mouthDog.inLunge)
                 {
-                    itemAnimator.SetTrigger("Explode");
+                    ExplodeAndSync();
                 }
                 else if (mouthDog.hasEnteredChaseModeFully)
                 {
@@ -486,7 +559,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 RadMechAI radMech = enemy.mainScript as RadMechAI;
                 if (radMech.chargingForward)
                 {
-                    itemAnimator.SetTrigger("Explode");
+                    ExplodeAndSync();
                 }
                 else if (radMech.isAlerted)
                 {
@@ -544,7 +617,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 			}
             else
             {
-                itemAnimator.SetTrigger("Explode");
+                ExplodeAndSync();
             }
 			return;
 		}
@@ -559,7 +632,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 SoccerBallProp ball = otherObject.GetComponent<SoccerBallProp>();
                 if (!ball.hasHitGround && !ball.isHeld && !ball.isHeldByEnemy)
                 {
-                    itemAnimator.SetTrigger("Explode");
+                    ExplodeAndSync();
                 }
             }
         }
@@ -573,7 +646,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 	{
         if (breakOnHit)
         {
-            itemAnimator.SetTrigger("Explode");
+            ExplodeAndSync();
         }
         return true;
 	}
