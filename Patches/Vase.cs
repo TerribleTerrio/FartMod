@@ -1,5 +1,6 @@
 using System.Collections;
 using GameNetcodeStuff;
+using Unity.Netcode;
 using UnityEngine;
 
 public class Vase : AnimatedItem, IHittable, ITouchable
@@ -13,22 +14,10 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     private bool safePlaced;
 
-    public bool wobbling;
-
-    public bool shattered;
-
     private bool hasBeenSeen;
-
-    public GameObject sprintShatterPrefab;
-
-    public GameObject walkShatterPrefab;
-
-    public GameObject explodePrefab;
 
     [Space(5f)]
     public bool breakOnHit = true;
-
-    public bool breakOnCrouch = false;
 
     public bool breakOnDrop = true;
 
@@ -40,31 +29,9 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public bool breakInOrbit = false;
 
-    [Space(5f)]
-    public AnimationClip crouchWobbleAnimation;
-
-    public AnimationClip walkWobbleAnimation;
-
-    public AnimationClip sprintWobbleAnimation;
-
-    [Space(5f)]
-    public AudioSource vaseAudio;
-
-    public AudioClip[] wobbleWalk;
-
-    public AudioClip[] wobbleSprint;
-
-    public AudioClip[] wobbleCrouch;
-
-    public AudioClip[] vaseBreak;
-
-    private Coroutine CancellableShatter;
-
     public override void Start()
     {
         base.Start();
-        safePlaced = false;
-        wobbling = false;
     }
 
     public override void Update()
@@ -86,24 +53,50 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public override void GrabItem()
     {
-        Debug.Log("Vase grabbed.");
-        wobbling = false;
-        safePlaced = true;
-        itemAnimator.Play("stop");
-        itemAudio.Stop();
-        if (CancellableShatter != null)
-        {
-            StopCoroutine(CancellableShatter);
-        }
-
         base.GrabItem();
+        Debug.Log("Vase grabbed.");
+
+        CancelWobble();
+        CancelWobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    public override void PlayDropSFX()
+    {
+        Debug.Log($"Drop SFX found in item properties: {itemProperties.dropSFX}");
+        AudioClip[] dropSFX = new AudioClip[1];
+        dropSFX[0] = itemProperties.dropSFX;
+        RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+        RoundManager.PlayRandomClip(itemAudio, dropSFX, randomize: true, 1f, -1);
+
+        hasHitGround = true;
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void CancelWobbleServerRpc(int clientWhoSentRpc)
+    {
+        CancelWobbleClientRpc(clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void CancelWobbleClientRpc(int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            CancelWobble();
+        }
+    }
+
+    public void CancelWobble()
+    {
+        safePlaced = true;
+        itemAnimator.SetTrigger("Stop");
     }
 
     public override void DiscardItem()
     {
         if (playerHeldBy.isPlayerDead && breakOnDeath)
         {
-            Shatter(explodePrefab);
+            itemAnimator.SetTrigger("Explode");
         }
 
         base.DiscardItem();
@@ -134,24 +127,14 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         if (fallHeight > breakHeight && breakOnDrop)
         {
-            Shatter(explodePrefab);
+            itemAnimator.SetTrigger("Explode");
         }
         else
         {
             Debug.Log("Vase placed safely, beginning cooldown time.");
+            safePlaced = true;
             StartCoroutine(placeSafely(safePlaceTime));
         }
-    }
-
-    public override void PlayDropSFX()
-    {
-        Debug.Log($"Drop SFX found in item properties: {itemProperties.dropSFX}");
-        AudioClip[] dropSFX = new AudioClip[1];
-        dropSFX[0] = itemProperties.dropSFX;
-        RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        RoundManager.PlayRandomClip(vaseAudio, dropSFX, randomize: true, 1f, -1);
-
-        hasHitGround = true;
     }
 
     public IEnumerator placeSafely(float time)
@@ -160,25 +143,52 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         safePlaced = false;
     }
 
-    public void Shatter(GameObject prefab)
+    public void Wobble(int type)
     {
-        if (shattered)
+        timesPlayedInOneSpot++;
+        lastPosition = base.transform.position;
+        RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange/2, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+
+        switch (type)
         {
-            return;
+        case 0:
+            itemAnimator.SetTrigger("WobbleCrouch");
+            break;
+        case 1:
+            itemAnimator.SetTrigger("WobbleWalk");
+            break;
+        case 2:
+            itemAnimator.SetTrigger("WobbleSprint");
+            break;
         }
 
-        if (isHeld)
-        {
-            playerHeldBy.DiscardHeldObject();
-        }
+        Debug.Log("Vase started wobbling.");
+    }
 
+    [ServerRpc(RequireOwnership = false)]
+    public void WobbleServerRpc(int clientWhoSentRpc, int type)
+    {
+        WobbleWithTypeClientRpc(clientWhoSentRpc, type);
+    }
+
+    [ClientRpc]
+    public void WobbleWithTypeClientRpc(int clientWhoSentRpc, int type)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            Wobble(type);
+        }
+    }
+
+    public void Shatter()
+    {
         Debug.Log("Vase shattered!");
 
-        shattered = true;
         grabbable = false;
         grabbableToEnemies = false;
         scrapValue = 0;
         itemProperties.creditsWorth = 0;
+        base.gameObject.GetComponent<Collider>().enabled = false;
         if (isInShipRoom)
         {
             RoundManager.Instance.valueOfFoundScrapItems = RoundManager.Instance.valueOfFoundScrapItems - scrapValue;
@@ -190,125 +200,35 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
         timesPlayedInOneSpot++;
         lastPosition = base.transform.position;
-
         RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        RoundManager.PlayRandomClip(vaseAudio, vaseBreak, randomize: true, 1f, -1);
 
         Vector3 shatterPosition;
         if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 80f, 1073742080, QueryTriggerInteraction.Ignore))
 		{
-            Debug.Log("---VASE SHATTER INFO---");
-            Debug.Log($"vase vertical offset: {itemProperties.verticalOffset}");
-            Debug.Log($"vase position: {base.transform.position}");
-            Debug.Log($"raycast start position: {base.transform.position + itemProperties.verticalOffset * Vector3.up}");
-            Debug.Log($"raycast direction: {Vector3.down}");
-            Debug.Log($"raycast hit: {hitInfo.collider.gameObject}");
-            Debug.Log($"raycast point: {hitInfo.point}");
-            Debug.Log($"vase new position: {hitInfo.point + itemProperties.verticalOffset * Vector3.up}");
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
-            Debug.Log($"Raycast set shatter position to: {shatterPosition}");
 		}
 		else
 		{
-			Debug.Log("dropping item did not get raycast : " + base.gameObject.name);
 			shatterPosition = base.transform.localPosition;
 		}
 
-        GameObject brokenVase;
+        transform.position = shatterPosition;
 
         if (heldByPlayerOnServer)
         {
             base.playerHeldBy.DiscardHeldObject();
-            brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, new Quaternion(0,0,0,0), RoundManager.Instance.mapPropsContainer.transform);
         }
         else if (isHeldByEnemy)
         {
             base.DiscardItemFromEnemy();
-            brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, new Quaternion(0,0,0,0), RoundManager.Instance.mapPropsContainer.transform);
         }
-        else
-        {
-            brokenVase = UnityEngine.Object.Instantiate(prefab, shatterPosition, this.transform.rotation, RoundManager.Instance.mapPropsContainer.transform);
-        }
-
-        if (isInShipRoom)
-        {
-            brokenVase.transform.SetParent(base.gameObject.transform.parent);
-        }
-        if (isInElevator)
-        {
-            brokenVase.transform.SetParent(base.gameObject.transform.parent);
-        }
-
-        UnityEngine.Object.Destroy(this.gameObject);
-    }
-
-    public void Wobble(AnimationClip animation, AudioClip[] audioClip, GameObject shatterPrefab, bool shatter = true)
-    {
-        wobbling = true;
-
-        Debug.Log("Vase started wobbling.");
-        
-        if (animation == crouchWobbleAnimation)
-        {
-            itemAnimator.Play("wobbleCrouch");
-        }
-        else if (animation == walkWobbleAnimation)
-        {
-            itemAnimator.Play("wobbleWalk");
-        }
-        else if (animation == sprintWobbleAnimation)
-        {
-            itemAnimator.Play("wobbleSprint");
-        }
-
-        if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
-        {
-            timesPlayedInOneSpot = 0;
-        }
-        timesPlayedInOneSpot++;
-        lastPosition = base.transform.position;
-
-        RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange/2, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        RoundManager.PlayRandomClip(vaseAudio, audioClip, randomize: false, 1f, -1);
-
-        CancellableShatter = StartCoroutine(ShatterOnDelay(animation.length, shatterPrefab, shatter));
-    }
-
-    public IEnumerator ShatterOnDelay(float time, GameObject shatterPrefab, bool shatter)
-    {
-        yield return new WaitForSeconds(time);
-        if (shatter)
-        {
-            Shatter(shatterPrefab);
-        }
-        else
-        {
-            wobbling = false;
-            itemAnimator.Play("stop");
-        }
-    }
-
-    public void CrouchWobble()
-    {
-        Wobble(crouchWobbleAnimation, wobbleCrouch, explodePrefab, shatter: breakOnCrouch);
-    }
-
-    public void WalkWobble()
-    {
-        Wobble(walkWobbleAnimation, wobbleWalk, walkShatterPrefab);
-    }
-
-    public void SprintWobble()
-    {
-        Wobble(sprintWobbleAnimation, wobbleSprint, sprintShatterPrefab);
     }
 
     public void OnTouch(Collider other)
     {
         GameObject otherObject = other.gameObject;
 
-        if (wobbling)
+        if (itemAnimator.GetBool("Wobbling"))
         {
             Debug.Log("Wobbling aborted, vase is already wobbling.");
             return;
@@ -352,19 +272,19 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             Debug.Log("Wobbling aborted, vase placed safely and is on cooldown.");
             return;
         }
-        else if (shattered)
+        else if (itemAnimator.GetBool("Shattered"))
         {
             Debug.Log("Wobbling aborted, vase is shattered.");
             return;
         }
-        else if (!hasBeenSeen)
-        {
-            Debug.Log("Wobbling aborted, vase has not been seen yet.");
-            return;
-        }
+        // else if (!hasBeenSeen)
+        // {
+        //     Debug.Log("Wobbling aborted, vase has not been seen yet.");
+        //     return;
+        // }
 
         //PLAYER COLLISION
-        if (otherObject.layer == 3)
+        if (otherObject.layer == 3 && otherObject.GetComponent<PlayerControllerB>() != null)
         {
             Debug.Log("Vase bumped by player.");
             PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
@@ -372,17 +292,20 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             if (player.isSprinting)
             {
                 Debug.Log("Player was sprinting.");
-                SprintWobble();
+                Wobble(2);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
             }
             else if (player.isCrouching)
             {
                 Debug.Log("Player was crouching.");
-                CrouchWobble();
+                Wobble(0);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
             }
             else
             {
                 Debug.Log("Player was walking.");
-                WalkWobble();
+                Wobble(1);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
             }
 
             if (!(isHeld || isHeldByEnemy || !hasHitGround))
@@ -411,16 +334,10 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
 
         //ENEMY COLLISION
-        else if (otherObject.layer == 19)
+        else if (otherObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
         {
-            Debug.Log("Vase bumped by enemy.");
-            Debug.Log($"Collider object: {otherObject}");
-            if (otherObject.GetComponent<EnemyAICollisionDetect>() == null)
-            {
-                return;
-            }
-
             EnemyAICollisionDetect enemy = otherObject.GetComponent<EnemyAICollisionDetect>();
+            Debug.Log($"Vase bumped by enemytype {enemy.mainScript.enemyType.enemyName}.");
 
             if (enemy.mainScript.enemyType.enemyName == "Barber")
             {
@@ -431,7 +348,8 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 FlowermanAI flowerman = enemy.mainScript as FlowermanAI;
                 if (flowerman.isInAngerMode)
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
                 else
                 {
@@ -440,7 +358,8 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             }
             else if (enemy.mainScript.enemyType.enemyName == "Spring")
             {
-                SprintWobble();
+                Wobble(2);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
             }
             else if (enemy.mainScript.enemyType.enemyName == "Blob")
             {
@@ -451,11 +370,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 JesterAI jester = enemy.mainScript as JesterAI;
                 if (jester.creatureAnimator.GetBool("poppedOut"))
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
-                    CrouchWobble();
+                    Wobble(0);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Maneater")
@@ -469,16 +390,19 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                     }
                     else if (caveDweller.babyRunning)
                     {
-                        WalkWobble();
+                        Wobble(1);
+                        WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                     }
                     else
                     {
-                        CrouchWobble();
+                        Wobble(0);
+                        WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
                     }
                 }
                 else if (caveDweller.adultContainer.activeSelf)
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
@@ -490,11 +414,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 MaskedPlayerEnemy masked = enemy.mainScript as MaskedPlayerEnemy;
                 if (masked.sprinting)
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Crawler")
@@ -502,11 +428,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 CrawlerAI crawler = enemy.mainScript as CrawlerAI;
                 if (crawler.hasEnteredChaseMode)
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Red Locust Bees")
@@ -515,22 +443,24 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             }
             else if (enemy.mainScript.enemyType.enemyName == "Earth Leviathan")
             {
-                Shatter(explodePrefab);
+                itemAnimator.SetTrigger("Explode");
             }
             else if (enemy.mainScript.enemyType.enemyName == "MouthDog")
             {
                 MouthDogAI mouthDog = enemy.mainScript as MouthDogAI;
                 if (mouthDog.inLunge)
                 {
-                    Shatter(explodePrefab);
+                    itemAnimator.SetTrigger("Explode");
                 }
                 else if (mouthDog.hasEnteredChaseModeFully)
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "ForestGiant")
@@ -538,11 +468,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 ForestGiantAI forestGiant = enemy.mainScript as ForestGiantAI;
                 if (forestGiant.chasingPlayer)
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Manticoil")
@@ -554,15 +486,17 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 RadMechAI radMech = enemy.mainScript as RadMechAI;
                 if (radMech.chargingForward)
                 {
-                    Shatter(explodePrefab);
+                    itemAnimator.SetTrigger("Explode");
                 }
                 else if (radMech.isAlerted)
                 {
-                    SprintWobble();
+                    Wobble(2);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                 }
                 else
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Docile Locust Bees")
@@ -578,48 +512,54 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 }
                 else if (flowerSnake.leaping)
                 {
-                    WalkWobble();
+                    Wobble(1);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
                 }
                 else
                 {
-                    CrouchWobble();
+                    Wobble(0);
+                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Centipede")
             {
-                CrouchWobble();
+                Wobble(0);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
             }
             else
             {
-                WalkWobble();
+                Wobble(1);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
             }
         }
 
         //VEHICLE COLLISION
-        else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30)
+        else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30 && otherObject.GetComponentInParent<VehicleController>() != null)
 		{
 			VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
 			if (vehicle.averageVelocity.magnitude < 2)
 			{
-				SprintWobble();
+				Wobble(2);
+                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
 			}
             else
             {
-                Shatter(explodePrefab);
+                itemAnimator.SetTrigger("Explode");
             }
 			return;
 		}
 
         //ITEM COLLISION
-        else if (otherObject.layer == 6)
+        else if (otherObject.layer == 6 && otherObject.GetComponent<GrabbableObject>() != null)
         {
             Debug.Log("Bumped by prop.");
-            if (otherObject.GetComponent<SoccerBallProp>() != null)
+            GrabbableObject gObject = otherObject.GetComponent<GrabbableObject>();
+            if (gObject.itemProperties.itemName == "Soccer ball")
             {
-                GrabbableObject ball = otherObject.GetComponent<SoccerBallProp>();
+                SoccerBallProp ball = otherObject.GetComponent<SoccerBallProp>();
                 if (!ball.hasHitGround && !ball.isHeld && !ball.isHeldByEnemy)
                 {
-                    Shatter(explodePrefab);
+                    itemAnimator.SetTrigger("Explode");
                 }
             }
         }
@@ -629,17 +569,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     {
     }
 
-    public float Remap(float value, float min1, float max1, float min2, float max2)
-    {
-        float m = (value - min1) / (max1 - min1) * (max2 - min2) + min2;
-        return m;
-    }
-
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
         if (breakOnHit)
         {
-            Shatter(explodePrefab);
+            itemAnimator.SetTrigger("Explode");
         }
         return true;
 	}
