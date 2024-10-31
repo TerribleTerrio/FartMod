@@ -21,12 +21,6 @@ public class Basket : AnimatedItem
 
     private Transform defaultOffset;
 
-    [Space(10f)]
-    [Header("Audio")]
-    public AudioClip[] holdItem;
-
-    public AudioClip[] dropItem;
-
     public override void Start()
     {
         base.Start();
@@ -337,7 +331,6 @@ public class Basket : AnimatedItem
         lastPosition = base.transform.position;
 
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        RoundManager.PlayRandomClip(itemAudio, holdItem, randomize: true, 1f, -1);
 
         //PLAY GRAB AUDIO FOR ITEM
         AudioClip[] gObjectSFX = new AudioClip[1];
@@ -389,7 +382,6 @@ public class Basket : AnimatedItem
 
         //PLAY SOUND FOR REMOVING FROM BASKET
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        RoundManager.PlayRandomClip(itemAudio, dropItem, randomize: true, 1f, -1);
 
         //PLAY REMOVING OBJECT ANIMATION
         itemAnimator.SetTrigger("removeObject");
