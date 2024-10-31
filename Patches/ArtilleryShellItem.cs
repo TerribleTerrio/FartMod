@@ -2,6 +2,7 @@ using System.Collections;
 using GameNetcodeStuff;
 using UnityEngine;
 using Unity.Netcode;
+using UnityEngine.ProBuilder.MeshOperations;
 
 public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableObject
 {
@@ -252,6 +253,23 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 						if (!playerControllerB.inVehicleAnimation || (playerControllerB.externalForceAutoFade + vector).magnitude > 50f)
 						{
 								playerControllerB.externalForceAutoFade += vector;
+						}
+					}
+
+					//CAMERA SHAKE
+					if ((int)playerControllerB.playerClientId == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+					{
+						if (dist < pushRange/4)
+						{
+							HUDManager.Instance.ShakeCamera(ScreenShakeType.VeryStrong);
+						}
+						else if (dist < pushRange/2)
+						{
+							HUDManager.Instance.ShakeCamera(ScreenShakeType.Big);
+						}
+						else if (dist < pushRange)
+						{
+							HUDManager.Instance.ShakeCamera(ScreenShakeType.Small);
 						}
 					}
 				}
