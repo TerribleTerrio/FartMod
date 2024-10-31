@@ -5,40 +5,97 @@ using UnityEngine;
 public class BasketSimplified : AnimatedItem
 {
 
+    [Space(15f)]
     [Header("Basket Settings")]
-
     private GrabbableObject basketObject = null;
 
     public Transform itemHolder;
 
     private DepositItemsDesk desk;
 
-    [Space(5f)]
+    [Space(10f)]
+    [Header("Item Offsets")]
+    public Transform[] itemOffsets;
+
+    public Item[] offsetItemTypes;
+
+    private Transform defaultOffset;
+
+    [Space(10f)]
+    [Header("Audio")]
     public AudioClip[] holdItem;
 
     public AudioClip[] dropItem;
 
-    [Space(5f)]
-    public AnimationClip grabObjectAnimation;
+    public override void Start()
+    {
+        base.Start();
+
+        defaultOffset = itemHolder;
+    }
 
     public override void Update()
     {
         base.Update();
+
         if (basketObject != null)
         {
             if (!basketObject.scrapPersistedThroughRounds && playerHeldBy != null)
             {
                 if (playerHeldBy.isInHangarShipRoom)
                 {
-                    CollectHeldItem();
+                    RoundManager.Instance.CollectNewScrapForThisRound(basketObject);
                 }
             }
 
-            if (basketObject.heldByPlayerOnServer)
+            if (basketObject.playerHeldBy != null)
             {
-                basketObject = null;
+                ClearBasketObjectAndSync();
             }
         }
+
+        if (playerHeldBy != null)
+        {
+            if (playerHeldBy.hoveringOverItem)
+            {
+                // HUDManager.Instance.SetMouseCursorSprite(HUDManager.Instance.handClosedCursorTex);
+                // HUDManager.Instance.
+            }
+        }
+    }
+
+    public void ClearBasketObjectAndSync()
+    {
+        ClearBasketObject();
+        ClearBasketObjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void ClearBasketObjectServerRpc(int clientWhoSentRpc)
+    {
+        ClearBasketObjectClientRpc(clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void ClearBasketObjectClientRpc(int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            basketObject = null;
+        }
+    }
+
+    public void ClearBasketObject()
+    {
+        itemAnimator.SetTrigger("removeObject");
+        basketObject.parentObject = basketObject.playerHeldBy.localItemHolder;
+
+        if (isHeld)
+        {
+            playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight - (basketObject.itemProperties.weight - 1f), 1f, 10f);
+        }
+
+        basketObject = null;
     }
 
     public override void LateUpdate()
@@ -56,43 +113,7 @@ public class BasketSimplified : AnimatedItem
         base.OnBroughtToShip();
         if (basketObject != null)
         {
-            CollectHeldItem();
-        }
-    }
-
-    public void CollectHeldItem()
-    {
-        if (!basketObject.scrapPersistedThroughRounds)
-        {
-            if (playerHeldBy.isInHangarShipRoom)
-            {
-                RoundManager.Instance.scrapCollectedInLevel += basketObject.scrapValue;
-                StartOfRound.Instance.gameStats.allPlayerStats[playerHeldBy.playerClientId].profitable += basketObject.scrapValue;
-                RoundManager.Instance.CollectNewScrapForThisRound(basketObject);
-                basketObject.OnBroughtToShip();
-
-                if (basketObject.itemProperties.isScrap && Vector3.Distance(GameNetworkManager.Instance.localPlayerController.transform.position, basketObject.transform.position) < 12f)
-                {
-                    HUDManager.Instance.DisplayTip("Got scrap!", "To sell, use the terminal to route the ship to the company building.", isWarning: false, useSave: true, "LCTip_SellScrap");
-                }
-            }
-            else
-            {
-                if (!basketObject.scrapPersistedThroughRounds)
-                {
-                    RoundManager.Instance.scrapCollectedInLevel -= basketObject.scrapValue;
-                    StartOfRound.Instance.gameStats.allPlayerStats[playerHeldBy.playerClientId].profitable -= basketObject.scrapValue;
-                }
-                HUDManager.Instance.SetQuota(RoundManager.Instance.scrapCollectedInLevel);
-            }
-            if (playerHeldBy.isInHangarShipRoom)
-            {
-                StartOfRound.Instance.currentShipItemCount++;
-            }
-            else
-            {
-                StartOfRound.Instance.currentShipItemCount--;
-            }
+            RoundManager.Instance.CollectNewScrapForThisRound(basketObject);
         }
     }
 
@@ -115,12 +136,6 @@ public class BasketSimplified : AnimatedItem
             {
                 StartAnimatedItem();
             }
-
-            if (basketObject.gameObject.GetComponent<InteractTrigger>() != null)
-            {
-                InteractTrigger trigger = basketObject.gameObject.GetComponent<InteractTrigger>();
-                trigger.interactable = false;
-            }
         }
     }
 
@@ -134,12 +149,6 @@ public class BasketSimplified : AnimatedItem
             if (basketObject.gameObject.GetComponent<AnimatedItem>() != null)
             {
                 StopAnimatedItem();
-            }
-
-            if (basketObject.gameObject.GetComponent<InteractTrigger>() != null)
-            {
-                InteractTrigger trigger = basketObject.gameObject.GetComponent<InteractTrigger>();
-                trigger.interactable = true;
             }
         }
 
@@ -198,63 +207,126 @@ public class BasketSimplified : AnimatedItem
     {
         Debug.Log("Basket used.");
         base.ItemInteractLeftRight(right);
-        if (!right)
-        {
-            Debug.Log("Basket !right");
-            if (!RequireInteractCooldown())
-            {
-                if (basketObject == null)
-                {
-                    Debug.Log("No item in basket, attempting detection for item to grab.");
-                    if (playerHeldBy == null)
-                    {
-                        Debug.Log("Aborting item detection for basket, player dropped basket.");
-                        return;
-                    }
 
-                    Debug.DrawRay(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward * 4f, Color.red, 2f);
-                    if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Ignore))
+        if (right)
+        {
+            if ((int)playerHeldBy.playerClientId == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+            {
+                TryGetBasketObject();
+            }
+        }
+        else
+        {
+            if ((int)playerHeldBy.playerClientId == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+            {
+                TryDropBasketObject();
+            }
+        }
+    }
+
+    public void TryGetBasketObject()
+    {
+        if (!RequireInteractCooldown())
+        {
+            if (basketObject == null)
+            {
+                Debug.Log("No item in basket, attempting detection for item to grab.");
+                if (playerHeldBy == null)
+                {
+                    Debug.Log("Aborting item detection for basket, player dropped basket.");
+                    return;
+                }
+
+                if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Ignore))
+                {
+                    GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
+                    if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)
                     {
-                        GrabbableObject component = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
-                        if (!(component == null) && !(component == this) && component.itemProperties.isScrap && !component.isHeld && !component.isHeldByEnemy && !component.itemProperties.twoHanded)
+                        if (gObject.itemProperties.twoHanded)
                         {
-                            Debug.Log($"Found object {component}.");
-                            PutObjectInBasket(component);
+                            //ITEM TOO LARGE!
+                            // HUDManager.Instance.
                         }
                         else
                         {
-                            Debug.Log("No item found by basket.");
+                            Debug.Log($"Found object {gObject}.");
+                            PutObjectInBasketAndSync(gObject);
                         }
                     }
+                    else
+                    {
+                        Debug.Log("No item found by basket.");
+                    }
+                }
+            }
+        }
+    }
+
+    public void TryDropBasketObject()
+    {
+        if (!RequireInteractCooldown())
+        {
+            if (basketObject != null)
+            {
+                Debug.Log("Item in basket, attempting to drop.");
+                if (playerHeldBy == null)
+                {
+                    Debug.Log("Aborting item item drop for basket, player dropped basket.");
+                    return;
                 }
                 else
                 {
-                    Debug.Log("Basket contains item.");
-                    RemoveObjectFromBasket();
+                    RemoveObjectFromBasketAndSync();
                 }
             }
-            else
-            {
-                Debug.Log("Basket on cooldown.");
-            }
+        }
+    }
+
+    public void PutObjectInBasketAndSync(GrabbableObject gObject)
+    {
+        PutObjectInBasket(gObject);
+        PutObjectInBasketServerRpc(gObject.NetworkObjectId, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void PutObjectInBasketServerRpc(ulong id, int clientWhoSentRpc)
+    {
+        PutObjectInBasketClientRpc(id, clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void PutObjectInBasketClientRpc(ulong id, int clientWhoSentRpc)
+    {
+        GrabbableObject gObject = NetworkManager.SpawnManager.SpawnedObjects[id].gameObject.GetComponent<GrabbableObject>();
+
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            PutObjectInBasket(gObject);
         }
     }
 
     public void PutObjectInBasket(GrabbableObject gObject)
     {
-        //SET PARAMETERS TO INDICATE OBJECT IS BEING HELD
-        Debug.Log($"Placing {gObject} into basket.");
         basketObject = gObject;
+
+        for (int i = 0; i < offsetItemTypes.Length; i++)
+        {
+            if (basketObject.itemProperties.itemName == offsetItemTypes[i].itemName)
+            {
+                itemHolder = itemOffsets[i];
+            }
+            else
+            {
+                itemHolder = defaultOffset;
+            }
+        }
+
+        //SET PARAMETERS TO INDICATE OBJECT IS BEING HELD
         basketObject.EnablePhysics(enable: false);
         if (basketObject.parentObject != null)
         {
             basketObject.parentObject = null;
         }
-
-        //PLACE OBJECT INTO BASKET
-        Debug.Log($"Basket position: {transform.position}");
-        Debug.Log($"itemHolder position: {itemHolder.transform.position}");
-        Debug.Log($"Basket object position: {basketObject.transform.position}");
 
         //PLAY BASKET AUDIO
         if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
@@ -269,11 +341,11 @@ public class BasketSimplified : AnimatedItem
 
         //PLAY GRAB AUDIO FOR ITEM
         AudioClip[] gObjectSFX = new AudioClip[1];
-        gObjectSFX[0] = (gObject.itemProperties.grabSFX);
+        gObjectSFX[0] = (basketObject.itemProperties.grabSFX);
         RoundManager.PlayRandomClip(itemAudio, gObjectSFX, randomize: true, 1f, -1);
 
         //PLAY GRAB OBJECT ANIMATION
-        itemAnimator.Play("grabObject");
+        itemAnimator.SetTrigger("grabObject");
 
         //FOR ANIMATED ITEMS
         if (basketObject is AnimatedItem)
@@ -284,6 +356,27 @@ public class BasketSimplified : AnimatedItem
         //ADD WEIGHT TO PLAYER
         playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (basketObject.itemProperties.weight - 1f), 1f, 10f);
         Debug.Log($"Added {basketObject.itemProperties.weight} to player weight.");
+    }
+
+    public void RemoveObjectFromBasketAndSync()
+    {
+        RemoveObjectFromBasket();
+        RemoveObjectFromBasketServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RemoveObjectFromBasketServerRpc(int clientWhoSentRpc)
+    {
+        RemoveObjectFromBasketClientRpc(clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void RemoveObjectFromBasketClientRpc(int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            RemoveObjectFromBasket();
+        }
     }
 
     private void RemoveObjectFromBasket()
@@ -299,7 +392,7 @@ public class BasketSimplified : AnimatedItem
         RoundManager.PlayRandomClip(itemAudio, dropItem, randomize: true, 1f, -1);
 
         //PLAY REMOVING OBJECT ANIMATION
-        itemAnimator.Play("removeObject");
+        itemAnimator.SetTrigger("removeObject");
 
         //FOR ANIMATED ITEMS
         if (basketObject is AnimatedItem)
@@ -377,8 +470,6 @@ public class BasketSimplified : AnimatedItem
         basketObject.parentObject = null;
         basketObject.isInElevator = droppedInElevator;
 
-        CollectHeldItem();
-
         basketObject.EnablePhysics(enable: true);
         basketObject.EnableItemMeshes(enable: true);
         basketObject.isHeld = false;
@@ -387,13 +478,6 @@ public class BasketSimplified : AnimatedItem
         basketObject.startFallingPosition = basketObject.transform.parent.InverseTransformPoint(basketObject.transform.position);
         basketObject.targetFloorPosition = targetFloorPosition + Vector3.up * basketObject.itemProperties.verticalOffset - Vector3.up * itemProperties.verticalOffset;
         basketObject.floorYRot = floorYRot;
-
-        Debug.Log($"Basket object start falling position: {basketObject.startFallingPosition}");
-        Debug.Log($"Basket object target floor position: {basketObject.targetFloorPosition}");
-        Debug.Log($"Basket object parentObject: {basketObject.parentObject}");
-        Debug.Log($"Basket object parent: {basketObject.transform.parent}");
-        Debug.Log($"Dropped in ship room: {droppedInShipRoom}");
-        Debug.Log($"Dropped in elevator: {droppedInElevator}");
     }
 
     public void StartAnimatedItem()
