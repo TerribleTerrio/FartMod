@@ -2,7 +2,7 @@ using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
-public class BasketSimplified : AnimatedItem
+public class Basket : AnimatedItem
 {
 
     [Space(15f)]
