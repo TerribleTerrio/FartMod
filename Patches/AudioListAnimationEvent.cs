@@ -1,18 +1,25 @@
 using UnityEngine;
 using UnityEngine.Events;
 using System;
+using System.Collections;
+using System.Linq;
 
 public class AudioListAnimationEvent : MonoBehaviour
 {
 	public AudioSource audioSource;
 
+    public AudioSource audioSourceFar;
+
 	public AudioClip[] audioClips;
+
+	public AudioClip[] audioClipsFar;
 
     public AudioClip[] randomAudioClips;
 
-
 	public UnityEvent onAnimationEventCalled;
 
+    public UnityEvent TriggerAnimationEvent;
+  
     private Vector3 lastPosition;
 
     private int timesPlayedInOneSpot;
@@ -22,6 +29,14 @@ public class AudioListAnimationEvent : MonoBehaviour
   	public void OnAnimationEvent()
 	{
 		onAnimationEventCalled.Invoke();
+	}
+
+  	public void TriggerAnimationEventChance(int chance)
+	{
+        if (UnityEngine.Random.Range(0, 100) < chance)
+            {
+                TriggerAnimationEvent.Invoke();
+            }
 	}
 
 	public void PlayListAudio(int clipNumber)
@@ -38,12 +53,35 @@ public class AudioListAnimationEvent : MonoBehaviour
         WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
 	}
 
+	public void PlayListAudioLoopAndFar(int clipNumber)
+	{
+        audioSource.clip = audioClips[clipNumber];
+        audioSourceFar.clip = audioClipsFar[clipNumber];
+        audioSource.loop = true;
+        audioSourceFar.loop = true;
+        audioSource.Play();
+        audioSourceFar.Play();
+        WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
+        WalkieTalkie.TransmitOneShotAudio(audioSourceFar, audioClipsFar[clipNumber]);
+	}
+
 	public void PlayListAudioNoLoop(int clipNumber)
 	{
         audioSource.clip = audioClips[clipNumber];
         audioSource.loop = false;
         audioSource.Play();
         WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
+	}
+	public void PlayListAudioNoLoopAndFar(int clipNumber)
+	{
+        audioSource.clip = audioClips[clipNumber];
+        audioSourceFar.clip = audioClipsFar[clipNumber];
+        audioSource.loop = false;
+        audioSourceFar.loop = false;
+        audioSource.Play();
+        audioSourceFar.Play();
+        WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
+        WalkieTalkie.TransmitOneShotAudio(audioSourceFar, audioClipsFar[clipNumber]);
 	}
 
 	public void PlayListAudioAudible(int clipNumber)
@@ -115,6 +153,11 @@ public class AudioListAnimationEvent : MonoBehaviour
     public void StopListAudioLoopOnly()
     {
         StopCoroutine(MakeAudibleNoiseLoop(2f));
+    }
+
+    public void SendVoidUpwards(string message)
+    {
+        SendMessageUpwards(message);
     }
 
     private System.Collections.IEnumerator MakeAudibleNoiseLoop(float delay)
