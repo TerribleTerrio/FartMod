@@ -80,14 +80,12 @@ public class Rake : GrabbableObject, ITouchable
         previousColliderCount = collidersTouching.Count();
         GameObject otherObject = other.gameObject;
 
-        Debug.Log($"Collider {other} from object {otherObject} collided with rake.");
-
         //PLAYER COLLISION
         if (otherObject.layer == 3 && otherObject.GetComponent<PlayerControllerB>() != null && otherObject.GetComponent<PlayerControllerB>() && !collidersTouching.Contains(other))
         {
             collidersTouching.Add(other);
 
-            if (previousColliderCount < 1 && !onCoolDown && !isHeld && !isHeldByEnemy && hasHitGround && !other.gameObject.GetComponent<PlayerControllerB>().isCrouching)
+            if (previousColliderCount < 1 && !onCoolDown && !isHeld && !isHeldByEnemy && hasHitGround)
             {
                 FlipAndSync();
                 return;
@@ -180,7 +178,6 @@ public class Rake : GrabbableObject, ITouchable
 
     public void Flip()
     {
-        Debug.Log("Rake flipped!");
         //FLIP RAKE UP
         animator.Play("flip");
 
@@ -209,13 +206,17 @@ public class Rake : GrabbableObject, ITouchable
                 {
                     PlayerControllerB player = colliders[i].gameObject.GetComponent<PlayerControllerB>();
 
+                    if (player.isCrouching)
+                    {
+                        continue;
+                    }
+
                     //DAMAGE ALL CLOSE PLAYERS
                     Vector3 bodyVelocity = Vector3.Normalize(player.transform.position - base.transform.position) * 80f / Vector3.Distance(player.transform.position, base.transform.position);
                     player.DamagePlayer(damageDealtPlayer, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning, 0, fallDamage:false, bodyVelocity);
 
                     //PUSH ALL CLOSE PLAYERS
                     float dist = Vector3.Distance(player.transform.position, base.transform.position);
-                    // Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
                     Vector3 vector = Vector3.Normalize(player.transform.position - base.transform.position) * physicsForce + -player.walkForce * 2f + Vector3.up * 2.5f;
                     if (vector.magnitude > 2f)
                     {
@@ -228,6 +229,9 @@ public class Rake : GrabbableObject, ITouchable
                             player.externalForceAutoFade += vector;
                         }
                     }
+
+                    //CAMERA SHAKE
+                    HUDManager.Instance.ShakeCamera(ScreenShakeType.Small);
 
                     //DROP HELD ITEM OF ALL CLOSE PLAYERS
                     if (player.isHoldingObject)
