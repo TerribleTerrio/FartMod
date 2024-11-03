@@ -131,6 +131,39 @@ namespace CoronaMod.Patches
         }
     }
 
+    // [HarmonyPatch(typeof(SpikeRoofTrap))]
+    // internal class SpikeRoofTrapPatch
+    // {
+    //     [HarmonyPatch("OnTriggerStay")]
+    //     [HarmonyPostfix]
+
+    //     static void OnTriggerStay(SpikeRoofTrap __instance, Collider other)
+    //     {
+    //         Debug.Log($"Trigger hit collider {other.gameObject}.");
+    //         ArtilleryShellItem shell = other.gameObject.GetComponent<ArtilleryShellItem>();
+    //         if (shell != null && !shell.exploded)
+    //         {
+    //             shell.ExplodeAndSync();
+    //         }
+    //     }
+    // }
+
+    [HarmonyPatch(typeof(MouthDogAI))]
+    internal class MouthDogAIPatch
+    {
+        [HarmonyPatch("OnCollideWithEnemy")]
+        [HarmonyPrefix]
+
+        static void OnCollideWithEnemy(MouthDogAI __instance, Collider other, EnemyAI collidedEnemy = null)
+        {
+            EnemyAI enemy = other.gameObject.GetComponent<EnemyAICollisionDetect>().mainScript;
+            if (__instance.currentBehaviourStateIndex != 2 && !__instance.inLunge && enemy.enemyType.enemyName == "Scarecrow")
+			{
+                collidedEnemy.enemyType = __instance.enemyType;
+			}
+        }
+    }
+
     [HarmonyPatch(typeof(ShotgunItem))]
     internal class ShotgunPatch
     {
