@@ -80,6 +80,11 @@ public class Rake : GrabbableObject, ITouchable
         previousColliderCount = collidersTouching.Count();
         GameObject otherObject = other.gameObject;
 
+        if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+        {
+            return;
+        }
+
         //PLAYER COLLISION
         if (otherObject.layer == 3 && otherObject.GetComponent<PlayerControllerB>() != null && otherObject.GetComponent<PlayerControllerB>() && !collidersTouching.Contains(other))
         {

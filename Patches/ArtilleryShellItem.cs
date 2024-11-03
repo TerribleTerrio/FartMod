@@ -26,7 +26,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public GameObject explosionPrefab;
 
-	bool exploded;
+	public bool exploded;
 
 	[Space(10f)]
 	[Header("Toggles")]
@@ -65,6 +65,8 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	public AudioClip[] shellDud;
 
 	public AudioClip[] shellArmed;
+
+	public AudioClip shellZapped;
 
 	public override void Start()
 	{
@@ -297,10 +299,25 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 		if (explodeOnHit == true)
 		{
-			float c = UnityEngine.Random.Range(0,100);
-			if (c < explodeOnHitChance)
+			float c;
+			if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
 			{
-				ArmShellAndSync();
+				if (explodeInOrbit)
+				{
+					c = UnityEngine.Random.Range(0,100);
+					if (c < explodeOnHitChance)
+					{
+						ArmShellAndSync();
+					}
+				}
+			}
+			else
+			{
+				c = UnityEngine.Random.Range(0,100);
+				if (c < explodeOnHitChance)
+				{
+					ArmShellAndSync();
+				}
 			}
 		}
 		
@@ -310,7 +327,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	public void OnTouch(Collider other)
 	{
 		GameObject otherObject = other.gameObject;
-
+		
 		//PLAYER COLLISION
 		if (otherObject.layer == 3)
 		{
@@ -333,16 +350,6 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 			}
 			return;
 		}
-
-		//TRIGGERS COLLISION
-		else if (otherObject.layer == 13)
-        {
-			if (otherObject.GetComponentInParent<SpikeRoofTrap>() != null)
-			{
-				ExplodeAndSync();
-			}
-			return;
-        }
 
 		//VEHICLE COLLISION
 		else if (otherObject.transform.parent != null && otherObject.transform.parent.gameObject.layer == 30)
@@ -367,11 +374,44 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void StopShockingWithGun()
 	{
+		ExplodeAndSync();
 	}
 
 	public void ShockWithGun(PlayerControllerB playerControllerB)
 	{
-		ArmShellAndSync();
+		ZapShellAndSync();
+	}
+
+	public void ZapShellAndSync()
+	{
+		ZapShell();
+		ZapShellServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	public void ZapShellServerRpc(int clientWhoSentRpc)
+	{
+		ZapShellClientRpc(clientWhoSentRpc);
+		StartCoroutine(DelayDetonate(shellZapped.length));
+	}
+
+	[ClientRpc]
+	public void ZapShellClientRpc(int clientWhoSentRpc)
+	{
+		if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+		{
+			ZapShell();
+		}
+	}
+
+	public void ZapShell()
+	{
+		if (exploded)
+		{
+			return;
+		}
+		RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+		itemAudio.PlayOneShot(shellZapped);
 	}
 
 	public float Remap(float value, float min1, float max1, float min2, float max2)

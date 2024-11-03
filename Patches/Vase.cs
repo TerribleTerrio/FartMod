@@ -255,7 +255,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         //SET POSITION FOR SHATTER PREFAB
         Vector3 shatterPosition;
-        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, 1073742080, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, StartOfRound.Instance.collidersAndRoomMask, QueryTriggerInteraction.Ignore))
 		{
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
 		}
@@ -286,13 +286,44 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         brokenVase = UnityEngine.Object.Instantiate(shatterPrefab, shatterPosition, Quaternion.Euler(shatterRotation), RoundManager.Instance.mapPropsContainer.transform);
 
         //PARENT PREFAB PROPERLY
-        if (isInShipRoom)
-        {
-            brokenVase.transform.SetParent(base.gameObject.transform.parent);
-        }
+        bool droppedInElevator = false;
+        bool droppedInPhysicsRegion = false;
+        NetworkObject parentNetworkObject = null;
+
         if (isInElevator)
         {
-            brokenVase.transform.SetParent(base.gameObject.transform.parent);
+            brokenVase.transform.SetParent(StartOfRound.Instance.elevatorTransform);
+            droppedInElevator = true;
+        }
+
+        RaycastHit physicsHit;
+        if (Physics.Raycast(brokenVase.transform.position, -Vector3.up, out physicsHit, 80f, 1342179585, QueryTriggerInteraction.Ignore))
+        {
+            PlayerPhysicsRegion physicsRegion = hitInfo.collider.gameObject.transform.GetComponentInChildren<PlayerPhysicsRegion>();
+
+            if (physicsRegion != null && physicsRegion.allowDroppingItems && physicsRegion.itemDropCollider.ClosestPoint(physicsHit.point) == physicsHit.point)
+            {
+                parentNetworkObject = physicsRegion.parentNetworkObject;
+                if (parentNetworkObject != null)
+                {
+                    brokenVase.transform.SetParent(parentNetworkObject.transform, worldPositionStays: true);
+                    droppedInPhysicsRegion = true;
+                }
+            }
+        }
+
+        if (parentNetworkObject != null)
+        {
+            PlayerPhysicsRegion regionInChildren = parentNetworkObject.GetComponentInChildren<PlayerPhysicsRegion>();
+            if (regionInChildren != null && regionInChildren.allowDroppingItems)
+            {
+                brokenVase.transform.SetParent(regionInChildren.physicsTransform, worldPositionStays: true);
+            }
+        }
+
+        if (!droppedInElevator && !droppedInPhysicsRegion)
+        {
+            brokenVase.transform.SetParent(StartOfRound.Instance.propsContainer, worldPositionStays: true);
         }
     }
 
