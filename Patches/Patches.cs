@@ -164,6 +164,22 @@ namespace CoronaMod.Patches
         }
     }
 
+    [HarmonyPatch(typeof(BaboonBirdAI))]
+    internal class BaboonBirdAIPatch
+    {
+        [HarmonyPatch("OnCollideWithEnemy")]
+        [HarmonyPrefix]
+
+        static void OnCollideWithEnemy(BaboonBirdAI __instance, Collider other, EnemyAI enemyScript = null)
+        {
+            EnemyAI enemy = other.gameObject.GetComponent<EnemyAICollisionDetect>().mainScript;
+            if (enemy.enemyType.enemyName == "Scarecrow")
+            {
+                enemyScript.enemyType = __instance.enemyType;
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(ShotgunItem))]
     internal class ShotgunPatch
     {

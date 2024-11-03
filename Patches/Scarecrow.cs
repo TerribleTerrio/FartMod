@@ -30,10 +30,6 @@ public class Scarecrow : EnemyAI
 
     private bool targetPlayerEnteredDetectWhileWatching;
 
-    private bool targetPlayerEnteredScareWhileWatching;
-
-    private bool playerEnteredScareRange;
-
     private bool scarePrimed;
 
     private List<GameObject> nodes;
@@ -48,11 +44,11 @@ public class Scarecrow : EnemyAI
 
     [Space(10f)]
     [Header("Wind Levels On Moons")]
-    public SelectableLevel[] noWindMoons;
+    public string[] noWindMoons;
 
-    public SelectableLevel[] lightWindMoons;
+    public string[] lightWindMoons;
 
-    public SelectableLevel[] heavyWindMoons;
+    public string[] heavyWindMoons;
 
     [Space(10f)]
     [Header("Chances & Cooldowns")]
@@ -75,7 +71,7 @@ public class Scarecrow : EnemyAI
 
     [Space(5f)]
     [Range(0f, 100f)]
-    public float detectAudioChance = 20;
+    public float detectSoundChance = 20;
 
     public float detectSoundCooldown = 10f;
 
@@ -264,7 +260,7 @@ public class Scarecrow : EnemyAI
         {
             for (int i = 0; i < noWindMoons.Length; i++)
             {
-                if (StartOfRound.Instance.currentLevel == noWindMoons[i])
+                if (StartOfRound.Instance.currentLevel.PlanetName == noWindMoons[i])
                 {
                     creatureAnimator.SetInteger("WindLevel", 0);
                 }
@@ -272,7 +268,7 @@ public class Scarecrow : EnemyAI
 
             for (int i = 0; i < lightWindMoons.Length; i++)
             {
-                if (StartOfRound.Instance.currentLevel == lightWindMoons[i])
+                if (StartOfRound.Instance.currentLevel.PlanetName == lightWindMoons[i])
                 {
                     creatureAnimator.SetInteger("WindLevel", 1);
                 }
@@ -280,7 +276,7 @@ public class Scarecrow : EnemyAI
 
             for (int i = 0; i < heavyWindMoons.Length; i++)
             {
-                if (StartOfRound.Instance.currentLevel == heavyWindMoons[i])
+                if (StartOfRound.Instance.currentLevel.PlanetName == heavyWindMoons[i])
                 {
                     creatureAnimator.SetInteger("WindLevel", 2);
                     return;
@@ -460,8 +456,6 @@ public class Scarecrow : EnemyAI
         if (numPlayers == 0)
         {
             Debug.Log("No players in range, switching to state 1");
-            targetPlayer = null;
-            Debug.Log("Scarecrow target player set to null.");
             SwitchToBehaviourState(1);
         }
 
@@ -473,10 +467,8 @@ public class Scarecrow : EnemyAI
 
         else if (numPlayers > 1)
         {
-            Debug.Log("Players in range, switching to state 3");
-            targetPlayer = null;
-            Debug.Log("Scarecrow target player set to null.");
-            SwitchToBehaviourState(3);
+            Debug.Log("Players in range, switching to state 4");
+            SwitchToBehaviourState(4);
         }
     }
 
@@ -551,180 +543,197 @@ public class Scarecrow : EnemyAI
 
             break;
 
-        //NO PLAYERS NEARBY (ACTIVE)
+        //NO PLAYERS NEARBY
         case 1:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
+                scarePrimed = false;
+                moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
+
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
-                float moveCooldown = Random.Range(minMoveCooldown, maxMoveCooldown);
-                moveTimer = moveCooldown;
-                Debug.Log($"Scarecrow move cooldown set to {moveCooldown}s.");
             }
 
             if (moveTimer <= 0)
             {
-                float moveCooldown = Random.Range(minMoveCooldown, maxMoveCooldown);
-                moveTimer = moveCooldown;
-                if (Random.Range(0f,100f) < moveChance)
+                if (playersWithLineOfSight.Count == 0)
                 {
-                    TryMoveToPosition(GetRandomNavMeshPositionNearAINode());
+                    if (Random.Range(0f,100f) < moveChance)
+                    {
+                        TryMoveToPosition(GetRandomNavMeshPositionNearAINode());
+                    }
+                    moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                 }
-                Debug.Log($"Scarecrow move cooldown set to {moveCooldown}s.");
             }
 
             break;
 
-        //ONE PLAYER NEARBY
+        //1 PLAYER IN RANGE
         case 2:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                if (previousBehaviourStateIndex != 3 && detectSoundTimer <= 0)
+                decoySoundTimer = decoySoundCooldown;
+                scarePrimed = false;
+
+                //IF PLAYER IS IN SCARE RANGE
+                if (Vector3.Distance(playersInRange[0].transform.position, transform.position) < scareRange)
                 {
-                    detectSoundTimer = detectSoundCooldown;
-                    if (Random.Range(0f,100f) < detectAudioChance)
+                    Debug.Log("Player already in scare range, switching to state 3.");
+                    currentBehaviourStateIndex = 3;
+                }
+
+                //IF COMING FROM NO PLAYERS STATE
+                if (previousBehaviourStateIndex == 1)
+                {
+                    if (detectSoundTimer <= 0)
                     {
-                        AudioClip clip = detectSounds[Random.Range(0, detectSounds.Length)];
-                        detectAudio.PlayOneShot(clip);
+                        detectSoundTimer = detectSoundCooldown;
+                        if (Random.Range(0f,100f) < detectSoundChance && playersWithLineOfSight.Count == 0)
+                        {
+                            PlayDetectSoundServerRpc();
+                        }
                     }
+                }
+
+                //IF PLAYER ENTERED RANGE WHILE LOOKING AT SCARECROW
+                if (CheckLineOfSightForScarecrow(playersInRange[0]))
+                {
+                    targetPlayerEnteredDetectWhileWatching = true;
                 }
 
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
-
-                if (playersInRange[0] != null)
-                {
-                    targetPlayer = playersInRange[0];
-                    Debug.Log($"Target player set to {targetPlayer.playerUsername}.");
-                }
-
-                if (CheckLineOfSightForScarecrow(targetPlayer))
-                {
-                    targetPlayerEnteredDetectWhileWatching = true;
-                    Debug.Log("Target player entered detect range with scarecrow in view.");
-                }
-
-                if (Vector3.Distance(targetPlayer.transform.position, transform.position) < scareRange)
-                {
-                    if (CheckLineOfSightForScarecrow(targetPlayer))
-                    {
-                        targetPlayerEnteredScareWhileWatching = true;
-                    }
-                    playerEnteredScareRange = true;
-                }
-                else
-                {
-                    playerEnteredScareRange = false;
-                }
             }
 
-            //ANY TIME THE PLAYER LOOKS AWAY FROM THE SCARECROW WHILE ANYWHERE WITHIN RANGE
-            if (!CheckLineOfSightForScarecrow(targetPlayer))
+            //IF PLAYER BREAKS LOS
+            if (!CheckLineOfSightForScarecrow(playersInRange[0]))
             {
-                //CHANCE TO FACE PLAYER (FAILS IF ANYONE IS LOOKING)
-                if (facePlayerTimer <= 0)
-                {
-                    facePlayerTimer = facePlayerCooldown;
-                    if (Random.Range(0f,100f) < facePlayerChance && playersWithLineOfSight.Count == 0)
-                    {
-                        FacePosition(targetPlayer.transform.position);
-                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                decoySoundTimer = decoySoundCooldown;
 
-                        //CHANCE TO TWEAK OUT WHILE FACING PLAYER
-                        if (tweakOutTimer <= 0)
+                //AND NO ONE IS WATCHING
+                if (playersWithLineOfSight.Count == 0)
+                {
+                    if (facePlayerTimer <= 0)
+                    {
+                        facePlayerTimer = facePlayerCooldown;
+                        if (Random.Range(0f,100f) < facePlayerChance)
                         {
-                            tweakOutTimer = tweakOutCooldown;
-                            if (Random.Range(0f,100f) < tweakOutChance)
+                            FacePosition(playersInRange[0].transform.position);
+                            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+
+                            if (tweakOutTimer <= 0)
                             {
-                                TweakOut(targetPlayer);
+                                tweakOutTimer = tweakOutCooldown;
+                                if (Random.Range(0f,100f) < tweakOutChance)
+                                {
+                                    TweakOut(playersInRange[0]);
+                                }
                             }
                         }
                     }
                 }
             }
 
-            //ANY TIME THE PLAYER IS LOOKING AT THE SCARECROW WHILE IN RANGE
+            //IF PLAYER IS LOOKING AT SCARECROW
             else
             {
                 if (decoySoundTimer <= 0)
                 {
                     decoySoundTimer = decoySoundCooldown;
-                    if (Random.Range(0f,100f) < decoySoundChance)
+                    if (Random.Range(0f,100f) < decoySoundChance && playersWithLineOfSight.Count == 1)
                     {
                         PlayDecoySoundServerRpc();
                     }
                 }
             }
 
-            //ANY TIME PLAYER IS WITHIN SCARE RANGE
-            if (Vector3.Distance(targetPlayer.transform.position, transform.position) < scareRange)
+            //IF PLAYER ENTERS SCARE RANGE
+            if (Vector3.Distance(playersInRange[0].transform.position, transform.position) < scareRange)
             {
-                //IF PLAYER ENTERED FOR FIRST TIME WHILE WATCHING SCARECROW
-                if (CheckLineOfSightForScarecrow(targetPlayer) && !playerEnteredScareRange)
-                {
-                    targetPlayerEnteredScareWhileWatching = true;
-                    Debug.Log("Target player entered scare range with scarecrow in view.");
-                    playerEnteredScareRange = true;
-                }
-
-                //ANY TIME THE PLAYER LOSES LINE OF SIGHT WHILE IN SCARE RANGE
-                if (!CheckLineOfSightForScarecrow(targetPlayer))
-                {
-                    targetPlayerEnteredDetectWhileWatching = false;
-                    targetPlayerEnteredScareWhileWatching = false;
-
-                    //CHANCE TO PRIME SCARE (FAILS IF ANYONE IS LOOKING)
-                    if (scarePlayerTimer <= 0)
-                    {
-                        scarePlayerTimer = scarePlayerCooldown;
-                        if (Random.Range(0f,100f) < scarePlayerChance && playersWithLineOfSight.Count == 0)
-                        {
-                            FacePosition(targetPlayer.transform.position);
-                            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-                            Debug.Log("Scarecrow scare primed!");
-                            scarePrimed = true;
-                        }
-                    }
-                }
-                
-                //ANY TIME THE PLAYER HAS LINE OF SIGHT WHILE IN SCARE RANGE
-                else
-                {
-                    //IF PLAYER IS ENTERING SCARE RANGE WHILE LOOKING
-                    if (targetPlayerEnteredScareWhileWatching)
-                    {
-                        if (targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position) && playersWithLineOfSight.Count == 1)
-                        {
-                            if (Random.Range(0f,100f) < 5f)
-                            {
-                                ScarePlayer(targetPlayer);
-                            }
-                        }
-                    }
-                }
-            }
-
-            else if (targetPlayerEnteredScareWhileWatching)
-            {
-                if (targetPlayerEnteredScareWhileWatching)
-                {
-                    targetPlayerEnteredScareWhileWatching = false;
-                }
-
-                if (playerEnteredScareRange)
-                {
-                    playerEnteredScareRange = false;
-                }
+                Debug.Log("1 player in range entered scare range, switching to state 3.");
+                currentBehaviourStateIndex = 3;
             }
 
             break;
 
-        //PLAYERS NEARBY
+        //1 PLAYER IN SCARE RANGE (WHILE NO ONE ELSE IS IN RANGE)
         case 3:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
+                //IF PLAYER ENTERED SCARE RANGE WHILE LOOKING
+                if (CheckLineOfSightForScarecrow(playersInRange[0]))
+                {
+                    if (scarePlayerTimer <= 0)
+                    {
+                        scarePlayerTimer = scarePlayerCooldown;
+                        if (Random.Range(0f,100f) < 5f && playersWithLineOfSight.Count == 1)
+                        {
+                            Debug.Log("Calling ScarePlayerServerRpc!");
+                            ScarePlayerServerRpc((int)playersInRange[0].playerClientId);
+                        }
+                    }
+                }
+
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
-                decoySoundTimer = decoySoundCooldown;
             }
 
+            //ANY TIME PLAYER BREAKS LOS
+            if (!CheckLineOfSightForScarecrow(playersInRange[0]))
+            {
+                if (facePlayerTimer <= 0 && playersWithLineOfSight.Count == 0)
+                {
+                    facePlayerTimer = facePlayerCooldown;
+                    if (Random.Range(0f,100f) < facePlayerChance)
+                    {
+                        FacePosition(playersInRange[0].transform.position);
+                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                    }
+                }
+
+                if (scarePlayerTimer <= 0 && playersWithLineOfSight.Count == 0)
+                {
+                    scarePlayerTimer = scarePlayerCooldown;
+                    if (Random.Range(0f,100f) < scarePlayerChance)
+                    {
+                        FacePosition(playersInRange[0].transform.position);
+                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                        scarePrimed = true;
+                    }
+                }
+            }
+
+            //ANY TIME PLAYER HAS LOS
+            else
+            {
+                //AND SCARE IS PRIMED
+                if (scarePrimed && playersInRange[0].HasLineOfSightToPosition(scareTriggerTransform.position))
+                {
+                    scarePrimed = false;
+                    if (playersWithLineOfSight.Count == 1)
+                    {
+                        Debug.Log("Calling ScarePlayerServerRpc!");
+                        ScarePlayerServerRpc((int)playersInRange[0].playerClientId);
+                    }
+                }
+            }
+
+            if (Vector3.Distance(playersInRange[0].transform.position, transform.position) > scareRange)
+            {
+                Debug.Log("1 player in range exited scare range, switching to state 2.");
+                currentBehaviourStateIndex = 2;
+            }
+
+            break;
+
+        //MULTIPLE PLAYERS IN RANGE
+        case 4:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
+            {
+                scarePrimed = false;
+                decoySoundTimer = decoySoundCooldown;
+
+                previousBehaviourStateIndex = currentBehaviourStateIndex;
+            }
+
+            //UPDATE LIST OF PLAYERS IN RANGE WITH LOS
             List<PlayerControllerB> playersInRangeWithLineOfSight = new List<PlayerControllerB>(playersInRange);
             for (int i = 0; i < playersInRangeWithLineOfSight.Count; i++)
             {
@@ -732,13 +741,13 @@ public class Scarecrow : EnemyAI
                 if (!CheckLineOfSightForScarecrow(player))
                 {
                     playersInRangeWithLineOfSight.Remove(player);
-                    Debug.Log($"Removed {player.playerUsername} from playersInRangeWithLineOfSight!");
-                    Debug.Log($"playersinRangWithLineOfSight now has {playersInRangeWithLineOfSight.Count} players.");
                 }
             }
 
+            //IF ONLY 1 PLAYER IN RANGE IS LOOKING
             if (playersInRangeWithLineOfSight.Count == 1)
             {
+                //AND NO ONE ELSE IS LOOKING
                 if (playersWithLineOfSight.Count == 1)
                 {
                     if (tweakOutTimer <= 0f)
@@ -752,24 +761,25 @@ public class Scarecrow : EnemyAI
                 }
             }
 
-            if (playersInRangeWithLineOfSight.Count == playersInRange.Count)
+            //IF MORE THAN 1 PLAYER IN RANGE IS LOOKING
+            if (playersInRangeWithLineOfSight.Count > 1)
             {
-                Debug.Log($"playersInRangeWithLineOfSight: {playersInRangeWithLineOfSight.Count}");
-                Debug.Log($"playersInRange: {playersInRange.Count}");
-                if (decoySoundTimer <= 0)
+                //AND ALL PLAYERS IN RANGE ARE LOOKING AND NO ONE ELSE IS LOOKING
+                if (playersInRangeWithLineOfSight.Count == playersWithLineOfSight.Count)
                 {
-                    decoySoundTimer = decoySoundCooldown;
-                    if (Random.Range(0f,100f) < decoySoundChance)
+                    if (decoySoundTimer <= 0f)
                     {
-                        Debug.Log("Playing decoy sound in state 3!");
-                        PlayDecoySoundServerRpc();
+                        decoySoundTimer = decoySoundCooldown;
+                        if (Random.Range(0f,100f) < decoySoundChance)
+                        {
+                            PlayDecoySoundServerRpc();
+                        }
                     }
                 }
             }
 
             break;
         }
-
     }
 
     public void TryMoveToPosition(Vector3 newPosition)
@@ -807,7 +817,7 @@ public class Scarecrow : EnemyAI
         {
             Debug.Log("Scarecrow attempting to move to invalid terrain.");
             float c = Random.Range(0f,100f);
-            if (c > 95f)
+            if (c > 90f)
             {
                 Debug.Log("Scarecrow did not move.");
                 return;
@@ -816,22 +826,25 @@ public class Scarecrow : EnemyAI
 
         if (Vector3.Angle(Vector3.up, hitInfo.normal) > 35f)
         {
-            Debug.Log("New position on steep ground, scarecrow did not move.");
+            Debug.Log("New position on too steep of ground, scarecrow did not move.");
             return;
         }
 
         Collider[] headCollisions = Physics.OverlapSphere(scareTriggerTransform.position, 0.3f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
         if (headCollisions.Length > 0)
         {
-            Debug.Log("Scarecrow scare trigger obscured by object, did not move.");
+            Debug.Log("New position obscures head, did not move.");
             return;
         }
 
-        //TRYING TO DETERMINE IF SCARECROW IS UNDERWATER DURING FLOOD... NOT SURE HOW :P
-        // if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
-        // {
-        //     if (newPosition.y < RoundManager.Instance.currentLevel.)
-        // }
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
+        {
+            if (newPosition.y < TimeOfDay.Instance.currentWeatherVariable)
+            {
+                Debug.Log("New position is under flood level, did not move.");
+                return;
+            }
+        }
 
         GameObject[] spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
         for (int i = 0; i < spawnDenialPoints.Length; i++)
@@ -849,6 +862,7 @@ public class Scarecrow : EnemyAI
         }
 
         transform.position = newPosition;
+        Debug.Log("Scarecrow moved.");
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
@@ -856,21 +870,46 @@ public class Scarecrow : EnemyAI
     {
         int nodeSelected = Random.Range(0, nodes.Count);
         Vector3 nodePosition = nodes[nodeSelected].transform.position;
-        Debug.Log($"Selected node {nodeSelected} at {nodePosition}.");
-        return RoundManager.Instance.GetRandomNavMeshPositionInRadius(nodePosition, radius);
+        Vector3 newPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(nodePosition, radius);
+        float furthestRotation = RoundManager.Instance.YRotationThatFacesTheFarthestFromPosition(newPosition, 2f);
+        Transform tempTransform = transform;
+        tempTransform.position = newPosition;
+        tempTransform.eulerAngles = new Vector3(0f, furthestRotation, 0f);
+        newPosition += tempTransform.forward * Random.Range(1f, 2f);
+        return newPosition;
     }
 
-    public void ScarePlayer(PlayerControllerB player)
+    [ServerRpc(RequireOwnership = false)]
+    public void ScarePlayerServerRpc(int playerId)
     {
+        int scareSound = Random.Range(0, scareSounds.Length);
+        ScarePlayerClientRpc(playerId, scareSound);
+    }
+
+    [ClientRpc]
+    public void ScarePlayerClientRpc(int playerId, int scareSound)
+    {
+        ScarePlayer(playerId, scareSound);
+    }
+
+    public void ScarePlayer(int playerId, int scareSound)
+    {
+        PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
+
         FacePosition(player.transform.position);
-        Debug.Log($"Scarecrow scared player {player.playerUsername}.");
-        RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
-        AudioClip clip = scareSounds[Random.Range(0, scareSounds.Length)];
+        AudioClip clip = scareSounds[scareSound];
         scareAudio.PlayOneShot(clip);
-        creatureAnimator.SetTrigger("ScarePlayer");
-        player.insanityLevel += player.maxInsanityLevel * 0.2f;
-        player.JumpToFearLevel(0.5f);
+        RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
         scarePrimed = false;
+        creatureAnimator.SetTrigger("ScarePlayer");
+
+        if (GameNetworkManager.Instance.localPlayerController == player)
+		{
+            player.insanityLevel += player.maxInsanityLevel * 0.2f;
+            player.JumpToFearLevel(0.5f);
+        }
+
+        Debug.Log($"Scarecrow scared player {player.playerUsername}.");
     }
 
     public void TweakOut(PlayerControllerB player)
@@ -878,7 +917,7 @@ public class Scarecrow : EnemyAI
         Debug.Log("Scarecrow tweaked out!");
         AudioClip clip = tweakOutSounds[Random.Range(0, tweakOutSounds.Length)];
         tweakOutAudio.PlayOneShot(clip);
-        player.insanityLevel += player.maxInsanityLevel * 0.1f;
+        // player.insanityLevel += player.maxInsanityLevel * 0.1f;
         creatureAnimator.SetTrigger("TweakOut");
     }
 
@@ -888,6 +927,19 @@ public class Scarecrow : EnemyAI
         tempTransform.LookAt(lookPosition);
         tempTransform.eulerAngles = new Vector3(0f, tempTransform.eulerAngles.y, 0f);
         base.transform.eulerAngles = tempTransform.eulerAngles;
+    }
+
+    [ServerRpc]
+    public void PlayDetectSoundServerRpc()
+    {
+        int detectSound = Random.Range(0, detectSounds.Length);
+        PlayDetectSoundClientRpc(detectSound);
+    }
+
+    [ClientRpc]
+    public void PlayDetectSoundClientRpc(int detectSound)
+    {
+        detectAudio.PlayOneShot(detectSounds[detectSound]);
     }
 
     [ServerRpc]
@@ -954,12 +1006,11 @@ public class Scarecrow : EnemyAI
 
     public override void KillEnemy(bool destroy = false)
     {
-        base.KillEnemy(destroy);
         creatureAnimator.SetBool("IsDead", value: true);
         RoundManager.Instance.PlayAudibleNoise(transform.position, 5, 1, 0, false, -1);
         IncreaseEnemySpawnRate();
-        DropItem();
-        SubtractFromPowerLevel();
+        DropItemServerRpc();
+        base.KillEnemy(destroy);
     }
 
     public override void SetEnemyStunned(bool setToStunned, float setToStunTime = 1f, PlayerControllerB setStunnedByPlayer = null)
@@ -985,30 +1036,39 @@ public class Scarecrow : EnemyAI
         }
     }
 
-    public void DropItem()
+    [ServerRpc(RequireOwnership = false)]
+    public void DropItemServerRpc()
     {
         if (dropItem == null)
         {
-            Debug.Log("No drop item specified, scarecrow did not drop item.");
             return;
         }
 
-        GameObject item = Instantiate(dropItem.spawnPrefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.mapPropsContainer.transform);
-        item.GetComponent<NetworkObject>().Spawn(destroyWithScene: true);
+        GameObject item = dropItem.spawnPrefab;
+        NetworkObject itemNetworkObject = item.GetComponent<NetworkObject>();
+        itemNetworkObject.Spawn(destroyWithScene: true);
         RoundManager.Instance.spawnedSyncedObjects.Add(item);
 
-        if (item.GetComponent<GrabbableObject>() != null)
-        {
-            GrabbableObject gObject = item.GetComponent<GrabbableObject>();
-            gObject.SetScrapValue(currentValue);
-        }
+        DropItemClientRpc((int)itemNetworkObject.NetworkObjectId);
+    }
 
-        if (item.GetComponent<Pumpkin>() != null)
-        {
-            item.GetComponent<Pumpkin>().rotAmount = rotAmount;
-        }
+    [ClientRpc]
+    public void DropItemClientRpc(int id)
+    {
+        DropItem(id);
+    }
 
-        Debug.Log($"Scarecrow dropped {dropItem}.");
+    public void DropItem(int id)
+    {
+        GameObject prefab = GetNetworkObject((ulong)id).gameObject;
+        GameObject item = Instantiate(prefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.mapPropsContainer.transform);
+
+        Pumpkin pumpkin = item.GetComponent<Pumpkin>();
+        if (pumpkin != null)
+        {
+            pumpkin.rotAmount = rotAmount;
+            pumpkin.SetScrapValue(currentValue);
+        }
     }
 
     private void IncreaseEnemySpawnRate()
