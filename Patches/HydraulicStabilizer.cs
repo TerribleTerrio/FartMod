@@ -1,7 +1,9 @@
 using System.Collections;
 using GameNetcodeStuff;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.UIElements.UIR;
 
 public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, ZappableObject
 {
@@ -36,16 +38,42 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
         }
     }
 
+    public void SetAnimatorBoolAndSync(string name, bool state)
+    {
+        SetAnimatorBool(name, state);
+        SetAnimatorBoolServerRpc(name, state, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetAnimatorBoolServerRpc(string name, bool state, int clientWhoSentRpc)
+    {
+        SetAnimatorBoolClientRpc(name, state, clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void SetAnimatorBoolClientRpc(string name, bool state, int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            SetAnimatorBoolAndSync(name, state);
+        }
+    }
+
+    public void SetAnimatorBool(string name, bool state)
+    {
+        itemAnimator.SetBool(name, state);
+    }
+
     public override void GrabItem()
     {
         base.GrabItem();
-		itemAnimator.SetBool("HoldHydraulic", true);
+		SetAnimatorBoolAndSync("HoldHydraulic", true);
     }
 
     public override void DiscardItem()
     {
         base.DiscardItem();
-		itemAnimator.SetBool("HoldHydraulic", false);
+		SetAnimatorBoolAndSync("HoldHydraulic", false);
     }
 
     public void PushNearbyPlayers()
