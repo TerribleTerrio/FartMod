@@ -8,49 +8,21 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
     [Header("Hydraulic Stabilizer Settings")]
     public float audibleNoiseCooldown = 2f;
 
-	public bool physicsForceOnSteam;
-
     public float physicsForce;
 
     public float physicsForceRange;
 	
 	public UnityEvent onAnimationEventCalled;
 
-	public AudioSource audioSource1;
-
-	public AudioSource audioSource1Far;
-
-	public AudioSource audioSource2;
-
-	public AudioSource audioSource2Far;
-
-	[Header("On Clips")]
-	public AudioClip HydraulicOnClip;
-	public AudioClip HydraulicOnClipFar;
-
-	[Header("Steaming Clips")]
-	public AudioClip HydraulicSteamingClip;
-	public AudioClip HydraulicSteamingClipFar;
-
-	[Header("Loop Clips")]
-	public AudioClip HydraulicLoopClip;
-	public AudioClip HydraulicLoopClipFar;
-
-	[Header("Off Clips")]
-	public AudioClip HydraulicOffClip;
-	public AudioClip HydraulicOffClipFar;
-
-	[Header("Psycho Clips")]
-	public AudioClip[] HydraulicPsychoClips;
-	public AudioClip[] HydraulicPsychoClipsFar;
-
     private bool noiseOnCooldown;
 
-    private bool startedSteaming;
+	private int psychoStage;
 
-	private bool ZapPsycho;
-
-	private int PsychoStage;
+    public override void Start()
+    {
+        base.Start();
+		psychoStage = 0;
+    }
 
     public override void Update()
     {
@@ -62,6 +34,18 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
                 StartCoroutine(LoopNoiseOnCooldown(audibleNoiseCooldown));
             }
         }
+    }
+
+    public override void GrabItem()
+    {
+        base.GrabItem();
+		itemAnimator.SetBool("HoldHydraulic", true);
+    }
+
+    public override void DiscardItem()
+    {
+        base.DiscardItem();
+		itemAnimator.SetBool("HoldHydraulic", false);
     }
 
     public void PushNearbyPlayers()
@@ -119,7 +103,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
         return true;
     }
 
-    public void GoPsycho()
+    public void GoPsycho(bool zap = false)
     {
 		if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
 		{
@@ -130,37 +114,18 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange*1.5f, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 
-		if (PsychoStage == 0)
-        {
-			itemAnimator.Play("HydraulicPsycho", -1, 0f);
-			PsychoStage++;
-		}
-		else if (PsychoStage == 1)
+		itemAnimator.SetInteger("Psycho Stage", psychoStage);
+		itemAnimator.Play("Go Psycho");
+		psychoStage++;
+		if (psychoStage > 5)
 		{
-			itemAnimator.Play("HydraulicPsycho2", -1, 0f);
-			PsychoStage++;
+			psychoStage = 1;
 		}
-		else if (PsychoStage == 2)
+		if (zap)
 		{
-			itemAnimator.Play("HydraulicPsycho3", -1, 0f);
-			PsychoStage++;
+			psychoStage = 5;
 		}
-		else if (PsychoStage == 3)
-		{
-			itemAnimator.Play("HydraulicPsycho4", -1, 0f);
-			PsychoStage++;
-		}
-		else if (PsychoStage == 4)
-		{
-			itemAnimator.Play("HydraulicThunderPsycho", -1, 0f);
-			PsychoStage = 0;
-		}
-		if (ZapPsycho)
-		{
-			itemAnimator.Play("HydraulicThunderPsycho", -1, 0f);
-			ZapPsycho = false;
-			PsychoStage = 0;
-		}
+
     }
 
 	public void SetSteamingBoolTrue()
@@ -197,8 +162,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
 	public void ShockWithGun(PlayerControllerB playerControllerB)
 	{
-		ZapPsycho = true;
-		GoPsycho();
+		GoPsycho(zap: true);
 	}
 
 	public void OnAnimationEvent()
