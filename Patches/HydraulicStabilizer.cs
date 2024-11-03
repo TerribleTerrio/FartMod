@@ -115,15 +115,15 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange*1.5f, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 
 		itemAnimator.SetInteger("Psycho Stage", psychoStage);
+		if (zap)
+		{
+			psychoStage = 5;
+		}
 		itemAnimator.Play("Go Psycho");
 		psychoStage++;
 		if (psychoStage > 5)
 		{
 			psychoStage = 1;
-		}
-		if (zap)
-		{
-			psychoStage = 5;
 		}
 
     }
