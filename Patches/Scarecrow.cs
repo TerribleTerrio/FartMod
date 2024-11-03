@@ -163,7 +163,11 @@ public class Scarecrow : EnemyAI
     [Space(5f)]
     public AudioSource warningAudio;
 
-    public AudioClip[] warningSounds;
+    public AudioClip[] warningSoundsLow;
+
+    public AudioClip[] warningSoundsMedium;
+
+    public AudioClip[] warningSoundsHigh;
 
     [Space(5f)]
     public AudioSource decoyAudio;
@@ -1089,18 +1093,20 @@ public class Scarecrow : EnemyAI
         Vector3 soundPosition = transform.position + new Vector3(soundOffset.x, 0f, soundOffset.y);
         warningAudio.transform.position = soundPosition;
 
-        int c = UnityEngine.Random.Range(0, 3);
-        if (dangerValue <= 33)
+        if (dangerValue < 33)
         {
-            warningAudio.PlayOneShot(warningSounds[c]);
+            warningAudio.PlayOneShot(warningSoundsLow[Random.Range(0,warningSoundsLow.Length)]);
+            return;
         }
-        else if (dangerValue <= 66)
+        else if (dangerValue < 66)
         {
-            warningAudio.PlayOneShot(warningSounds[c+3]);
+            warningAudio.PlayOneShot(warningSoundsMedium[Random.Range(0,warningSoundsMedium.Length)]);
+            return;
         }
         else
         {
-            warningAudio.PlayOneShot(warningSounds[c+6]);
+            warningAudio.PlayOneShot(warningSoundsHigh[Random.Range(0,warningSoundsHigh.Length)]);
+            return;
         }
     }
 
