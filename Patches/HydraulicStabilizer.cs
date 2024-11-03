@@ -131,8 +131,29 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
 	{
-        GoPsycho();
+        GoPsychoAndSync();
         return true;
+    }
+
+    public void GoPsychoAndSync()
+    {
+        GoPsycho();
+        GoPsychoServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void GoPsychoServerRpc(int clientWhoSentRpc)
+    {
+        GoPsychoClientRpc(clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void GoPsychoClientRpc(int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            GoPsycho();
+        }
     }
 
     public void GoPsycho(bool zap = false)
