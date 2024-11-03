@@ -40,6 +40,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
     public void SetAnimatorBoolAndSync(string name, bool state)
     {
+        Debug.Log($"Called SetAnimatorBoolAndSync({name}, {state})");
         SetAnimatorBool(name, state);
         SetAnimatorBoolServerRpc(name, state, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
@@ -47,20 +48,23 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
     [ServerRpc(RequireOwnership = false)]
     public void SetAnimatorBoolServerRpc(string name, bool state, int clientWhoSentRpc)
     {
+        Debug.Log($"Called SetAnimatorBoolServerRpc({name}, {state})");
         SetAnimatorBoolClientRpc(name, state, clientWhoSentRpc);
     }
 
     [ClientRpc]
     public void SetAnimatorBoolClientRpc(string name, bool state, int clientWhoSentRpc)
     {
+        Debug.Log($"Called SetAnimatorBoolClientRpc({name}, {state})");
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            SetAnimatorBoolAndSync(name, state);
+            SetAnimatorBool(name, state);
         }
     }
 
     public void SetAnimatorBool(string name, bool state)
     {
+        Debug.Log($"Called SetAnimatorBool({name}, {state})");
         itemAnimator.SetBool(name, state);
     }
 
