@@ -351,7 +351,7 @@ public class Scarecrow : EnemyAI
         {
             if (stunnedIndefinitely < 1)
             {
-                KillEnemyOnOwnerClient();
+                creatureAnimator.SetBool("Electrocuting", false);
             }
             else
             {
@@ -989,7 +989,7 @@ public class Scarecrow : EnemyAI
         enemyHP -= force;
         if (base.IsOwner && enemyHP <= 0 && !isEnemyDead)
         {
-            KillEnemyOnOwnerClient();
+            creatureAnimator.SetTrigger("Die");
         }
     }
 
@@ -1004,17 +1004,7 @@ public class Scarecrow : EnemyAI
         {
             dropItem = zapItem;
             creatureAnimator.SetTrigger("Explode");
-            KillEnemyOnOwnerClient();
         }
-    }
-
-    public override void KillEnemy(bool destroy = false)
-    {
-        creatureAnimator.SetBool("IsDead", value: true);
-        RoundManager.Instance.PlayAudibleNoise(transform.position, 5, 1, 0, false, -1);
-        IncreaseEnemySpawnRate();
-        DropItemServerRpc();
-        base.KillEnemy(destroy);
     }
 
     public override void SetEnemyStunned(bool setToStunned, float setToStunTime = 1f, PlayerControllerB setStunnedByPlayer = null)
@@ -1030,7 +1020,7 @@ public class Scarecrow : EnemyAI
             if (stunnedByPlayer)
             {
                 //BEHAVIOUR WHEN STUNNED BY GUN
-                creatureAnimator.SetBool("Electrocuting", true);
+                creatureAnimator.SetTrigger("Electrocute");
                 dropItem = zapItem;
             }
             else
@@ -1040,9 +1030,17 @@ public class Scarecrow : EnemyAI
         }
     }
 
+    public override void KillEnemy(bool destroy = false)
+    {
+        Debug.Log("Called KillEnemy!");
+        IncreaseEnemySpawnRate();
+        base.KillEnemy(destroy);
+    }
+
     [ServerRpc(RequireOwnership = false)]
     public void DropItemServerRpc()
     {
+        Debug.Log("Called DropItemServerRpc!");
         if (dropItem == null)
         {
             return;
@@ -1059,11 +1057,13 @@ public class Scarecrow : EnemyAI
     [ClientRpc]
     public void DropItemClientRpc(int id)
     {
+        Debug.Log("Called DropItemClientRpc!");
         DropItem(id);
     }
 
     public void DropItem(int id)
     {
+        Debug.Log("Called DropItem!");
         GameObject prefab = GetNetworkObject((ulong)id).gameObject;
         GameObject item = Instantiate(prefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.mapPropsContainer.transform);
 
