@@ -352,6 +352,11 @@ public class Scarecrow : EnemyAI
 
     public override void Update()
     {
+        float dayProgress = RoundManager.Instance.timeScript.normalizedTimeOfDay;
+        currentValue = RemapInt(dayProgress, 0f, 1f, startValue, endValue);
+        rotAmount = dayProgress;
+        creatureAnimator.SetFloat("rot", rotAmount);
+
         if (stunnedByPlayer)
         {
             if (stunnedIndefinitely < 1)
@@ -489,11 +494,6 @@ public class Scarecrow : EnemyAI
         {
             return;
         }
-
-        float dayProgress = RoundManager.Instance.timeScript.normalizedTimeOfDay;
-        currentValue = RemapInt(dayProgress, 0f, 1f, startValue, endValue);
-        rotAmount = dayProgress;
-        creatureAnimator.SetFloat("rot", rotAmount);
 
         if (moveTimer > 0)
         {
@@ -1059,7 +1059,7 @@ public class Scarecrow : EnemyAI
             Debug.Log($"Target player set to {targetPlayer.playerUsername}.");
         }
         enemyHP -= force;
-        if (base.IsOwner && enemyHP <= 0 && !isEnemyDead)
+        if (enemyHP <= 0 && !isEnemyDead)
         {
             creatureAnimator.SetTrigger("Die");
         }
@@ -1114,48 +1114,53 @@ public class Scarecrow : EnemyAI
     {
         Debug.Log("Called DropItemServerRpc!");
         GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, StartOfRound.Instance.propsContainer);
-        NetworkObject dropObjectNetworkObject = dropObject.GetComponent<NetworkObject>();
-        dropObjectNetworkObject.Spawn();
 
-        int value = 0;
-        float rot = 0f;
         GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
-        Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
-        if (pumpkin != null)
-        {
-            value = currentValue;
-            rot = rotAmount;
-        }
-        else if (gObject != null)
-        {
-            value = 5;
-        }
-
-        DropItemClientRpc(dropObjectNetworkObject, value, rot);
-    }
-
-    [ClientRpc]
-    public void DropItemClientRpc(NetworkObjectReference dropObjectRef, int value = 0, float rot = 0f)
-    {
-        NetworkObject dropNetworkObject = dropObjectRef;
-        GrabbableObject gObject = dropNetworkObject.GetComponent<GrabbableObject>();
         if (gObject != null)
         {
             gObject.startFallingPosition = gObject.transform.position;
             gObject.FallToGround();
         }
 
-        Pumpkin pumpkin = dropNetworkObject.GetComponent<Pumpkin>();
+        Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
         if (pumpkin != null)
         {
-            pumpkin.rotAmount = rot;
-            pumpkin.SetScrapValue(value);
+            pumpkin.SetScrapValue(currentValue);
+            pumpkin.itemAnimator.SetFloat("rot", rotAmount);
         }
         else if (gObject != null)
         {
             gObject.SetScrapValue(5);
         }
+
+        NetworkObject dropObjectNetworkObject = dropObject.GetComponent<NetworkObject>();
+        dropObjectNetworkObject.Spawn();
+
+        // DropItemClientRpc(dropObjectNetworkObject, value, rot);
     }
+
+    // [ClientRpc]
+    // public void DropItemClientRpc(NetworkObjectReference dropObjectRef, int value = 0, float rot = 0f)
+    // {
+    //     NetworkObject dropNetworkObject = dropObjectRef;
+    //     GrabbableObject gObject = dropNetworkObject.GetComponent<GrabbableObject>();
+    //     if (gObject != null)
+    //     {
+    //         gObject.startFallingPosition = gObject.transform.position;
+    //         gObject.FallToGround();
+    //     }
+
+    //     Pumpkin pumpkin = dropNetworkObject.GetComponent<Pumpkin>();
+    //     if (pumpkin != null)
+    //     {
+    //         pumpkin.rotAmount = rot;
+    //         pumpkin.SetScrapValue(value);
+    //     }
+    //     else if (gObject != null)
+    //     {
+    //         gObject.SetScrapValue(5);
+    //     }
+    // }
 
     public void DropItem()
     {
