@@ -1131,15 +1131,14 @@ public class Scarecrow : EnemyAI
     {
         NetworkObject dropObjectNetworkObject = dropObjectRef;
         GameObject dropObject = dropObjectNetworkObject.gameObject;
-        GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
+        AnimatedItem gObject = dropObject.GetComponent<AnimatedItem>();
 
-        Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
-        if (pumpkin != null)
+        if (gObject.itemProperties.itemName == "Rotten Pumpkin")
         {
-            pumpkin.SetScrapValue(value);
-            pumpkin.itemAnimator.SetFloat("rot", rot);
+            gObject.SetScrapValue(value);
+            gObject.itemAnimator.SetFloat("rot", rot);
         }
-        else if (gObject != null)
+        else if (dropObject.GetComponent<GrabbableObject>() != null)
         {
             gObject.SetScrapValue(5);
         }
