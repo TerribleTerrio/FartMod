@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections;
 using System.Linq;
 using GameNetcodeStuff;
 using Unity.Netcode;
@@ -14,9 +15,11 @@ public class Scarecrow : EnemyAI
     [Range(0f, 1f)]
     public float normalizedTimeInDayToBecomeActive;
 
-    public Item dropItem;
+    public GameObject dropItemPrefab;
 
-    public Item zapItem;
+    public GameObject zapItemPrefab;
+
+    private NetworkObjectReference dropObjectRef;
 
     public Transform dropItemTransform;
 
@@ -29,6 +32,10 @@ public class Scarecrow : EnemyAI
     public string[] invalidTerrainTags;
 
     private bool targetPlayerEnteredDetectWhileWatching;
+
+    private bool invisible;
+
+    private Coroutine changePositionCoroutine;
 
     private bool scarePrimed;
 
@@ -313,7 +320,6 @@ public class Scarecrow : EnemyAI
     {
         Vector3 randomTilt = new Vector3(Random.Range(-5f,5f), 0f, Random.Range(-12f,12f));
         meshContainer.localEulerAngles = randomTilt;
-        Debug.Log($"Mesh container rotation: {meshContainer.eulerAngles}");
         GiveRandomTiltServerRpc(randomTilt, clientWhoSentRpc);
     }
 
@@ -329,7 +335,6 @@ public class Scarecrow : EnemyAI
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
             meshContainer.localEulerAngles = randomTilt;
-            Debug.Log($"Mesh container rotation: {meshContainer.eulerAngles}");
         }
     }
 
@@ -451,9 +456,9 @@ public class Scarecrow : EnemyAI
 
     public void SetStateBasedOnPlayers(int numPlayers)
     {
-        if (RoundManager.Instance.timeScript.normalizedTimeOfDay < normalizedTimeInDayToBecomeActive || isEnemyDead)
+        if (RoundManager.Instance.timeScript.normalizedTimeOfDay < normalizedTimeInDayToBecomeActive || isEnemyDead || invisible)
         {
-            Debug.Log("Scarecrow not active, remaining in inactive state.");
+            Debug.Log("Scarecrow inactive or invisible, remaining in inactive state.");
             return;
         }
 
@@ -540,7 +545,13 @@ public class Scarecrow : EnemyAI
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
-            if (RoundManager.Instance.timeScript.normalizedTimeOfDay > normalizedTimeInDayToBecomeActive && !isEnemyDead)
+            if (invisible && changePositionCoroutine == null && playersWithLineOfSight.Count == 0)
+            {
+                Debug.Log("Scarecrow out of view of all players, re-enabling meshes.");
+                SetInvisibleServerRpc(false);
+            }
+
+            if (RoundManager.Instance.timeScript.normalizedTimeOfDay > normalizedTimeInDayToBecomeActive && !isEnemyDead && !invisible)
             {
                 SetStateBasedOnPlayers(playersInRange.Count);
             }
@@ -561,11 +572,11 @@ public class Scarecrow : EnemyAI
             {
                 if (playersWithLineOfSight.Count == 0)
                 {
+                    moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                     if (Random.Range(0f,100f) < moveChance)
                     {
-                        TryMoveToPosition(GetRandomNavMeshPositionNearAINode());
+                        TryMoveToNewPosition(GetRandomNavMeshPositionNearAINode());
                     }
-                    moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                 }
             }
 
@@ -786,22 +797,47 @@ public class Scarecrow : EnemyAI
         }
     }
 
-    public void TryMoveToPosition(Vector3 newPosition)
+    public void TryMoveToNewPosition(Vector3 newPosition)
     {
         PlayerControllerB[] players = StartOfRound.Instance.allPlayerScripts;
+        float c;
 
+        Debug.Log($"Trying new position: {newPosition}");
+
+        bool inViewOfPlayer = false;
         for (int i = 0; i < players.Length; i++)
         {
+            //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER
             if (CheckLineOfSightForScarecrow(players[i]))
             {
                 Debug.Log($"Current position in view of {players[i].playerUsername}, scarecrow did not move.");
                 return;
             }
 
-            if (players[i].HasLineOfSightToPosition(newPosition, range: 100))
+            //PREVENT FROM MOVING TO NEW POSITION IN VIEW OF PLAYER
+            if (lineOfSightTriggers.Length > 0)
             {
-                Debug.Log($"New position in view of {players[i].playerUsername}, scarecrow did not move.");
-                return;
+                for (int j = 0; j < lineOfSightTriggers.Length; j++)
+                {
+                    Debug.Log($"Line of sight trigger: {newPosition + lineOfSightTriggers[j].localPosition}");
+                    if (players[i].HasLineOfSightToPosition(newPosition + lineOfSightTriggers[j].localPosition, range: 100))
+                    {
+                        Debug.Log($"LOS trigger visible to {players[i].playerUsername} in new position, scarecrow did not move.");
+                        inViewOfPlayer = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (inViewOfPlayer)
+        {
+            c = Random.Range(0f,100f);
+            {
+                if (c > 50f)
+                {
+                    return;
+                }
             }
         }
 
@@ -820,7 +856,7 @@ public class Scarecrow : EnemyAI
         if (onInvalidTerrain)
         {
             Debug.Log("Scarecrow attempting to move to invalid terrain.");
-            float c = Random.Range(0f,100f);
+            c = Random.Range(0f,100f);
             if (c > 90f)
             {
                 Debug.Log("Scarecrow did not move.");
@@ -834,7 +870,7 @@ public class Scarecrow : EnemyAI
             return;
         }
 
-        Collider[] headCollisions = Physics.OverlapSphere(scareTriggerTransform.position, 0.3f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
+        Collider[] headCollisions = Physics.OverlapSphere(newPosition + scareTriggerTransform.localPosition, 0.3f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
         if (headCollisions.Length > 0)
         {
             Debug.Log("New position obscures head, did not move.");
@@ -851,23 +887,59 @@ public class Scarecrow : EnemyAI
         }
 
         GameObject[] spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
+        c = Random.Range(0f,100f);
         for (int i = 0; i < spawnDenialPoints.Length; i++)
         {
             if (Vector3.Distance(newPosition, spawnDenialPoints[i].transform.position) < 30)
             {
-                Debug.Log("New position too close to spawn denial point.");
-                float c = Random.Range(0f,100f);
-                if (c > 80f)
+                if (c < 80f)
                 {
+                    Debug.Log("New position too close to spawn denial point.");
                     Debug.Log("Scarecrow did not move.");
                     return;
                 }
             }
         }
 
-        transform.position = newPosition;
-        Debug.Log("Scarecrow moved.");
+        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        // SetPositionAndSync(newPosition);
+        // transform.position = newPosition;
+
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    private IEnumerator ChangePositionWhileInvisible(Vector3 position, float time)
+    {
+        SetInvisibleServerRpc(true);
+        invisible = true;
+        transform.position = position;
+        Debug.Log("Scarecrow moved.");
+        currentBehaviourStateIndex = 0;
+        yield return new WaitForSeconds(time);
+        changePositionCoroutine = null;
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void SetInvisibleServerRpc(bool enabled)
+    {
+        SetInvisibleClientRpc(enabled);
+    }
+
+    [ClientRpc]
+    private void SetInvisibleClientRpc(bool enabled)
+    {
+        if (enabled == true)
+        {
+            Debug.Log("Scarecrow set invisible.");
+            invisible = true;
+            EnableEnemyMesh(false);
+        }
+        else
+        {
+            Debug.Log("Scarecrow set visible.");
+            invisible = false;
+            EnableEnemyMesh(true);
+        }
     }
 
     public Vector3 GetRandomNavMeshPositionNearAINode(float radius = 20f)
@@ -875,11 +947,11 @@ public class Scarecrow : EnemyAI
         int nodeSelected = Random.Range(0, nodes.Count);
         Vector3 nodePosition = nodes[nodeSelected].transform.position;
         Vector3 newPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(nodePosition, radius);
-        float furthestRotation = RoundManager.Instance.YRotationThatFacesTheFarthestFromPosition(newPosition, 2f);
-        Transform tempTransform = transform;
-        tempTransform.position = newPosition;
-        tempTransform.eulerAngles = new Vector3(0f, furthestRotation, 0f);
-        newPosition += tempTransform.forward * Random.Range(1f, 2f);
+        // float furthestRotation = RoundManager.Instance.YRotationThatFacesTheFarthestFromPosition(newPosition, 2f);
+        // Transform tempTransform = transform;
+        // tempTransform.position = newPosition;
+        // tempTransform.eulerAngles = new Vector3(0f, furthestRotation, 0f);
+        // newPosition += tempTransform.forward * Random.Range(1f, 2f);
         return newPosition;
     }
 
@@ -1002,7 +1074,7 @@ public class Scarecrow : EnemyAI
         }
         else
         {
-            dropItem = zapItem;
+            dropItemPrefab = zapItemPrefab;
             creatureAnimator.SetTrigger("Explode");
         }
     }
@@ -1021,7 +1093,7 @@ public class Scarecrow : EnemyAI
             {
                 //BEHAVIOUR WHEN STUNNED BY GUN
                 creatureAnimator.SetTrigger("Electrocute");
-                dropItem = zapItem;
+                dropItemPrefab = zapItemPrefab;
             }
             else
             {
@@ -1037,41 +1109,45 @@ public class Scarecrow : EnemyAI
         base.KillEnemy(destroy);
     }
 
-    [ServerRpc(RequireOwnership = false)]
+    [ServerRpc]
     public void DropItemServerRpc()
     {
         Debug.Log("Called DropItemServerRpc!");
-        if (dropItem == null)
+        GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, StartOfRound.Instance.propsContainer);
+        NetworkObject dropObjectNetworkObject = dropObject.GetComponent<NetworkObject>();
+        dropObjectNetworkObject.Spawn();
+        GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
+        if (gObject != null)
         {
-            return;
+            gObject.fallTime = 1f;
+            gObject.hasHitGround = true;
         }
 
-        GameObject item = dropItem.spawnPrefab;
-        NetworkObject itemNetworkObject = item.GetComponent<NetworkObject>();
-        itemNetworkObject.Spawn(destroyWithScene: true);
-        RoundManager.Instance.spawnedSyncedObjects.Add(item);
-
-        DropItemClientRpc((int)itemNetworkObject.NetworkObjectId);
-    }
-
-    [ClientRpc]
-    public void DropItemClientRpc(int id)
-    {
-        Debug.Log("Called DropItemClientRpc!");
-        DropItem(id);
-    }
-
-    public void DropItem(int id)
-    {
-        Debug.Log("Called DropItem!");
-        GameObject prefab = GetNetworkObject((ulong)id).gameObject;
-        GameObject item = Instantiate(prefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.mapPropsContainer.transform);
-
-        Pumpkin pumpkin = item.GetComponent<Pumpkin>();
+        Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
         if (pumpkin != null)
         {
             pumpkin.rotAmount = rotAmount;
             pumpkin.SetScrapValue(currentValue);
+        }
+        else if (gObject != null)
+        {
+            gObject.SetScrapValue(5);
+        }
+
+        DropItemClientRpc(dropObjectNetworkObject);
+    }
+
+    [ClientRpc]
+    public void DropItemClientRpc(NetworkObjectReference dropObject)
+    {
+        dropObjectRef = dropObject;
+    }
+
+    public void DropItem()
+    {
+        if (base.IsServer)
+        {
+            DropItemServerRpc();
         }
     }
 
@@ -1084,40 +1160,49 @@ public class Scarecrow : EnemyAI
         Debug.Log($"Increased minimum outside enemies to spawn: {RoundManager.Instance.minOutsideEnemiesToSpawn}");
         Debug.Log($"Increased max outside enemy power: {RoundManager.Instance.currentMaxOutsidePower}");
 
-        PlayWarningSound();
+        PlayWarningSoundServerRpc();
     }
 
-    private void PlayWarningSound()
+    [ServerRpc(RequireOwnership = false)]
+    private void PlayWarningSoundServerRpc()
     {
         Vector2 soundOffset = Random.insideUnitCircle.normalized * 500f;
         Vector3 soundPosition = transform.position + new Vector3(soundOffset.x, 0f, soundOffset.y);
-        warningAudio.transform.position = soundPosition;
+        int clip;
 
         if (dangerValue < 33)
         {
-            warningAudio.PlayOneShot(warningSoundsLow[Random.Range(0,warningSoundsLow.Length)]);
-            return;
+            clip = Random.Range(0,warningSoundsLow.Length);
         }
         else if (dangerValue < 66)
         {
-            warningAudio.PlayOneShot(warningSoundsMedium[Random.Range(0,warningSoundsMedium.Length)]);
-            return;
+            clip = Random.Range(0,warningSoundsMedium.Length);
         }
         else
         {
-            warningAudio.PlayOneShot(warningSoundsHigh[Random.Range(0,warningSoundsHigh.Length)]);
-            return;
+            clip = Random.Range(0,warningSoundsHigh.Length);
         }
+        
+        PlayWarningSoundClientRpc(soundPosition, clip);
     }
 
-    public void OnTouch(Collider other)
+    [ClientRpc]
+    private void PlayWarningSoundClientRpc(Vector3 soundPosition, int clip)
     {
-
-    }
-
-    public void OnExit(Collider other)
-    {
-
+        warningAudio.transform.position = soundPosition;
+        
+        if (dangerValue < 33)
+        {
+            warningAudio.PlayOneShot(warningSoundsLow[clip]);
+        }
+        else if (dangerValue < 66)
+        {
+            warningAudio.PlayOneShot(warningSoundsMedium[clip]);
+        }
+        else
+        {
+            warningAudio.PlayOneShot(warningSoundsHigh[clip]);
+        }
     }
 
     public int RemapInt(float value, float min1, float max1, float min2, float max2)
