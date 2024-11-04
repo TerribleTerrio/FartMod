@@ -870,7 +870,7 @@ public class Scarecrow : EnemyAI
             return;
         }
 
-        Collider[] headCollisions = Physics.OverlapSphere(newPosition + scareTriggerTransform.localPosition, 0.3f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
+        Collider[] headCollisions = Physics.OverlapSphere(newPosition + scareTriggerTransform.localPosition, 0.1f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
         if (headCollisions.Length > 0)
         {
             Debug.Log("New position obscures head, did not move.");
@@ -1116,14 +1116,39 @@ public class Scarecrow : EnemyAI
         GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, StartOfRound.Instance.propsContainer);
         NetworkObject dropObjectNetworkObject = dropObject.GetComponent<NetworkObject>();
         dropObjectNetworkObject.Spawn();
-        GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
+        // GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
+        // if (gObject != null)
+        // {
+        //     gObject.fallTime = 1f;
+        //     gObject.hasHitGround = true;
+        // }
+
+        // Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
+        // if (pumpkin != null)
+        // {
+        //     pumpkin.rotAmount = rotAmount;
+        //     pumpkin.SetScrapValue(currentValue);
+        // }
+        // else if (gObject != null)
+        // {
+        //     gObject.SetScrapValue(5);
+        // }
+
+        DropItemClientRpc(dropObjectNetworkObject);
+    }
+
+    [ClientRpc]
+    public void DropItemClientRpc(NetworkObjectReference dropObjectRef)
+    {
+        NetworkObject dropNetworkObject = dropObjectRef;
+        GrabbableObject gObject = dropNetworkObject.GetComponent<GrabbableObject>();
         if (gObject != null)
         {
             gObject.fallTime = 1f;
             gObject.hasHitGround = true;
         }
 
-        Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
+        Pumpkin pumpkin = dropNetworkObject.GetComponent<Pumpkin>();
         if (pumpkin != null)
         {
             pumpkin.rotAmount = rotAmount;
@@ -1133,14 +1158,6 @@ public class Scarecrow : EnemyAI
         {
             gObject.SetScrapValue(5);
         }
-
-        DropItemClientRpc(dropObjectNetworkObject);
-    }
-
-    [ClientRpc]
-    public void DropItemClientRpc(NetworkObjectReference dropObject)
-    {
-        dropObjectRef = dropObject;
     }
 
     public void DropItem()
