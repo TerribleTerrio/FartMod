@@ -28,7 +28,7 @@ public class Blowtorch : AnimatedItem
         }
     }
 
-    public void DamageWithFlame(int force)
+    public void DamageWithFlame()
     {
         //CHECK FOR COLLIDERS
         Collider[] colliders = checkColliders();
