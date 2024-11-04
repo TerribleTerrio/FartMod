@@ -1116,43 +1116,40 @@ public class Scarecrow : EnemyAI
         GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, StartOfRound.Instance.propsContainer);
         NetworkObject dropObjectNetworkObject = dropObject.GetComponent<NetworkObject>();
         dropObjectNetworkObject.Spawn();
-        // GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
-        // if (gObject != null)
-        // {
-        //     gObject.fallTime = 1f;
-        //     gObject.hasHitGround = true;
-        // }
 
-        // Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
-        // if (pumpkin != null)
-        // {
-        //     pumpkin.rotAmount = rotAmount;
-        //     pumpkin.SetScrapValue(currentValue);
-        // }
-        // else if (gObject != null)
-        // {
-        //     gObject.SetScrapValue(5);
-        // }
+        int value = 0;
+        float rot = 0f;
+        GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
+        Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
+        if (pumpkin != null)
+        {
+            value = currentValue;
+            rot = rotAmount;
+        }
+        else if (gObject != null)
+        {
+            value = 5;
+        }
 
-        DropItemClientRpc(dropObjectNetworkObject);
+        DropItemClientRpc(dropObjectNetworkObject, value, rot);
     }
 
     [ClientRpc]
-    public void DropItemClientRpc(NetworkObjectReference dropObjectRef)
+    public void DropItemClientRpc(NetworkObjectReference dropObjectRef, int value = 0, float rot = 0f)
     {
         NetworkObject dropNetworkObject = dropObjectRef;
         GrabbableObject gObject = dropNetworkObject.GetComponent<GrabbableObject>();
         if (gObject != null)
         {
-            gObject.fallTime = 1f;
-            gObject.hasHitGround = true;
+            gObject.startFallingPosition = gObject.transform.position;
+            gObject.FallToGround();
         }
 
         Pumpkin pumpkin = dropNetworkObject.GetComponent<Pumpkin>();
         if (pumpkin != null)
         {
-            pumpkin.rotAmount = rotAmount;
-            pumpkin.SetScrapValue(currentValue);
+            pumpkin.rotAmount = rot;
+            pumpkin.SetScrapValue(value);
         }
         else if (gObject != null)
         {
