@@ -1109,64 +1109,39 @@ public class Scarecrow : EnemyAI
         base.KillEnemy(destroy);
     }
 
+    public void DropItem()
+    {
+        if (base.IsOwner)
+        {
+            DropItemServerRpc();
+        }
+    }
+
     [ServerRpc]
     public void DropItemServerRpc()
     {
         Debug.Log("Called DropItemServerRpc!");
-        GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, StartOfRound.Instance.propsContainer);
+        GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.spawnedScrapContainer);
+        dropObject.GetComponent<NetworkObject>().Spawn();
 
+        DropItemClientRpc(dropObjectRef, currentValue, rotAmount);
+    }
+
+    [ClientRpc]
+    public void DropItemClientRpc(NetworkObjectReference dropObjectRef, int value = 0, float rot = 0f)
+    {
+        GameObject dropObject = dropObjectRef;
         GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
-        if (gObject != null)
-        {
-            gObject.startFallingPosition = gObject.transform.position;
-            gObject.FallToGround();
-        }
 
         Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
         if (pumpkin != null)
         {
-            pumpkin.SetScrapValue(currentValue);
-            pumpkin.itemAnimator.SetFloat("rot", rotAmount);
+            pumpkin.SetScrapValue(value);
+            pumpkin.itemAnimator.SetFloat("rot", rot);
         }
         else if (gObject != null)
         {
             gObject.SetScrapValue(5);
-        }
-
-        NetworkObject dropObjectNetworkObject = dropObject.GetComponent<NetworkObject>();
-        dropObjectNetworkObject.Spawn();
-
-        // DropItemClientRpc(dropObjectNetworkObject, value, rot);
-    }
-
-    // [ClientRpc]
-    // public void DropItemClientRpc(NetworkObjectReference dropObjectRef, int value = 0, float rot = 0f)
-    // {
-    //     NetworkObject dropNetworkObject = dropObjectRef;
-    //     GrabbableObject gObject = dropNetworkObject.GetComponent<GrabbableObject>();
-    //     if (gObject != null)
-    //     {
-    //         gObject.startFallingPosition = gObject.transform.position;
-    //         gObject.FallToGround();
-    //     }
-
-    //     Pumpkin pumpkin = dropNetworkObject.GetComponent<Pumpkin>();
-    //     if (pumpkin != null)
-    //     {
-    //         pumpkin.rotAmount = rot;
-    //         pumpkin.SetScrapValue(value);
-    //     }
-    //     else if (gObject != null)
-    //     {
-    //         gObject.SetScrapValue(5);
-    //     }
-    // }
-
-    public void DropItem()
-    {
-        if (base.IsServer)
-        {
-            DropItemServerRpc();
         }
     }
 
