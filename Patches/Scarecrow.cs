@@ -19,8 +19,6 @@ public class Scarecrow : EnemyAI
 
     public GameObject zapItemPrefab;
 
-    private NetworkObjectReference dropObjectRef;
-
     public Transform dropItemTransform;
 
     public Transform meshContainer;
@@ -1123,6 +1121,7 @@ public class Scarecrow : EnemyAI
         Debug.Log("Called DropItemServerRpc!");
         GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.spawnedScrapContainer);
         dropObject.GetComponent<NetworkObject>().Spawn();
+        NetworkObjectReference dropObjectRef = dropObject.GetComponent<NetworkObject>();
 
         DropItemClientRpc(dropObjectRef, currentValue, rotAmount);
     }
@@ -1130,7 +1129,8 @@ public class Scarecrow : EnemyAI
     [ClientRpc]
     public void DropItemClientRpc(NetworkObjectReference dropObjectRef, int value = 0, float rot = 0f)
     {
-        GameObject dropObject = dropObjectRef;
+        NetworkObject dropObjectNetworkObject = dropObjectRef;
+        GameObject dropObject = dropObjectNetworkObject.gameObject;
         GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
 
         Pumpkin pumpkin = dropObject.GetComponent<Pumpkin>();
