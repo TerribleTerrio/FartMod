@@ -1091,7 +1091,6 @@ public class Scarecrow : EnemyAI
         }
         else
         {
-            dropItemPrefab = zapItemPrefab;
             creatureAnimator.SetTrigger("Explode");
         }
     }
@@ -1110,7 +1109,6 @@ public class Scarecrow : EnemyAI
             {
                 //BEHAVIOUR WHEN STUNNED BY GUN
                 creatureAnimator.SetTrigger("Electrocute");
-                dropItemPrefab = zapItemPrefab;
             }
             else
             {
@@ -1135,10 +1133,19 @@ public class Scarecrow : EnemyAI
     }
 
     [ServerRpc]
-    public void DropItemServerRpc()
+    public void DropItemServerRpc(bool zapped = false)
     {
         Debug.Log("Called DropItemServerRpc!");
-        GameObject dropObject = Instantiate(dropItemPrefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.spawnedScrapContainer);
+        GameObject prefab;
+        if (zapped)
+        {
+            prefab = zapItemPrefab;
+        }
+        else
+        {
+            prefab = dropItemPrefab;
+        }
+        GameObject dropObject = Instantiate(prefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.spawnedScrapContainer);
         dropObject.GetComponent<NetworkObject>().Spawn();
         NetworkObjectReference dropObjectRef = dropObject.GetComponent<NetworkObject>();
 
@@ -1150,16 +1157,16 @@ public class Scarecrow : EnemyAI
     {
         NetworkObject dropObjectNetworkObject = dropObjectRef;
         GameObject dropObject = dropObjectNetworkObject.gameObject;
-        AnimatedItem gObject = dropObject.GetComponent<AnimatedItem>();
+        AnimatedItem aObject = dropObject.GetComponent<AnimatedItem>();
 
-        if (gObject.itemProperties.itemName == "Rotten Pumpkin")
+        if (aObject.itemProperties.itemName == "Rotten Pumpkin")
         {
-            gObject.SetScrapValue(value);
-            gObject.itemAnimator.SetFloat("rot", rot);
+            aObject.SetScrapValue(value);
+            aObject.itemAnimator.SetFloat("rot", rot);
         }
         else if (dropObject.GetComponent<GrabbableObject>() != null)
         {
-            gObject.SetScrapValue(5);
+            dropObject.GetComponent<GrabbableObject>().SetScrapValue(5);
         }
     }
 
