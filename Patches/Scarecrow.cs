@@ -1124,11 +1124,11 @@ public class Scarecrow : EnemyAI
         base.KillEnemy(destroy);
     }
 
-    public void DropItem()
+    public void DropItem(bool zapped = false)
     {
         if (base.IsOwner)
         {
-            DropItemServerRpc();
+            DropItemServerRpc(zapped);
         }
     }
 
@@ -1157,16 +1157,20 @@ public class Scarecrow : EnemyAI
     {
         NetworkObject dropObjectNetworkObject = dropObjectRef;
         GameObject dropObject = dropObjectNetworkObject.gameObject;
+        GrabbableObject gObject = dropObject.GetComponent<GrabbableObject>();
         AnimatedItem aObject = dropObject.GetComponent<AnimatedItem>();
 
-        if (aObject.itemProperties.itemName == "Rotten Pumpkin")
+        if (aObject != null)
         {
-            aObject.SetScrapValue(value);
-            aObject.itemAnimator.SetFloat("rot", rot);
+            if (aObject.itemProperties.itemName == "Rotten Pumpkin")
+            {
+                aObject.SetScrapValue(value);
+                aObject.itemAnimator.SetFloat("rot", rot);
+            }
         }
-        else if (dropObject.GetComponent<GrabbableObject>() != null)
+        else if (gObject != null)
         {
-            dropObject.GetComponent<GrabbableObject>().SetScrapValue(5);
+            gObject.SetScrapValue(5);
         }
     }
 
