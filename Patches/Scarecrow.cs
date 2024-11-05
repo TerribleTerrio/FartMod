@@ -637,7 +637,7 @@ public class Scarecrow : EnemyAI
                                 tweakOutTimer = tweakOutCooldown;
                                 if (Random.Range(0f,100f) < tweakOutChance)
                                 {
-                                    TweakOut(playersInRange[0]);
+                                    TweakOutServerRpc((int)playersInRange[0].playerClientId);
                                 }
                             }
                         }
@@ -768,7 +768,7 @@ public class Scarecrow : EnemyAI
                         tweakOutTimer = tweakOutCooldown;
                         if (Random.Range(0f,100f) < tweakOutChance)
                         {
-                            TweakOut(playersInRangeWithLineOfSight[0]);
+                            TweakOutServerRpc((int)playersInRangeWithLineOfSight[0].playerClientId);
                         }
                     }
                 }
@@ -986,13 +986,32 @@ public class Scarecrow : EnemyAI
         Debug.Log($"Scarecrow scared player {player.playerUsername}.");
     }
 
-    public void TweakOut(PlayerControllerB player)
+    [ServerRpc(RequireOwnership = false)]
+    public void TweakOutServerRpc(int playerId)
     {
+        int tweakSound = Random.Range(0, tweakOutSounds.Length);
+        TweakOutClientRpc(playerId, tweakSound);
+    }
+
+    [ClientRpc]
+    public void TweakOutClientRpc(int playerId, int tweakSound)
+    {
+        TweakOut(playerId, tweakSound);
+    }
+
+    public void TweakOut(int playerId, int tweakSound)
+    {
+        PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
+
         Debug.Log("Scarecrow tweaked out!");
-        AudioClip clip = tweakOutSounds[Random.Range(0, tweakOutSounds.Length)];
+        AudioClip clip = tweakOutSounds[tweakSound];
         tweakOutAudio.PlayOneShot(clip);
-        // player.insanityLevel += player.maxInsanityLevel * 0.1f;
         creatureAnimator.SetTrigger("TweakOut");
+
+        if (GameNetworkManager.Instance.localPlayerController == player)
+        {
+            player.insanityLevel += player.maxInsanityLevel * 0.1f;
+        }
     }
 
     public void FacePosition(Vector3 lookPosition)
