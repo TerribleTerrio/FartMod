@@ -35,7 +35,7 @@ public class HandMirror : GrabbableObject
             if (previousPlayerHeldBy.isPlayerDead)
             {
                 CancelLookCloser();
-                SetAnimatorAsOverrideServerRpc(setOverride: false);
+                // SetAnimatorAsOverrideServerRpc(setOverride: false);
                 RemoveCameraTexture();
                 reflectionCamera.enabled = false;
             }
@@ -62,7 +62,7 @@ public class HandMirror : GrabbableObject
 	{
 		base.EquipItem();
 		previousPlayerHeldBy = playerHeldBy;
-        SetAnimatorAsOverrideServerRpc(setOverride: true);
+        // SetAnimatorAsOverrideServerRpc(setOverride: true);
         CreateCameraTexture();
         reflectionCamera.enabled = true;
 	}
@@ -72,7 +72,7 @@ public class HandMirror : GrabbableObject
 		base.DiscardItem();
 		previousPlayerHeldBy.activatingItem = false;
 		CancelLookCloser();
-        SetAnimatorAsOverrideServerRpc(setOverride: false);
+        // SetAnimatorAsOverrideServerRpc(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
 	}
@@ -82,7 +82,7 @@ public class HandMirror : GrabbableObject
 		base.PocketItem();
 		playerHeldBy.activatingItem = false;
 		CancelLookCloser();
-        SetAnimatorAsOverrideServerRpc(setOverride: false);
+        // SetAnimatorAsOverrideServerRpc(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
 	}
