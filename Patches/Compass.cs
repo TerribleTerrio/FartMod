@@ -106,8 +106,7 @@ public class Compass : AnimatedItem, IHittable
         noiseAudio.volume = noiseAmount;
     }
 
-    [ServerRpc]
-    public void AddDetectedObjectServerRpc(Collider other)
+    public void AddDetectedObject(Collider other)
     {
         GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
         if (gObject != null)
@@ -116,46 +115,22 @@ public class Compass : AnimatedItem, IHittable
             {
                 if (gObject.itemProperties.itemName == detectableItems[i].itemName)
                 {
-                    NetworkObjectReference networkObjectReference = gObject.NetworkObject;
-                    AddDetectedObjectClientRpc(networkObjectReference);
+                    Debug.Log($"[COMPASS]: Added {gObject} to detected objects!");
+                    detectedObjects.Add(gObject);
                 }
             }
         }
     }
 
-    [ClientRpc]
-    public void AddDetectedObjectClientRpc(NetworkObjectReference networkObjectReference)
-    {
-        GameObject detectedObject = networkObjectReference;
-        GrabbableObject gObject = detectedObject.GetComponent<GrabbableObject>();
-        if (gObject != null)
-        {
-            detectedObjects.Add(gObject);
-        }
-    }
-
-    [ServerRpc]
-    public void RemoveDetectedObjectServerRpc(Collider other)
+    public void RemoveDetectedObject(Collider other)
     {
         GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
         if (gObject != null)
         {
             if (detectedObjects.Contains(gObject))
             {
-                NetworkObjectReference networkObjectReference = gObject.NetworkObject;
-                RemoveDetectedObjectClientRpc(networkObjectReference);
+                detectedObjects.Remove(gObject);
             }
-        }
-    }
-
-    [ClientRpc]
-    public void RemoveDetectedObjectClientRpc(NetworkObjectReference networkObjectReference)
-    {
-        GameObject detectedObject = networkObjectReference;
-        GrabbableObject gObject = detectedObject.GetComponent<GrabbableObject>();
-        if (gObject != null)
-        {
-            detectedObjects.Remove(gObject);
         }
     }
 
@@ -218,7 +193,7 @@ public class Compass : AnimatedItem, IHittable
             {
                 return closestObjectInCheck;
             }
-            
+
             float checkObjectDistance = Vector3.Distance(detectedObjects[0].transform.position, base.transform.position);
             for (int i = 1; i < detectedObjects.Count; i++)
             {
