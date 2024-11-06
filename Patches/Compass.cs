@@ -18,6 +18,10 @@ public class Compass : AnimatedItem, IHittable
 
     public GameObject needleBone;
 
+    public float offsetCoolDownMin;
+
+    public float offsetCoolDownMax;
+
     private float rotationCurrent;
 
     private float offset;
@@ -70,7 +74,6 @@ public class Compass : AnimatedItem, IHittable
             if (offsetTimer <= 0)
             {
                 ChangeOffsetServerRpc();
-                offsetTimer = 300;
             }
         }
 
@@ -140,6 +143,7 @@ public class Compass : AnimatedItem, IHittable
     [ServerRpc]
     public void ChangeOffsetServerRpc()
     {
+        offsetTimer = Random.Range(offsetCoolDownMin, offsetCoolDownMax);
         float newOffset = Random.Range(0f,360f);
         ChangeOffsetClientRpc(newOffset);
     }
