@@ -34,7 +34,7 @@ public class HandMirror : GrabbableObject
         {
             if (previousPlayerHeldBy.isPlayerDead)
             {
-                CancelLookCloser();
+                // CancelLookCloser();
                 // SetAnimatorAsOverrideServerRpc(setOverride: false);
                 RemoveCameraTexture();
                 reflectionCamera.enabled = false;
@@ -48,15 +48,15 @@ public class HandMirror : GrabbableObject
         reflectionCamera.enabled = false;
     }
 
-    public override void ItemActivate(bool used, bool buttonDown = true)
-	{
-		base.ItemActivate(used, buttonDown);
-		if (!(playerHeldBy == null) && base.IsOwner)
-		{
-			playerHeldBy.playerBodyAnimator.SetBool("HoldMask", buttonDown);
-			playerHeldBy.activatingItem = buttonDown;
-        }
-	}
+    // public override void ItemActivate(bool used, bool buttonDown = true)
+	// {
+	// 	base.ItemActivate(used, buttonDown);
+	// 	if (!(playerHeldBy == null) && base.IsOwner)
+	// 	{
+	// 		playerHeldBy.playerBodyAnimator.SetBool("HoldMask", buttonDown);
+	// 		playerHeldBy.activatingItem = buttonDown;
+    //     }
+	// }
 
 	public override void EquipItem()
 	{
@@ -71,7 +71,7 @@ public class HandMirror : GrabbableObject
 	{
 		base.DiscardItem();
 		previousPlayerHeldBy.activatingItem = false;
-		CancelLookCloser();
+		// CancelLookCloser();
         // SetAnimatorAsOverrideServerRpc(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
@@ -81,7 +81,7 @@ public class HandMirror : GrabbableObject
 	{
 		base.PocketItem();
 		playerHeldBy.activatingItem = false;
-		CancelLookCloser();
+		// CancelLookCloser();
         // SetAnimatorAsOverrideServerRpc(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
@@ -137,14 +137,14 @@ public class HandMirror : GrabbableObject
     //     }
     // }
 
-    private void CancelLookCloser()
-    {
-		if (previousPlayerHeldBy != null)
-		{
-			previousPlayerHeldBy.activatingItem = false;
-			previousPlayerHeldBy.playerBodyAnimator.SetBool("HoldMask", value: false);
-		}
-    }
+    // private void CancelLookCloser()
+    // {
+	// 	if (previousPlayerHeldBy != null)
+	// 	{
+	// 		previousPlayerHeldBy.activatingItem = false;
+	// 		previousPlayerHeldBy.playerBodyAnimator.SetBool("HoldMask", value: false);
+	// 	}
+    // }
 
     private void CreateCameraTexture()
     {
