@@ -78,26 +78,28 @@ public class Compass : AnimatedItem, IHittable
 
         //SET NOISE AMOUNT ACCORDING TO CLOSEST OBJECT PROXIMITY
         float noiseAmount = itemAnimator.GetFloat("NoiseAmount");
-        float targetNoiseAmount;
-        float closestObjectDistance = Vector3.Distance(closestObject.transform.position, transform.position);
 
-        if (closestObject != null && closestObjectDistance < detectRange)
+        if (closestObject != null)
         {
+            float closestObjectDistance = Vector3.Distance(closestObject.transform.position, transform.position);
+
             if (closestObjectDistance < detectRange)
             {
-                Debug.Log("[COMPASS]: Closest object in range!");
+                if (closestObjectDistance < detectRange)
+                {
+                    Debug.Log("[COMPASS]: Closest object in range!");
+                }
+                noiseAmount = Remap(closestObjectDistance, 0f, detectRange, 1f, 0f);
             }
-            targetNoiseAmount = Remap(closestObjectDistance, 0f, detectRange, 1f, 0f);
         }
         else
         {
-            targetNoiseAmount = 0f;
+            noiseAmount = 0f;
         }
 
-        Debug.Log($"[COMPASS]: Layer weight set to {targetNoiseAmount}");
+        Debug.Log($"[COMPASS]: Layer weight set to {noiseAmount}");
 
         // noiseAmount = Mathf.Lerp(noiseAmount, targetNoiseAmount, Time.deltaTime);
-        noiseAmount = targetNoiseAmount;
         itemAnimator.SetLayerWeight(1, noiseAmount);
         noiseAudio.volume = noiseAmount;
 
