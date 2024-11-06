@@ -94,7 +94,10 @@ public class Compass : AnimatedItem, IHittable
             targetNoiseAmount = 0f;
         }
 
-        noiseAmount = Mathf.Lerp(noiseAmount, targetNoiseAmount, Time.deltaTime);
+        Debug.Log($"[COMPASS]: Layer weight set to {targetNoiseAmount}");
+
+        // noiseAmount = Mathf.Lerp(noiseAmount, targetNoiseAmount, Time.deltaTime);
+        noiseAmount = targetNoiseAmount;
         itemAnimator.SetLayerWeight(1, noiseAmount);
         noiseAudio.volume = noiseAmount;
 
