@@ -108,15 +108,20 @@ public class Compass : AnimatedItem, IHittable
 
     public void AddDetectedObject(Collider other)
     {
-        GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
-        if (gObject != null)
+        if (IsOwner)
         {
-            for (int i = 0; i < detectableItems.Length; i++)
+            Debug.Log($"[COMPASS]: Collider {other} entered detected range.");
+            GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
+            if (gObject != null)
             {
-                if (gObject.itemProperties.itemName == detectableItems[i].itemName)
+                Debug.Log($"[COMPASS]: Collider had attached GrabbableObject {gObject}.");
+                for (int i = 0; i < detectableItems.Length; i++)
                 {
-                    Debug.Log($"[COMPASS]: Added {gObject} to detected objects!");
-                    detectedObjects.Add(gObject);
+                    if (gObject.itemProperties.itemName == detectableItems[i].itemName)
+                    {
+                        Debug.Log($"[COMPASS]: Added {gObject} to detected objects!");
+                        detectedObjects.Add(gObject);
+                    }
                 }
             }
         }
@@ -124,12 +129,16 @@ public class Compass : AnimatedItem, IHittable
 
     public void RemoveDetectedObject(Collider other)
     {
-        GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
-        if (gObject != null)
+        if (IsOwner)
         {
-            if (detectedObjects.Contains(gObject))
+            GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
+            if (gObject != null)
             {
-                detectedObjects.Remove(gObject);
+                if (detectedObjects.Contains(gObject))
+                {
+                    Debug.Log($"[COMPASS]: Removed {gObject} from detected objects!");
+                    detectedObjects.Remove(gObject);
+                }
             }
         }
     }

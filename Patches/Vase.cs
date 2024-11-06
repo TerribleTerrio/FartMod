@@ -57,7 +57,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 if (StartOfRound.Instance.allPlayerScripts[i].HasLineOfSightToPosition(transform.position))
                 {
                     hasBeenSeen = true;
-                    Debug.Log($"Vase seen by {StartOfRound.Instance.allPlayerScripts[i]}.");
+                    Debug.Log($"[VASE]: Vase seen by {StartOfRound.Instance.allPlayerScripts[i]}.");
                 }
             }
         }
@@ -66,7 +66,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     public override void GrabItem()
     {
         base.GrabItem();
-        Debug.Log("Vase grabbed.");
+        Debug.Log("[VASE]: Vase grabbed.");
 
         CancelWobble();
         CancelWobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
@@ -74,7 +74,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public override void PlayDropSFX()
     {
-        Debug.Log($"Drop SFX found in item properties: {itemProperties.dropSFX}");
+        Debug.Log($"[VASE]: Drop SFX found in item properties: {itemProperties.dropSFX}");
         AudioClip[] dropSFX = new AudioClip[1];
         dropSFX[0] = itemProperties.dropSFX;
         RoundManager.Instance.PlayAudibleNoise(this.transform.position, noiseRange/4, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
@@ -135,7 +135,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     {
         base.OnHitGround();
         float fallHeight = startFallingPosition.y - targetFloorPosition.y;
-		Debug.Log($"Vase dropped: {fallHeight}");
+		Debug.Log($"[VASE]: Vase dropped: {fallHeight}");
 
         if (fallHeight > breakHeight && breakOnDrop)
         {
@@ -143,7 +143,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
         else
         {
-            Debug.Log("Vase placed safely, beginning cooldown time.");
+            Debug.Log("[VASE]: Vase placed safely, beginning cooldown time.");
             safePlaced = true;
             StartCoroutine(placeSafely(safePlaceTime));
         }
@@ -176,7 +176,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             break;
         }
 
-        Debug.Log("Vase started wobbling.");
+        Debug.Log("[VASE]: Vase started wobbling.");
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -224,7 +224,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public void Shatter(bool explode = false)
     {
-        Debug.Log("Vase shattered!");
+        Debug.Log("[VASE]: Vase shattered!");
 
         //SET FLAGS
         if (playerHeldBy != null)
@@ -330,81 +330,89 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         if (itemAnimator.GetBool("Wobbling"))
         {
-            Debug.Log("Wobbling aborted, vase is already wobbling.");
+            Debug.Log("[VASE]: Wobbling aborted, vase is already wobbling.");
             return;
         }
 
         if (otherObject.layer != 3 && otherObject.layer != 19 && otherObject.layer != 30 && otherObject.layer != 6)
         {
-            //Debug.Log($"Detected collider object {otherObject} is not of type that interacts with vase.");
+            //Debug.Log($"[VASE]: Detected collider object {otherObject} is not of type that interacts with vase.");
             return;
         }
         else if (isHeld || isHeldByEnemy)
         {
-            Debug.Log("Wobbling aborted, vase is being held.");
+            Debug.Log("[VASE]: Wobbling aborted, vase is being held.");
             return;
         }
         else if (!grabbable)
         {
-            Debug.Log("Wobbling aborted, vase is not grabbable.");
+            Debug.Log("[VASE]: Wobbling aborted, vase is not grabbable.");
             return;
         }
         else if (base.isInShipRoom && !breakInShip)
         {
-            Debug.Log("Wobbling aborted, break in ship disabled.");
+            Debug.Log("[VASE]: Wobbling aborted, break in ship disabled.");
             return;
         }
         else if (!breakInOrbit)
         {
             if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
             {
-                Debug.Log("Wobbling aborted, break in orbit disabled.");
+                Debug.Log("[VASE]: Wobbling aborted, break in orbit disabled.");
                 return;
             }
         }
         else if (!hasHitGround)
         {
-            Debug.Log("Wobbling aborted, vase is midair.");
+            Debug.Log("[VASE]: Wobbling aborted, vase is midair.");
             return;
         }
         else if (itemAnimator.GetBool("Shattered"))
         {
-            Debug.Log("Wobbling aborted, vase is shattered.");
+            Debug.Log("[VASE]: Wobbling aborted, vase is shattered.");
             return;
         }
         else if (!hasBeenSeen)
         {
-            Debug.Log("Wobbling aborted, vase has not been seen yet.");
+            Debug.Log("[VASE]: Wobbling aborted, vase has not been seen yet.");
+            return;
+        }
+
+        //CHECK IF WALL BETWEEN VASE AND COLLIDER
+        RaycastHit hitInfo;
+        if (Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+        {
+            Debug.Log("[VASE]: [VASE]: Wobbling aborted, wall between vase and collider.");
             return;
         }
 
         //PLAYER COLLISION
         if (otherObject.layer == 3 && otherObject.GetComponent<PlayerControllerB>() != null)
         {
-            Debug.Log("Vase bumped by player.");
+            Debug.Log("[VASE]: Vase bumped by player.");
             PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
 
             if (safePlaced)
             {
-                Debug.Log("Vase was in safely placed state.");
+                Debug.Log("[VASE]: Vase was in safely placed state.");
                 Wobble(0);
                 WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
             }
             else if (player.isSprinting)
             {
-                Debug.Log("Player was sprinting.");
+                Debug.Log("[VASE]: Player was sprinting.");
                 Wobble(2);
                 WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
             }
             else if (player.isCrouching)
             {
-                Debug.Log("Player was crouching.");
+                Debug.Log("[VASE]: Player was crouching.");
                 Wobble(0);
                 WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
             }
             else
             {
-                Debug.Log("Player was walking.");
+                Debug.Log("[VASE]: Player was walking.");
                 Wobble(1);
                 WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
             }
@@ -412,7 +420,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             if (!(isHeld || isHeldByEnemy || !hasHitGround))
             {
                 //PHYSICS FORCE
-                RaycastHit hitInfo;
                 PlayerControllerB playerControllerB = player;
 
                 if (physicsForce > 0f && !Physics.Linecast(base.transform.position, playerControllerB.transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
@@ -438,7 +445,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         else if (otherObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
         {
             EnemyAICollisionDetect enemy = otherObject.GetComponent<EnemyAICollisionDetect>();
-            Debug.Log($"Vase bumped by enemytype {enemy.mainScript.enemyType.enemyName}.");
+            Debug.Log($"[VASE]: Vase bumped by enemytype {enemy.mainScript.enemyType.enemyName}.");
 
             if (enemy.mainScript.enemyType.enemyName == "Barber")
             {
@@ -653,7 +660,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         //ITEM COLLISION
         else if (otherObject.layer == 6 && otherObject.GetComponent<GrabbableObject>() != null)
         {
-            Debug.Log("Bumped by prop.");
+            Debug.Log("[VASE]: Bumped by prop.");
             GrabbableObject gObject = otherObject.GetComponent<GrabbableObject>();
             if (gObject.itemProperties.itemName == "Soccer ball")
             {

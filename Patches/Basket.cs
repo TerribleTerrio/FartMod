@@ -69,12 +69,12 @@ public class Basket : AnimatedItem
 
                 if (itemActivateTimer <= 0)
                 {
-                    Debug.Log("[BASKET]: Item activate timer reached 0.");
+                    Debug.Log("[BASKET]: [BASKET]: Item activate timer reached 0.");
                     itemActivateTimer = Random.Range(itemActivateTimerMin, itemActivateTimerMax);
                     float c = Random.Range(0f,100f);
                     if (c < itemActivateChance)
                     {
-                        Debug.Log("[BASKET]: Item activated!");
+                        Debug.Log("[BASKET]: [BASKET]: Item activated!");
                         GrabbableObject gObject = basketObject.GetComponent<GrabbableObject>();
                         if (gObject != null)
                         {
@@ -158,6 +158,8 @@ public class Basket : AnimatedItem
 
         if (basketObject != null)
         {
+            basketObject.grabbable = false;
+            basketObject.grabbableToEnemies = false;
             basketObject.EnablePhysics(enable: true);
             playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (basketObject.itemProperties.weight - 1f), 1f, 10f);
             if (basketObject.gameObject.GetComponent<AnimatedItem>() != null)
@@ -187,7 +189,7 @@ public class Basket : AnimatedItem
 
     public override void OnPlaceObject()
     {
-        Debug.Log("Basket placed.");
+        Debug.Log("[BASKET]: Basket placed.");
         desk = Object.FindObjectOfType<DepositItemsDesk>();
         base.OnPlaceObject();
         if (basketObject != null)
@@ -199,7 +201,7 @@ public class Basket : AnimatedItem
             {
                 StopAnimatedItem();
             }
-            Debug.Log("Basket placed while holding item.");
+            Debug.Log("[BASKET]: Basket placed while holding item.");
 
             if (desk != null && desk.itemsOnCounter.Contains(this) && !desk.itemsOnCounter.Contains(basketObject))
             {
@@ -208,8 +210,8 @@ public class Basket : AnimatedItem
 
                 for (int i = 0; i < desk.itemsOnCounter.Count; i++)
                 {
-                    Debug.Log($"Desk item {i}: {desk.itemsOnCounter[i]}");
-                    Debug.Log($"Desk network object {i}: {desk.itemsOnCounterNetworkObjects[i]}");
+                    Debug.Log($"[BASKET]: Desk item {i}: {desk.itemsOnCounter[i]}");
+                    Debug.Log($"[BASKET]: Desk network object {i}: {desk.itemsOnCounterNetworkObjects[i]}");
                 }
             }
         }
@@ -235,7 +237,7 @@ public class Basket : AnimatedItem
 
     public override void ItemInteractLeftRight(bool right)
     {
-        Debug.Log("Basket used.");
+        Debug.Log("[BASKET]: Basket used.");
         base.ItemInteractLeftRight(right);
 
         if (right)
@@ -260,10 +262,10 @@ public class Basket : AnimatedItem
         {
             if (basketObject == null)
             {
-                Debug.Log("No item in basket, attempting detection for item to grab.");
+                Debug.Log("[BASKET]: No item in basket, attempting detection for item to grab.");
                 if (playerHeldBy == null)
                 {
-                    Debug.Log("Aborting item detection for basket, player dropped basket.");
+                    Debug.Log("[BASKET]: Aborting item detection for basket, player dropped basket.");
                     return;
                 }
 
@@ -279,13 +281,13 @@ public class Basket : AnimatedItem
                         }
                         else
                         {
-                            Debug.Log($"Found object {gObject}.");
+                            Debug.Log($"[BASKET]: Found object {gObject}.");
                             PutObjectInBasketAndSync(gObject);
                         }
                     }
                     else
                     {
-                        Debug.Log("No item found by basket.");
+                        Debug.Log("[BASKET]: No item found by basket.");
                     }
                 }
             }
@@ -298,10 +300,10 @@ public class Basket : AnimatedItem
         {
             if (basketObject != null)
             {
-                Debug.Log("Item in basket, attempting to drop.");
+                Debug.Log("[BASKET]: Item in basket, attempting to drop.");
                 if (playerHeldBy == null)
                 {
-                    Debug.Log("Aborting item item drop for basket, player dropped basket.");
+                    Debug.Log("[BASKET]: Aborting item item drop for basket, player dropped basket.");
                     return;
                 }
                 else
@@ -384,7 +386,7 @@ public class Basket : AnimatedItem
 
         //ADD WEIGHT TO PLAYER
         playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (basketObject.itemProperties.weight - 1f), 1f, 10f);
-        Debug.Log($"Added {basketObject.itemProperties.weight} to player weight.");
+        Debug.Log($"[BASKET]: Added {basketObject.itemProperties.weight} to player weight.");
     }
 
     public void RemoveObjectFromBasketAndSync()
