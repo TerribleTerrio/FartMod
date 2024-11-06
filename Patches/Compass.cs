@@ -79,10 +79,10 @@ public class Compass : AnimatedItem, IHittable
         //SET NOISE AMOUNT ACCORDING TO CLOSEST OBJECT PROXIMITY
         float noiseAmount = itemAnimator.GetFloat("NoiseAmount");
         float targetNoiseAmount;
+        float closestObjectDistance = Vector3.Distance(closestObject.transform.position, transform.position);
 
-        if (closestObject != null)
+        if (closestObject != null && closestObjectDistance < detectRange)
         {
-            float closestObjectDistance = Vector3.Distance(closestObject.transform.position, transform.position);
             if (closestObjectDistance < detectRange)
             {
                 Debug.Log("[COMPASS]: Closest object in range!");
@@ -147,7 +147,7 @@ public class Compass : AnimatedItem, IHittable
     {
         changeOffset = false;
         float coolDownTime = Random.Range(offsetCoolDownMin, offsetCoolDownMax);
-        StartCoroutine(Cooldown(changeOffset, coolDownTime));
+        StartCoroutine(ChangeOffsetCooldown(coolDownTime));
         float newOffset = Random.Range(0f,360f);
         ChangeOffsetClientRpc(newOffset);
     }
@@ -158,12 +158,6 @@ public class Compass : AnimatedItem, IHittable
         itemAnimator.SetTrigger("Spin");
         targetOffset = newOffset;
         Debug.Log($"[COMPASS]: Offset set to {newOffset}");
-    }
-
-    private IEnumerator Cooldown(bool boolToSet, float time)
-    {
-        yield return new WaitForSeconds(time);
-        boolToSet = true;
     }
 
     // public void SetDirection()
@@ -208,10 +202,10 @@ public class Compass : AnimatedItem, IHittable
         }
     }
 
-    private IEnumerator Cooldown(float time, Coroutine cooldown)
+    private IEnumerator ChangeOffsetCooldown(float time)
     {
         yield return new WaitForSeconds(time);
-        cooldown = null;
+        changeOffset = false;
     }
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
