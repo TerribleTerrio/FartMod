@@ -26,7 +26,7 @@ public class Compass : AnimatedItem, IHittable
 
     private float offset;
 
-    private float offsetTimer;
+    private bool changeOffset = true;
 
     private float targetOffset;
 
@@ -70,8 +70,7 @@ public class Compass : AnimatedItem, IHittable
         //IF NOT ON COOLDOWN, SET RANDOM OFFSET
         if (base.IsOwner)
         {
-            offsetTimer--;
-            if (offsetTimer <= 0)
+            if (changeOffset == true)
             {
                 ChangeOffsetServerRpc();
             }
@@ -143,7 +142,9 @@ public class Compass : AnimatedItem, IHittable
     [ServerRpc]
     public void ChangeOffsetServerRpc()
     {
-        offsetTimer = Random.Range(offsetCoolDownMin, offsetCoolDownMax);
+        changeOffset = false;
+        float coolDownTime = Random.Range(offsetCoolDownMin, offsetCoolDownMax);
+        StartCoroutine(Cooldown(changeOffset, coolDownTime));
         float newOffset = Random.Range(0f,360f);
         ChangeOffsetClientRpc(newOffset);
     }
@@ -154,6 +155,12 @@ public class Compass : AnimatedItem, IHittable
         itemAnimator.SetTrigger("Spin");
         targetOffset = newOffset;
         Debug.Log($"[COMPASS]: Offset set to {newOffset}");
+    }
+
+    private IEnumerator Cooldown(bool boolToSet, float time)
+    {
+        yield return new WaitForSeconds(time);
+        boolToSet = true;
     }
 
     // public void SetDirection()
