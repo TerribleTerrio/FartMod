@@ -10,15 +10,7 @@ public class Compass : AnimatedItem, IHittable
     [Header("Compass Settings")]
     public float detectRange;
 
-    private bool active;
-
     private GameObject closestObject;
-
-    private float closestObjectDistance;
-
-    private Coroutine loadItemsCoroutine;
-
-    private Coroutine changeOffsetCoroutine;
 
     public Item[] detectableItems;
 
@@ -30,7 +22,11 @@ public class Compass : AnimatedItem, IHittable
 
     private float offset;
 
+    private float offsetTimer;
+
     private float targetOffset;
+
+    private int previousNumSyncedObjects;
 
     [Space(10f)]
     [Header("Audio")]
@@ -40,31 +36,55 @@ public class Compass : AnimatedItem, IHittable
     {
         base.Start();
         rotationCurrent = transform.eulerAngles.y;
+        LoadDetectedObjectsServerRpc();
+        previousNumSyncedObjects = RoundManager.Instance.spawnedSyncedObjects.Count;
     }
 
     public override void Update()
     {
         base.Update();
 
-        // SetDirection();
-
-        if (active && loadItemsCoroutine == null && base.IsOwner)
+        //CATCH ANY TIME AN OBJECT IS ADDED OR REMOVED FROM SPAWNED SYNCED OBJECTS
+        if (previousNumSyncedObjects != RoundManager.Instance.spawnedSyncedObjects.Count)
         {
             LoadDetectedObjectsServerRpc();
-            loadItemsCoroutine = StartCoroutine(Cooldown(Random.Range(2f, 5f), loadItemsCoroutine));
+            previousNumSyncedObjects = RoundManager.Instance.spawnedSyncedObjects.Count;
         }
 
-        if (active && changeOffsetCoroutine == null && base.IsOwner)
+        GameObject prevClosestObject = closestObject;
+
+        //SET CLOSEST OBJECT
+        closestObject = ClosestObject();
+
+        if (prevClosestObject != closestObject)
         {
-            ChangeOffsetServerRpc();
-            changeOffsetCoroutine = StartCoroutine(Cooldown(Random.Range(30f,120f), changeOffsetCoroutine));
+            Debug.Log($"[COMPASS]: Closest object set to {closestObject}.");
         }
 
+        // SetDirection();
+
+        //IF NOT ON COOLDOWN, SET RANDOM OFFSET
+        if (base.IsOwner)
+        {
+            offsetTimer--;
+            if (offsetTimer <= 0)
+            {
+                ChangeOffsetServerRpc();
+                offsetTimer = 300;
+            }
+        }
+
+        //SET NOISE AMOUNT ACCORDING TO CLOSEST OBJECT PROXIMITY
         float noiseAmount = itemAnimator.GetFloat("NoiseAmount");
         float targetNoiseAmount;
 
         if (closestObject != null)
         {
+            float closestObjectDistance = Vector3.Distance(closestObject.transform.position, transform.position);
+            if (closestObjectDistance < detectRange)
+            {
+                Debug.Log("[COMPASS]: Closest object in range!");
+            }
             targetNoiseAmount = Remap(closestObjectDistance, 0f, detectRange, 1f, 0f);
         }
         else
@@ -76,8 +96,10 @@ public class Compass : AnimatedItem, IHittable
         itemAnimator.SetLayerWeight(1, noiseAmount);
         noiseAudio.volume = noiseAmount;
 
+        //LERP TO TARGET OFFSET
         offset = Mathf.Lerp(offset, targetOffset, Time.deltaTime);
 
+        //SET NEEDLE TO DIRECTION + OFFSET
         needleBone.transform.localEulerAngles = new Vector3(0f, -transform.eulerAngles.y + offset, 0f);
     }
 
@@ -85,57 +107,49 @@ public class Compass : AnimatedItem, IHittable
     public void LoadDetectedObjectsServerRpc()
     {
         detectedObjects.Clear();
-        GrabbableObject[] objectsInMap = Object.FindObjectsOfType<GrabbableObject>();
-        for (int i = 0; i < objectsInMap.Length; i++)
+        for (int i = 0; i < RoundManager.Instance.spawnedSyncedObjects.Count; i++)
         {
-            GrabbableObject gObject = objectsInMap[i];
-            for (int j = 0; j < detectableItems.Length; j++)
+            GrabbableObject gObject = RoundManager.Instance.spawnedSyncedObjects[i].GetComponent<GrabbableObject>();
+            if (gObject != null)
             {
-                if (gObject.itemProperties.itemName == detectableItems[j].itemName)
+                for (int j = 0; j < detectableItems.Length; j++)
                 {
-                    detectedObjects.Add(gObject);
-                    Debug.Log($"Compass found {gObject}!");
+                    if (gObject.itemProperties.itemName == detectableItems[j].itemName)
+                    {
+                        Debug.Log($"[COMPASS]: Server found {gObject}.");
+                        NetworkObjectReference networkObjectReference = RoundManager.Instance.spawnedSyncedObjects[i].GetComponent<NetworkObject>();
+                        AddDetectedObjectClientRpc(networkObjectReference);
+                    }
                 }
             }
         }
-
-        ClosestObject().GetComponent<NetworkObject>();
     }
 
     [ClientRpc]
-    public void LoadDetectedObjectsClientRpc()
+    public void AddDetectedObjectClientRpc(NetworkObjectReference networkObjectReference)
     {
-        detectedObjects.Clear();
-        GrabbableObject[] objectsInMap = Object.FindObjectsOfType<GrabbableObject>();
-        for (int i = 0; i < objectsInMap.Length; i++)
+        GameObject detectedObject = networkObjectReference;
+        GrabbableObject gObject = detectedObject.GetComponent<GrabbableObject>();
+        if (gObject != null)
         {
-            GrabbableObject gObject = objectsInMap[i];
-            for (int j = 0; j < detectableItems.Length; j++)
-            {
-                if (gObject.itemProperties.itemName == detectableItems[j].itemName)
-                {
-                    detectedObjects.Add(gObject);
-                    Debug.Log($"Compass found {gObject}!");
-                }
-            }
+            detectedObjects.Add(gObject);
+            Debug.Log($"[COMPASS]: Added {gObject} to detected items.");
         }
-
-        closestObject = ClosestObject();
     }
 
     [ServerRpc]
     public void ChangeOffsetServerRpc()
     {
-        float offset = Random.Range(0f,360f);
-        ChangeOffsetClientRpc(offset);
+        float newOffset = Random.Range(0f,360f);
+        ChangeOffsetClientRpc(newOffset);
     }
 
     [ClientRpc]
-    public void ChangeOffsetClientRpc(float offset)
+    public void ChangeOffsetClientRpc(float newOffset)
     {
         itemAnimator.SetTrigger("Spin");
-        targetOffset = offset;
-        changeOffsetCoroutine = StartCoroutine(Cooldown(Random.Range(30f,120f), changeOffsetCoroutine));
+        targetOffset = newOffset;
+        Debug.Log($"[COMPASS]: Offset set to {newOffset}");
     }
 
     // public void SetDirection()
@@ -162,19 +176,17 @@ public class Compass : AnimatedItem, IHittable
     {
         if (detectedObjects.Count > 0)
         {
-            GameObject closestObjectSoFar = detectedObjects[0].gameObject;
+            GameObject closestObjectInCheck = detectedObjects[0].gameObject;
             float checkObjectDistance = Vector3.Distance(detectedObjects[0].transform.position, base.transform.position);
             for (int i = 1; i < detectedObjects.Count; i++)
             {
                 if (Vector3.Distance(detectedObjects[i].transform.position, transform.position) < checkObjectDistance)
                 {
-                    closestObjectSoFar = detectedObjects[i].gameObject;
+                    closestObjectInCheck = detectedObjects[i].gameObject;
                     checkObjectDistance = Vector3.Distance(detectedObjects[i].transform.position, transform.position);
                 }
             }
-
-            Debug.Log($"Compass closest object: {closestObject}");
-            return closestObjectSoFar;
+            return closestObjectInCheck;
         }
         else
         {
@@ -188,38 +200,9 @@ public class Compass : AnimatedItem, IHittable
         cooldown = null;
     }
 
-    public void OnTriggerStay(Collider other)
-    {
-        PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
-
-        if (player != null)
-        {
-            active = true;
-        }
-    }
-
-    public override void GrabItem()
-    {
-        base.GrabItem();
-        if (base.IsOwner)
-        {
-            LoadDetectedObjectsServerRpc();
-        }
-    }
-
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
-        itemAnimator.SetTrigger("Spin");
-
-        if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
-        {
-            timesPlayedInOneSpot = 0;
-        }
-        timesPlayedInOneSpot++;
-        lastPosition = base.transform.position;
-
-        RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-        
+        ChangeOffsetServerRpc();
         return true;
 	}
 

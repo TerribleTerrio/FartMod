@@ -1,4 +1,5 @@
 using GameNetcodeStuff;
+using Unity.Netcode;
 using UnityEngine;
     
 public class HandMirror : GrabbableObject
@@ -34,7 +35,7 @@ public class HandMirror : GrabbableObject
             if (previousPlayerHeldBy.isPlayerDead)
             {
                 CancelLookCloser();
-                SetAnimatorAsDefault();
+                SetAnimatorAsOverrideServerRpc(setOverride: false);
                 RemoveCameraTexture();
                 reflectionCamera.enabled = false;
             }
@@ -61,7 +62,7 @@ public class HandMirror : GrabbableObject
 	{
 		base.EquipItem();
 		previousPlayerHeldBy = playerHeldBy;
-        SetAnimatorAsOverride();
+        SetAnimatorAsOverrideServerRpc(setOverride: true);
         CreateCameraTexture();
         reflectionCamera.enabled = true;
 	}
@@ -71,7 +72,7 @@ public class HandMirror : GrabbableObject
 		base.DiscardItem();
 		previousPlayerHeldBy.activatingItem = false;
 		CancelLookCloser();
-        SetAnimatorAsDefault();
+        SetAnimatorAsOverrideServerRpc(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
 	}
@@ -81,30 +82,60 @@ public class HandMirror : GrabbableObject
 		base.PocketItem();
 		playerHeldBy.activatingItem = false;
 		CancelLookCloser();
-        SetAnimatorAsDefault();
+        SetAnimatorAsOverrideServerRpc(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
 	}
 
-    private void SetAnimatorAsOverride()
+    [ServerRpc(RequireOwnership = false)]
+    private void SetAnimatorAsOverrideServerRpc(bool setOverride)
     {
-		if (previousPlayerHeldBy != null)
-		{
-            if (playerDefaultAnimatorController != playerOverrideAnimator)
+        SetAnimatorAsOverrideClientRpc(setOverride);
+    }
+
+    [ClientRpc]
+    private void SetAnimatorAsOverrideClientRpc(bool setOverride)
+    {
+        if (setOverride == true)
+        {
+            if (playerHeldBy != null)
             {
-                playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                if (playerDefaultAnimatorController != playerOverrideAnimator)
+                {
+                    playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                }
+                playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerOverrideAnimator;
             }
-            playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerOverrideAnimator;
+        }
+
+        else
+        {
+            if (previousPlayerHeldBy != null)
+            {
+                previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
+            }
         }
     }
 
-    private void SetAnimatorAsDefault()
-    {
-		if (previousPlayerHeldBy != null)
-		{
-            previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
-        }
-    }
+    // private void SetAnimatorAsOverride()
+    // {
+	// 	if (previousPlayerHeldBy != null)
+	// 	{
+    //         if (playerDefaultAnimatorController != playerOverrideAnimator)
+    //         {
+    //             playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+    //         }
+    //         playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerOverrideAnimator;
+    //     }
+    // }
+
+    // private void SetAnimatorAsDefault()
+    // {
+	// 	if (previousPlayerHeldBy != null)
+	// 	{
+    //         previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
+    //     }
+    // }
 
     private void CancelLookCloser()
     {
