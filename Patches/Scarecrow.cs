@@ -181,15 +181,24 @@ public class Scarecrow : EnemyAI
 
     public override void Start()
     {
-        if (StartOfRound.Instance.gameStats.daysSpent < daysBeforeScarecrowSpawns)
+        if (IsOwner)
         {
-            Debug.Log($"Tried to spawn scarecrow before {daysBeforeScarecrowSpawns} days!");
-            RoundManager.Instance.currentDaytimeEnemyPower -= enemyType.PowerLevel;
-            GameObject[] spawnPoints = GameObject.FindGameObjectsWithTag("OutsideAINode");
-            float num = RoundManager.Instance.timeScript.lengthOfHours * (float)RoundManager.Instance.currentHour;
-            RoundManager.Instance.SpawnRandomDaytimeEnemy(spawnPoints, num);
-            RoundManager.Instance.DespawnEnemyOnServer(base.NetworkObject);
-            return;
+            //IF SCARECROW SPAWNS BEFORE X DAYS HAVE PASSED:
+            if (StartOfRound.Instance.gameStats.daysSpent < daysBeforeScarecrowSpawns)
+            {
+                //DESPAWN SCARECROW
+                Debug.Log($"Tried to spawn scarecrow before {daysBeforeScarecrowSpawns} days!");
+                RoundManager.Instance.DespawnEnemyOnServer(base.NetworkObject);
+
+                //TRY SPAWN RANDOM DAYTIME ENEMY INSTEAD
+                GameObject[] spawnPoints = GameObject.FindGameObjectsWithTag("OutsideAINode");
+                float num = RoundManager.Instance.timeScript.lengthOfHours * (float)RoundManager.Instance.currentHour;
+                RoundManager.Instance.SpawnRandomDaytimeEnemy(spawnPoints, num);
+                return;
+            }
+
+            SetDangerLevelsAndSync();
+            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
         }
 
         base.Start();
@@ -214,12 +223,6 @@ public class Scarecrow : EnemyAI
                     }
                 }
             }
-        }
-
-        if (IsOwner)
-        {
-            SetDangerLevelsAndSync();
-            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
         }
 
         Debug.Log("---Scarecrow Spawn Values---");

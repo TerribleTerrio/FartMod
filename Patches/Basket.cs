@@ -13,6 +13,14 @@ public class Basket : AnimatedItem
 
     private DepositItemsDesk desk;
 
+    private float itemActivateTimer;
+
+    private float itemActivateTimerMin = 300f;
+
+    private float itemActivateTimerMax = 1000f;
+
+    private float itemActivateChance = 20f;
+
     [Space(10f)]
     [Header("Item Offsets")]
     public Transform[] itemOffsets;
@@ -50,10 +58,35 @@ public class Basket : AnimatedItem
 
         if (playerHeldBy != null)
         {
-            if (playerHeldBy.hoveringOverItem)
+            if (playerHeldBy.isWalking)
             {
-                // HUDManager.Instance.SetMouseCursorSprite(HUDManager.Instance.handClosedCursorTex);
-                // HUDManager.Instance.
+                itemActivateTimer--;
+                
+                if (playerHeldBy.isSprinting)
+                {
+                    itemActivateTimer--;
+                }
+
+                if (itemActivateTimer <= 0)
+                {
+                    Debug.Log("[BASKET]: Item activate timer reached 0.");
+                    itemActivateTimer = Random.Range(itemActivateTimerMin, itemActivateTimerMax);
+                    float c = Random.Range(0f,100f);
+                    if (c < itemActivateChance)
+                    {
+                        Debug.Log("[BASKET]: Item activated!");
+                        GrabbableObject gObject = basketObject.GetComponent<GrabbableObject>();
+                        if (gObject != null)
+                        {
+                            if (gObject.itemProperties.syncUseFunction)
+                            {
+                                isSendingItemRPC++;
+                                gObject.ActivateItemServerRpc(gObject.isBeingUsed, true);
+                            }
+                            gObject.ItemActivate(gObject.isBeingUsed, true);
+                        }
+                    }
+                }
             }
         }
     }
@@ -122,6 +155,7 @@ public class Basket : AnimatedItem
     {
         base.GrabItem();
         base.playerHeldBy.equippedUsableItemQE = true;
+
         if (basketObject != null)
         {
             basketObject.EnablePhysics(enable: true);
@@ -131,6 +165,8 @@ public class Basket : AnimatedItem
                 StartAnimatedItem();
             }
         }
+
+        itemActivateTimer = Random.Range(itemActivateTimerMin, itemActivateTimerMax);
     }
 
     public override void DiscardItem()

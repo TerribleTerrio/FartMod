@@ -236,7 +236,7 @@ public class Rake : GrabbableObject, ITouchable
                     }
 
                     //CAMERA SHAKE
-                    HUDManager.Instance.ShakeCamera(ScreenShakeType.Small);
+                    // HUDManager.Instance.ShakeCamera(ScreenShakeType.Small);
 
                     //DROP HELD ITEM OF ALL CLOSE PLAYERS
                     if (player.isHoldingObject)

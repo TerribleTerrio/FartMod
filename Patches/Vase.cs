@@ -210,13 +210,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     public void ShatterServerRpc(int clientWhoSentRpc, bool explode = false)
     {
         ShatterClientRpc(clientWhoSentRpc, explode);
-
-        //DESPAWN ORIGINAL VASE
-        if (playerHeldBy)
-        {
-            playerHeldBy.DestroyItemInSlotAndSync(playerHeldBy.currentItemSlot);
-        }
-
         base.gameObject.GetComponent<NetworkObject>().Despawn();
     }
 
@@ -234,6 +227,10 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         Debug.Log("Vase shattered!");
 
         //SET FLAGS
+        if (playerHeldBy != null)
+        {
+            playerHeldBy.DiscardHeldObject();
+        }
         grabbable = false;
         grabbableToEnemies = false;
         scrapValue = 0;
