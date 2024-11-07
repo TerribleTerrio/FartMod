@@ -56,7 +56,7 @@ public class Basket : AnimatedItem
             }
         }
 
-        if (playerHeldBy != null)
+        if (playerHeldBy != null && basketObject != null)
         {
             if (playerHeldBy.isWalking)
             {

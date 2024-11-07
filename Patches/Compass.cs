@@ -14,7 +14,7 @@ public class Compass : AnimatedItem, IHittable
 
     public Item[] detectableItems;
 
-    private List<GrabbableObject> detectedObjects = new List<GrabbableObject>();
+    private List<GrabbableObject> detectedItems = new List<GrabbableObject>();
 
     public GameObject needleBone;
 
@@ -46,17 +46,60 @@ public class Compass : AnimatedItem, IHittable
             offsetTimer--;
             if (offsetTimer <= 0f)
             {
-                Debug.Log("[COMPASS]: Offset timer reached 0, setting new offset!");
                 offsetTimer = Random.Range(offsetTimerMin, offsetTimerMax);
                 ChangeOffsetServerRpc();
             }
 
+            LoadDetectedItemsServerRpc();
+
+            GameObject previousClosestObject = closestObject;
             SetClosestItemServerRpc();
+            if (previousClosestObject != closestObject)
+            {
+                Debug.Log($"[COMPASS]: Closest object set to {closestObject}!");
+                previousClosestObject = closestObject;
+            }
+
             SetNoiseAmountServerRpc();
         }
 
         offset = Mathf.Lerp(offset, targetOffset, Time.deltaTime);
         needleBone.transform.localEulerAngles = new Vector3(0f, -transform.eulerAngles.y + offset, 0f);
+    }
+
+    [ServerRpc]
+    public void LoadDetectedItemsServerRpc()
+    {
+        detectedItems.Clear();
+        Collider[] colliders = Physics.OverlapSphere(transform.position, detectRange, 1073742656, QueryTriggerInteraction.Collide);
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            GrabbableObject gObject = colliders[i].gameObject.GetComponent<GrabbableObject>();
+            if (gObject != null)
+            {
+                for (int j = 0; j < detectableItems.Length; j++)
+                {
+                    if (gObject.itemProperties.itemName == detectableItems[j].itemName)
+                    {
+                        NetworkObjectReference networkObjectReference = gObject.NetworkObject;
+                        AddDetectedItemClientRpc(networkObjectReference);
+                    }
+                }
+            }
+        }
+    }
+
+    [ClientRpc]
+    public void AddDetectedItemClientRpc(NetworkObjectReference networkObjectReference)
+    {
+        NetworkObject nObject = networkObjectReference;
+        GrabbableObject gObject = nObject.gameObject.GetComponent<GrabbableObject>();
+
+        if (gObject != null)
+        {
+            detectedItems.Add(gObject);
+        }
     }
 
     [ServerRpc]
@@ -106,42 +149,42 @@ public class Compass : AnimatedItem, IHittable
         noiseAudio.volume = noiseAmount;
     }
 
-    public void AddDetectedObject(Collider other)
-    {
-        if (IsOwner)
-        {
-            Debug.Log($"[COMPASS]: Collider {other} entered detected range.");
-            GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
-            if (gObject != null)
-            {
-                Debug.Log($"[COMPASS]: Collider had attached GrabbableObject {gObject}.");
-                for (int i = 0; i < detectableItems.Length; i++)
-                {
-                    if (gObject.itemProperties.itemName == detectableItems[i].itemName)
-                    {
-                        Debug.Log($"[COMPASS]: Added {gObject} to detected objects!");
-                        detectedObjects.Add(gObject);
-                    }
-                }
-            }
-        }
-    }
+    // public void AddDetectedObject(Collider other)
+    // {
+    //     if (IsOwner)
+    //     {
+    //         Debug.Log($"[COMPASS]: Collider {other} entered detected range.");
+    //         GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
+    //         if (gObject != null)
+    //         {
+    //             Debug.Log($"[COMPASS]: Collider had attached GrabbableObject {gObject}.");
+    //             for (int i = 0; i < detectableItems.Length; i++)
+    //             {
+    //                 if (gObject.itemProperties.itemName == detectableItems[i].itemName)
+    //                 {
+    //                     Debug.Log($"[COMPASS]: Added {gObject} to detected objects!");
+    //                     detectedObjects.Add(gObject);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
-    public void RemoveDetectedObject(Collider other)
-    {
-        if (IsOwner)
-        {
-            GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
-            if (gObject != null)
-            {
-                if (detectedObjects.Contains(gObject))
-                {
-                    Debug.Log($"[COMPASS]: Removed {gObject} from detected objects!");
-                    detectedObjects.Remove(gObject);
-                }
-            }
-        }
-    }
+    // public void RemoveDetectedObject(Collider other)
+    // {
+    //     if (IsOwner)
+    //     {
+    //         GrabbableObject gObject = other.gameObject.GetComponent<GrabbableObject>();
+    //         if (gObject != null)
+    //         {
+    //             if (detectedObjects.Contains(gObject))
+    //             {
+    //                 Debug.Log($"[COMPASS]: Removed {gObject} from detected objects!");
+    //                 detectedObjects.Remove(gObject);
+    //             }
+    //         }
+    //     }
+    // }
 
     [ServerRpc]
     public void SetClosestItemServerRpc()
@@ -163,7 +206,6 @@ public class Compass : AnimatedItem, IHittable
     public void SetClosestObjectClientRpc(NetworkObjectReference setClosestObject)
     {
         closestObject = setClosestObject;
-        Debug.Log($"[COMPASS]: Set closest object to {closestObject}.");
     }
 
     [ClientRpc]
@@ -195,21 +237,21 @@ public class Compass : AnimatedItem, IHittable
     public GameObject ClosestObject()
     {
         GameObject closestObjectInCheck;
-        if (detectedObjects.Count > 0)
+        if (detectedItems.Count > 0)
         {
-            closestObjectInCheck = detectedObjects[0].gameObject;
-            if (detectedObjects.Count == 1)
+            closestObjectInCheck = detectedItems[0].gameObject;
+            if (detectedItems.Count == 1)
             {
                 return closestObjectInCheck;
             }
 
-            float checkObjectDistance = Vector3.Distance(detectedObjects[0].transform.position, base.transform.position);
-            for (int i = 1; i < detectedObjects.Count; i++)
+            float checkObjectDistance = Vector3.Distance(detectedItems[0].transform.position, base.transform.position);
+            for (int i = 1; i < detectedItems.Count; i++)
             {
-                if (Vector3.Distance(detectedObjects[i].transform.position, transform.position) < checkObjectDistance)
+                if (Vector3.Distance(detectedItems[i].transform.position, transform.position) < checkObjectDistance)
                 {
-                    closestObjectInCheck = detectedObjects[i].gameObject;
-                    checkObjectDistance = Vector3.Distance(detectedObjects[i].transform.position, transform.position);
+                    closestObjectInCheck = detectedItems[i].gameObject;
+                    checkObjectDistance = Vector3.Distance(detectedItems[i].transform.position, transform.position);
                 }
             }
             return closestObjectInCheck;
