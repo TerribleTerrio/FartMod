@@ -158,9 +158,7 @@ public class Basket : AnimatedItem
 
         if (basketObject != null)
         {
-            basketObject.grabbable = false;
-            basketObject.grabbableToEnemies = false;
-            basketObject.EnablePhysics(enable: true);
+            basketObject.EnablePhysics(enable: false);
             playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (basketObject.itemProperties.weight - 1f), 1f, 10f);
             if (basketObject.gameObject.GetComponent<AnimatedItem>() != null)
             {
@@ -345,11 +343,13 @@ public class Basket : AnimatedItem
         {
             if (basketObject.itemProperties.itemName == offsetItemTypes[i].itemName)
             {
-                itemHolder = itemOffsets[i];
+                itemHolder.position = itemOffsets[i].position;
+                itemHolder.rotation = itemOffsets[i].rotation;
             }
             else
             {
-                itemHolder = defaultOffset;
+                itemHolder.position = defaultOffset.position;
+                itemHolder.rotation = defaultOffset.rotation;
             }
         }
 
