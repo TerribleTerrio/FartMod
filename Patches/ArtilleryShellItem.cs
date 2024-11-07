@@ -186,8 +186,14 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void ExplodeAndSync()
 	{
-		Explode();
-		ExplodeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+		if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+		{
+			if (explodeInOrbit)
+			{
+				Explode();
+				ExplodeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+			}
+		}
 	}
 
 	[ServerRpc(RequireOwnership = false)]

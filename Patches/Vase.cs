@@ -235,7 +235,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         grabbableToEnemies = false;
         scrapValue = 0;
         itemProperties.creditsWorth = 0;
-        base.gameObject.GetComponent<Collider>().enabled = false;
+        EnablePhysics(enable: false);
         if (isInShipRoom)
         {
             RoundManager.Instance.valueOfFoundScrapItems = RoundManager.Instance.valueOfFoundScrapItems - scrapValue;

@@ -199,6 +199,16 @@ public class Scarecrow : EnemyAI
 
             SetDangerLevelsAndSync();
             GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+
+            //MOVE TO VALID POSITION
+            // Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
+            // while (!CheckPositionIsValid(newPosition))
+            // {
+            //     Debug.Log("[SCARECROW]: Spawn location invalid, finding new spawn point.");
+            //     newPosition = GetRandomNavMeshPositionNearAINode();
+            // }
+            // changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+            // GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
         }
 
         base.Start();
@@ -576,7 +586,12 @@ public class Scarecrow : EnemyAI
                     moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                     if (Random.Range(0f,100f) < moveChance)
                     {
-                        TryMoveToNewPosition(GetRandomNavMeshPositionNearAINode());
+                        Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
+                        if (CheckPositionIsValid(newPosition))
+                        {
+                            changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+                            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                        }
                     }
                 }
             }
@@ -798,7 +813,7 @@ public class Scarecrow : EnemyAI
         }
     }
 
-    public void TryMoveToNewPosition(Vector3 newPosition)
+    public bool CheckPositionIsValid(Vector3 newPosition)
     {
         PlayerControllerB[] players = StartOfRound.Instance.allPlayerScripts;
         float c;
@@ -812,7 +827,7 @@ public class Scarecrow : EnemyAI
             if (CheckLineOfSightForScarecrow(players[i]))
             {
                 Debug.Log($"Current position in view of {players[i].playerUsername}, scarecrow did not move.");
-                return;
+                return false;
             }
 
             //PREVENT FROM MOVING TO NEW POSITION IN VIEW OF PLAYER
@@ -837,7 +852,7 @@ public class Scarecrow : EnemyAI
             {
                 if (c > 50f)
                 {
-                    return;
+                    return false;
                 }
             }
         }
@@ -861,21 +876,21 @@ public class Scarecrow : EnemyAI
             if (c > 90f)
             {
                 Debug.Log("Scarecrow did not move.");
-                return;
+                return false;
             }
         }
 
         if (Vector3.Angle(Vector3.up, hitInfo.normal) > 35f)
         {
             Debug.Log("New position on too steep of ground, scarecrow did not move.");
-            return;
+            return false;
         }
 
         Collider[] headCollisions = Physics.OverlapSphere(newPosition + scareTriggerTransform.localPosition, 0.1f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
         if (headCollisions.Length > 0)
         {
             Debug.Log("New position obscures head, did not move.");
-            return;
+            return false;
         }
 
         if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
@@ -883,7 +898,7 @@ public class Scarecrow : EnemyAI
             if (newPosition.y < TimeOfDay.Instance.currentWeatherVariable)
             {
                 Debug.Log("New position is under flood level, did not move.");
-                return;
+                return false;
             }
         }
 
@@ -897,16 +912,12 @@ public class Scarecrow : EnemyAI
                 {
                     Debug.Log("New position too close to spawn denial point.");
                     Debug.Log("Scarecrow did not move.");
-                    return;
+                    return false;
                 }
             }
         }
 
-        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
-        // SetPositionAndSync(newPosition);
-        // transform.position = newPosition;
-
-        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+        return true;
     }
 
     private IEnumerator ChangePositionWhileInvisible(Vector3 position, float time)

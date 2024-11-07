@@ -18,9 +18,11 @@ public class Rake : GrabbableObject, ITouchable
 
     public float physicsForce;
 
-    public float coolDownTime;
+    public float cooldownTime;
 
-    private bool onCoolDown;
+    private float cooldownTimer;
+
+    private bool onCooldown;
 
     private int previousColliderCount;
 
@@ -75,6 +77,24 @@ public class Rake : GrabbableObject, ITouchable
         base.Start();
     }
 
+    public override void Update()
+    {
+        base.Update();
+
+        if (IsOwner)
+        {
+            if (cooldownTimer > 0)
+            {
+                onCooldown = true;
+                cooldownTimer--;
+            }
+            else
+            {
+                onCooldown = false;
+            }
+        }
+    }
+
     public void OnTouch(Collider other)
     {
         previousColliderCount = collidersTouching.Count();
@@ -90,7 +110,7 @@ public class Rake : GrabbableObject, ITouchable
         {
             collidersTouching.Add(other);
 
-            if (previousColliderCount < 1 && !onCoolDown && !isHeld && !isHeldByEnemy && hasHitGround)
+            if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
             {
                 FlipAndSync();
                 return;
@@ -124,7 +144,7 @@ public class Rake : GrabbableObject, ITouchable
                 if (flowerman.isInAngerMode)
                 {
                     collidersTouching.Add(other);
-                    if (previousColliderCount < 1 && !onCoolDown && !isHeld && !isHeldByEnemy && hasHitGround)
+                    if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
                     {
                         FlipAndSync();
                         return;
@@ -134,7 +154,7 @@ public class Rake : GrabbableObject, ITouchable
             else
             {
                 collidersTouching.Add(other);
-                if (previousColliderCount < 1 && !onCoolDown && !isHeld && !isHeldByEnemy && hasHitGround)
+                if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
                 {
                     FlipAndSync();
                     return;
@@ -308,23 +328,28 @@ public class Rake : GrabbableObject, ITouchable
     public void Fall()
     {
         animator.Play("fall");
-        StartCoroutine(StartCooldown(coolDownTime));
-    }
-
-    public IEnumerator StartCooldown(float duration)
-    {
-        onCoolDown = true;
-        yield return new WaitForSeconds(duration);
-        onCoolDown = false;
+        cooldownTimer = cooldownTime;
     }
 
     public override void GrabItem()
     {
-        animator.Play("sit");
-        onCoolDown = false;
+        SetRakeSitServerRpc();
+        onCooldown = false;
         base.GrabItem();
         lastHeld = playerHeldBy;
         collidersTouching.Clear();
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetRakeSitServerRpc()
+    {
+        SetRakeSitClientRpc();
+    }
+
+    [ClientRpc]
+    public void SetRakeSitClientRpc()
+    {
+        animator.Play("sit");
     }
 
     public override void ItemActivate(bool used, bool buttonDown = true)
@@ -390,6 +415,19 @@ public class Rake : GrabbableObject, ITouchable
         {
             playerHeldBy.activatingItem = false;
         }
+        cooldownTimer = cooldownTime;
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetDropRotationServerRpc()
+    {
+
+    }
+
+    [ClientRpc]
+    public void SetDropRotationClientRpc(Vector3 dropRotation)
+    {
+        
     }
 
     public void SwingRake(bool cancel = false)

@@ -11,6 +11,8 @@ public class Basket : AnimatedItem
 
     public Transform itemHolder;
 
+    public Item[] excludedItems;
+
     private DepositItemsDesk desk;
 
     private float itemActivateTimer;
@@ -32,7 +34,6 @@ public class Basket : AnimatedItem
     public override void Start()
     {
         base.Start();
-
         defaultOffset = itemHolder;
     }
 
@@ -52,7 +53,7 @@ public class Basket : AnimatedItem
 
             if (basketObject.playerHeldBy != null)
             {
-                ClearBasketObjectAndSync();
+                ClearBasketObjectServerRpc();
             }
         }
 
@@ -69,12 +70,12 @@ public class Basket : AnimatedItem
 
                 if (itemActivateTimer <= 0)
                 {
-                    Debug.Log("[BASKET]: [BASKET]: Item activate timer reached 0.");
+                    Debug.Log("[BASKET]: Item activate timer reached 0.");
                     itemActivateTimer = Random.Range(itemActivateTimerMin, itemActivateTimerMax);
                     float c = Random.Range(0f,100f);
                     if (c < itemActivateChance)
                     {
-                        Debug.Log("[BASKET]: [BASKET]: Item activated!");
+                        Debug.Log("[BASKET]: Item activated!");
                         GrabbableObject gObject = basketObject.GetComponent<GrabbableObject>();
                         if (gObject != null)
                         {
@@ -91,25 +92,16 @@ public class Basket : AnimatedItem
         }
     }
 
-    public void ClearBasketObjectAndSync()
-    {
-        ClearBasketObject();
-        ClearBasketObjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-    }
-
     [ServerRpc(RequireOwnership = false)]
-    public void ClearBasketObjectServerRpc(int clientWhoSentRpc)
+    public void ClearBasketObjectServerRpc()
     {
-        ClearBasketObjectClientRpc(clientWhoSentRpc);
+        ClearBasketObjectClientRpc();
     }
 
     [ClientRpc]
-    public void ClearBasketObjectClientRpc(int clientWhoSentRpc)
+    public void ClearBasketObjectClientRpc()
     {
-        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
-        {
-            basketObject = null;
-        }
+        ClearBasketObject();
     }
 
     public void ClearBasketObject()
@@ -260,10 +252,8 @@ public class Basket : AnimatedItem
         {
             if (basketObject == null)
             {
-                Debug.Log("[BASKET]: No item in basket, attempting detection for item to grab.");
                 if (playerHeldBy == null)
                 {
-                    Debug.Log("[BASKET]: Aborting item detection for basket, player dropped basket.");
                     return;
                 }
 
@@ -272,10 +262,17 @@ public class Basket : AnimatedItem
                     GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
                     if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)
                     {
+                        for (int i = 0; i < excludedItems.Length; i++)
+                        {
+                            if (gObject.itemProperties.itemName == excludedItems[i].itemName)
+                            {
+                                Debug.Log($"[BASKET]: Item {gObject} is in excluded items list.");
+                                return;
+                            }
+                        }
                         if (gObject.itemProperties.twoHanded)
                         {
-                            //ITEM TOO LARGE!
-                            // HUDManager.Instance.
+                            return;
                         }
                         else
                         {
@@ -285,7 +282,8 @@ public class Basket : AnimatedItem
                     }
                     else
                     {
-                        Debug.Log("[BASKET]: No item found by basket.");
+                        Debug.Log("[BASKET]: No item found.");
+                        return;
                     }
                 }
             }
@@ -315,6 +313,8 @@ public class Basket : AnimatedItem
     public void PutObjectInBasketAndSync(GrabbableObject gObject)
     {
         PutObjectInBasket(gObject);
+        gObject.EnablePhysics(enable: false);
+
         PutObjectInBasketServerRpc(gObject.NetworkObjectId, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
@@ -338,6 +338,8 @@ public class Basket : AnimatedItem
     public void PutObjectInBasket(GrabbableObject gObject)
     {
         basketObject = gObject;
+        itemHolder.position = defaultOffset.position;
+        itemHolder.rotation = defaultOffset.rotation;
 
         for (int i = 0; i < offsetItemTypes.Length; i++)
         {
@@ -346,15 +348,9 @@ public class Basket : AnimatedItem
                 itemHolder.position = itemOffsets[i].position;
                 itemHolder.rotation = itemOffsets[i].rotation;
             }
-            else
-            {
-                itemHolder.position = defaultOffset.position;
-                itemHolder.rotation = defaultOffset.rotation;
-            }
         }
 
         //SET PARAMETERS TO INDICATE OBJECT IS BEING HELD
-        basketObject.EnablePhysics(enable: false);
         if (basketObject.parentObject != null)
         {
             basketObject.parentObject = null;
