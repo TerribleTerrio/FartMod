@@ -29,7 +29,7 @@ public class Basket : AnimatedItem
 
     public Item[] offsetItemTypes;
 
-    private Transform defaultOffset;
+    private Transform defaultOffset = new Transform();
 
     public override void Start()
     {
