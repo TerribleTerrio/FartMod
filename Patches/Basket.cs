@@ -29,15 +29,15 @@ public class Basket : AnimatedItem
 
     public Item[] offsetItemTypes;
 
-    private Transform defaultOffset;
+    private GameObject defaultOffset;
 
     public override void Start()
     {
         base.Start();
-        defaultOffset = new Transform();
-        defaultOffset.SetParent(itemHolder.GetParent());
-        defaultOffset.localPosition = itemHolder.localPosition;
-        defaultOffset.localEulerAngles = itemHolder.localEulerAngles;
+        defaultOffset = new GameObject();
+        defaultOffset.transform.SetParent(itemHolder.GetParent());
+        defaultOffset.transform.localPosition = itemHolder.localPosition;
+        defaultOffset.transform.localEulerAngles = itemHolder.localEulerAngles;
     }
 
     public override void Update()
@@ -342,8 +342,8 @@ public class Basket : AnimatedItem
     {
         basketObject = gObject;
 
-        itemHolder.position = defaultOffset.position;
-        itemHolder.rotation = defaultOffset.rotation;
+        itemHolder.position = defaultOffset.transform.position;
+        itemHolder.rotation = defaultOffset.transform.rotation;
 
         for (int i = 0; i < offsetItemTypes.Length; i++)
         {
