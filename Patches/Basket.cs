@@ -29,13 +29,15 @@ public class Basket : AnimatedItem
 
     public Item[] offsetItemTypes;
 
-    private Transform defaultOffset = new Transform();
+    private Vector3 defaultPosition;
+
+    private Vector3 defaultRotation;
 
     public override void Start()
     {
         base.Start();
-        defaultOffset.position = itemHolder.position;
-        defaultOffset.rotation = itemHolder.rotation;
+        defaultPosition = itemHolder.transform.localPosition;
+        defaultRotation = itemHolder.localEulerAngles;
     }
 
     public override void Update()
@@ -349,8 +351,8 @@ public class Basket : AnimatedItem
             }
             else
             {
-                itemHolder.position = defaultOffset.position;
-                itemHolder.rotation = defaultOffset.rotation;
+                itemHolder.position = defaultPosition;
+                itemHolder.eulerAngles = defaultRotation;
             }
         }
 
