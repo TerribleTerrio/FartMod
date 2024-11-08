@@ -18,22 +18,41 @@ public class AudioListAnimationEvent : MonoBehaviour
 
 	public UnityEvent onAnimationEventCalled;
 
+	public UnityEvent onAnimationEvent2Called;
+
+	public UnityEvent onAnimationEvent3Called;
+
     public UnityEvent TriggerAnimationEvent;
   
     private Vector3 lastPosition;
 
     private int timesPlayedInOneSpot;
 
-    private bool noiseOnCooldown;
+    private float makeNoiseInterval;
+
+    private bool makingAudibleNoise;
+
+    private System.Random seedchance;
 
   	public void OnAnimationEvent()
 	{
 		onAnimationEventCalled.Invoke();
 	}
 
+  	public void OnAnimationEvent2()
+	{
+		onAnimationEvent2Called.Invoke();
+	}
+
+  	public void OnAnimationEvent3()
+	{
+		onAnimationEvent3Called.Invoke();
+	}
+
   	public void TriggerAnimationEventChance(int chance)
 	{
-        if (UnityEngine.Random.Range(0, 100) < chance)
+        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
+        if (seedchance.Next(0, 100) < chance)
             {
                 TriggerAnimationEvent.Invoke();
             }
@@ -97,7 +116,7 @@ public class AudioListAnimationEvent : MonoBehaviour
         audioSource.loop = true;
         audioSource.Play();
         WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
-        StartCoroutine(MakeAudibleNoiseLoop(2f));
+        StartCoroutine(MakeAudibleNoiseLoop(2f, true));
 	}
 
 	public void PlayListAudioNoLoopAudible(int clipNumber)
@@ -111,11 +130,10 @@ public class AudioListAnimationEvent : MonoBehaviour
 
 	public void PlayListAudioRandom()
 	{
-        Debug.Log("PlayListAudioRandom called, choosing a sound.");
-        int num = UnityEngine.Random.Range(0, randomAudioClips.Length);
+        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
+        int num = seedchance.Next(0, randomAudioClips.Length);
         if (!(randomAudioClips[num] == null))
 		{
-            Debug.Log("Chose a sound, playing clip: " + num + " from audio source: " + audioSource.name);
             audioSource.PlayOneShot(randomAudioClips[num]);
             WalkieTalkie.TransmitOneShotAudio(audioSource, randomAudioClips[num]);
         }
@@ -123,14 +141,12 @@ public class AudioListAnimationEvent : MonoBehaviour
 
 	public void PlayListAudioRandomChance(int chance)
 	{
-        Debug.Log("PlayListAudioRandomChance called, choosing a sound.");
-        int num = UnityEngine.Random.Range(0, randomAudioClips.Length);
+        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
+        int num = seedchance.Next(0, randomAudioClips.Length);
         if (!(randomAudioClips[num] == null))
 		{
-            Debug.Log("Chose a sound, trying chance.");
-            if (UnityEngine.Random.Range(0, 100) < chance)
+            if (seedchance.Next(0, 100) < chance)
             {
-                Debug.Log("Chance succeeded, playing clip: " + num + " from audio source: " + audioSource.name);
                 audioSource.PlayOneShot(randomAudioClips[num]);
                 WalkieTalkie.TransmitOneShotAudio(audioSource, randomAudioClips[num]);
             }
@@ -140,19 +156,19 @@ public class AudioListAnimationEvent : MonoBehaviour
 	public void StopListAudio()
 	{
 		audioSource.Stop();
-        StopCoroutine(MakeAudibleNoiseLoop(2f));
+        StopCoroutine(MakeAudibleNoiseLoop(2f, false));
 	}
 
 	public void StopListAudioAndStopLoop()
 	{
 		audioSource.Stop();
         audioSource.loop = false;
-        StopCoroutine(MakeAudibleNoiseLoop(2f));
+        StopCoroutine(MakeAudibleNoiseLoop(2f, false));
 	}
 
     public void StopListAudioLoopOnly()
     {
-        StopCoroutine(MakeAudibleNoiseLoop(2f));
+        StopCoroutine(MakeAudibleNoiseLoop(2f, false));
     }
 
     public void SendVoidUpwards(string message)
@@ -160,33 +176,45 @@ public class AudioListAnimationEvent : MonoBehaviour
         SendMessageUpwards(message);
     }
 
-    private System.Collections.IEnumerator MakeAudibleNoiseLoop(float delay)
+    private System.Collections.IEnumerator MakeAudibleNoiseLoop(float delay, bool makingAudibleNoise)
     {
-        noiseOnCooldown = true;
-
-        if (Vector3.Distance(lastPosition, audioSource.gameObject.transform.position) > 2f)
+        if (!makingAudibleNoise)
         {
-            timesPlayedInOneSpot = 0;
+            yield break;
         }
-        timesPlayedInOneSpot++;
-        bool isInsideClosedShip = StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(audioSource.gameObject.transform.position) && StartOfRound.Instance.hangarDoorsClosed;
-        lastPosition = audioSource.gameObject.transform.position;
-        RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, 20f, 0.55f, timesPlayedInOneSpot, isInsideClosedShip);
-
-        yield return new WaitForSeconds(delay);
-
-        noiseOnCooldown = false;
+        if (makeNoiseInterval <= 0f)
+        {
+            makeNoiseInterval = delay;
+            if (Vector3.Distance(lastPosition, audioSource.gameObject.transform.position) > 4f)
+            {
+                timesPlayedInOneSpot = 0;
+            }
+            else
+            {
+                timesPlayedInOneSpot++;
+            }
+            bool isInsideClosedShip = StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(audioSource.gameObject.transform.position) && StartOfRound.Instance.hangarDoorsClosed;
+            lastPosition = audioSource.gameObject.transform.position;
+            RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, 35f, 0.85f, timesPlayedInOneSpot, isInsideClosedShip);
+        }
+        else
+        {
+            makeNoiseInterval -= Time.deltaTime;
+        }
     }
 
     private void MakeAudibleNoise()
     {
-        if (Vector3.Distance(lastPosition, audioSource.gameObject.transform.position) > 2f)
+        if (Vector3.Distance(lastPosition, audioSource.gameObject.transform.position) > 4f)
         {
             timesPlayedInOneSpot = 0;
         }
-        timesPlayedInOneSpot++;
+        else
+        {
+            timesPlayedInOneSpot++;
+        }
         bool isInsideClosedShip = StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(audioSource.gameObject.transform.position) && StartOfRound.Instance.hangarDoorsClosed;
         lastPosition = audioSource.gameObject.transform.position;
-        RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, 20f, 0.55f, timesPlayedInOneSpot, isInsideClosedShip);
+        RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, 35f, 0.85f, timesPlayedInOneSpot, isInsideClosedShip);
     }
 }

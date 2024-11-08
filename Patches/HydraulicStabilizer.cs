@@ -23,7 +23,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
     public override void Start()
     {
         base.Start();
-		psychoStage = 0;
+		psychoStage = 1;
     }
 
     public override void Update()
@@ -165,21 +165,19 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 		timesPlayedInOneSpot++;
 		lastPosition = base.transform.position;
 
-        RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange*1.5f, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-
-		itemAnimator.SetInteger("Psycho Stage", psychoStage);
+  		RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange*1.5f, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 		if (zap)
 		{
 			psychoStage = 5;
 		}
-		itemAnimator.Play("Go Psycho");
-		psychoStage++;
 		if (psychoStage > 5)
 		{
 			psychoStage = 1;
 		}
-
-    }
+		itemAnimator.SetInteger("Psycho Stage", psychoStage);
+		itemAnimator.Play("Go Psycho");
+		psychoStage++;
+	}
 
 	public void SetSteamingBoolTrue()
 	{
