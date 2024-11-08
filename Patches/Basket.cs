@@ -29,9 +29,15 @@ public class Basket : AnimatedItem
 
     public Item[] offsetItemTypes;
 
+    private Transform defaultOffset;
+
     public override void Start()
     {
         base.Start();
+        defaultOffset = new Transform();
+        defaultOffset.SetParent(itemHolder.GetParent());
+        defaultOffset.localPosition = itemHolder.localPosition;
+        defaultOffset.localEulerAngles = itemHolder.localEulerAngles;
     }
 
     public override void Update()
@@ -335,6 +341,9 @@ public class Basket : AnimatedItem
     public void PutObjectInBasket(GrabbableObject gObject)
     {
         basketObject = gObject;
+
+        itemHolder.position = defaultOffset.position;
+        itemHolder.rotation = defaultOffset.rotation;
 
         for (int i = 0; i < offsetItemTypes.Length; i++)
         {
