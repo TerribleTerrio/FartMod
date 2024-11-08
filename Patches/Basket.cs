@@ -34,7 +34,8 @@ public class Basket : AnimatedItem
     public override void Start()
     {
         base.Start();
-        defaultOffset = itemHolder;
+        defaultOffset.position = itemHolder.position;
+        defaultOffset.rotation = itemHolder.rotation;
     }
 
     public override void Update()
@@ -338,8 +339,6 @@ public class Basket : AnimatedItem
     public void PutObjectInBasket(GrabbableObject gObject)
     {
         basketObject = gObject;
-        itemHolder.position = defaultOffset.position;
-        itemHolder.rotation = defaultOffset.rotation;
 
         for (int i = 0; i < offsetItemTypes.Length; i++)
         {
@@ -347,6 +346,11 @@ public class Basket : AnimatedItem
             {
                 itemHolder.position = itemOffsets[i].position;
                 itemHolder.rotation = itemOffsets[i].rotation;
+            }
+            else
+            {
+                itemHolder.position = defaultOffset.position;
+                itemHolder.rotation = defaultOffset.rotation;
             }
         }
 

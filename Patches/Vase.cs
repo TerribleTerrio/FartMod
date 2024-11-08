@@ -252,7 +252,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         //SET POSITION FOR SHATTER PREFAB
         Vector3 shatterPosition;
-        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, StartOfRound.Instance.collidersAndRoomMask, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
 		{
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
 		}
