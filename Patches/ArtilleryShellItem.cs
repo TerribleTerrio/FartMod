@@ -181,7 +181,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	{
 		yield return new WaitForSeconds(delay);
 		ExplodeClientRpc();
-		base.gameObject.GetComponent<NetworkObject>().Despawn();
+		// base.gameObject.GetComponent<NetworkObject>().Despawn();
 	}
 
 	public void ExplodeAndSync()
@@ -200,7 +200,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	public void ExplodeServerRpc(int clientWhoSentRpc)
 	{
 		ExplodeClientRpc(clientWhoSentRpc);
-		base.gameObject.GetComponent<NetworkObject>().Despawn();
+		// base.gameObject.GetComponent<NetworkObject>().Despawn();
 	}
 
 	[ClientRpc]
@@ -296,6 +296,11 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
         {
             base.DiscardItemFromEnemy();
         }
+
+		if (IsOwner)
+		{
+			base.gameObject.GetComponent<NetworkObject>().Despawn();
+		}
 	}
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
@@ -380,7 +385,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void StopShockingWithGun()
 	{
-		ExplodeAndSync();
+
 	}
 
 	public void ShockWithGun(PlayerControllerB playerControllerB)
