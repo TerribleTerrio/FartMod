@@ -31,6 +31,13 @@ public class Basket : AnimatedItem
 
     private GameObject defaultOffset;
 
+    //TOOLTIP SWAPPING
+    private string defaultTooltip;
+
+    private GrabbableObject interactObject;
+
+    private GrabbableObject prevInteractObject;
+
     public override void Start()
     {
         base.Start();
@@ -91,6 +98,57 @@ public class Basket : AnimatedItem
                         }
                     }
                 }
+            }
+        }
+
+        SetCursorTextOnInteract();
+    }
+
+    private void SetCursorTextOnInteract()
+    {
+        RaycastHit hitInfo;
+        Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide);
+
+        interactObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
+
+        if (prevInteractObject != interactObject && prevInteractObject != null)
+        {
+            prevInteractObject.customGrabTooltip = defaultTooltip;
+            prevInteractObject = interactObject;
+        }
+
+        if (playerHeldBy != null && interactObject != null)
+        {
+            defaultTooltip = interactObject.customGrabTooltip;
+
+            if (playerHeldBy.isHoldingInteract)
+            {
+                if (basketObject != null)
+                {
+                    interactObject.customGrabTooltip = "[Basket full!]";
+                    return;
+                }
+
+                for (int i = 0; i < excludedItems.Length; i++)
+                {
+                    if (interactObject.itemProperties.itemName == excludedItems[i].itemName)
+                    {
+                        interactObject.customGrabTooltip = "[Too big!]";
+                        return;
+                    }
+                }
+
+                if (interactObject.itemProperties.twoHanded)
+                {
+                    interactObject.customGrabTooltip = "[Too big!]";
+                    return;
+                }
+            }
+
+            else
+            {
+                interactObject.customGrabTooltip = "Put in basket : [E]";
+                return;
             }
         }
     }
@@ -260,7 +318,7 @@ public class Basket : AnimatedItem
                     return;
                 }
 
-                if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Ignore))
+                if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
                 {
                     GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
                     if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)
