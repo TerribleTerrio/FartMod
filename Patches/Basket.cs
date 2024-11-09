@@ -1,6 +1,7 @@
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.ProBuilder.MeshOperations;
 
 public class Basket : AnimatedItem
 {
@@ -30,13 +31,6 @@ public class Basket : AnimatedItem
     public Item[] offsetItemTypes;
 
     private GameObject defaultOffset;
-
-    //TOOLTIP SWAPPING
-    private string defaultTooltip;
-
-    private GrabbableObject interactObject;
-
-    private GrabbableObject prevInteractObject;
 
     public override void Start()
     {
@@ -99,89 +93,6 @@ public class Basket : AnimatedItem
                     }
                 }
             }
-        }
-
-        SetCursorTextOnInteract();
-    }
-
-    private void SetCursorTextOnInteract()
-    {
-        if (playerHeldBy)
-        {
-            RaycastHit hitInfo;
-            if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
-            {
-                interactObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
-
-                //BASKET HELD AND LOOKING AT ITEM
-                if (interactObject != null)
-                {
-                    defaultTooltip = interactObject.customGrabTooltip;
-
-                    if (playerHeldBy.isHoldingInteract)
-                    {
-                        if (basketObject != null)
-                        {
-                            interactObject.customGrabTooltip = "[Basket full!]";
-                            return;
-                        }
-
-                        for (int i = 0; i < excludedItems.Length; i++)
-                        {
-                            if (interactObject.itemProperties.itemName == excludedItems[i].itemName)
-                            {
-                                interactObject.customGrabTooltip = "[Too big!]";
-                                return;
-                            }
-                        }
-
-                        if (interactObject.itemProperties.twoHanded)
-                        {
-                            interactObject.customGrabTooltip = "[Too big!]";
-                            return;
-                        }
-                    }
-
-                    else
-                    {
-                        interactObject.customGrabTooltip = "Put in basket : [E]";
-                        return;
-                    }
-                }
-
-                //BASKET HELD LOOKING AT SOMETHING THAT ISNT AN ITEM
-                else
-                {
-                    interactObject = null;
-                }
-            }
-
-            //BASKET HELD LOOKING AT NOTHING
-            else
-            {
-                interactObject = null;
-            }
-        }
-
-        //BASKET NOT HELD
-        else
-        {
-            interactObject = null;
-        }
-
-        //SET OBJECT TOOLTIP BACK TO DEFAULT
-        if (interactObject != prevInteractObject && prevInteractObject != null)
-        {
-            prevInteractObject.customGrabTooltip = defaultTooltip;
-        }
-
-        if (interactObject != null)
-        {
-            prevInteractObject = interactObject;
-        }
-        else
-        {
-            prevInteractObject = null;
         }
     }
 
@@ -343,44 +254,64 @@ public class Basket : AnimatedItem
     {
         if (!RequireInteractCooldown())
         {
-            if (basketObject == null)
+            if (playerHeldBy == null)
             {
-                if (playerHeldBy == null)
-                {
-                    return;
-                }
+                return;
+            }
 
-                if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
+            if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
+            {
+                GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
+                if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)
                 {
-                    GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
-                    if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)
+                    for (int i = 0; i < excludedItems.Length; i++)
                     {
-                        for (int i = 0; i < excludedItems.Length; i++)
+                        if (gObject.itemProperties.itemName == excludedItems[i].itemName)
                         {
-                            if (gObject.itemProperties.itemName == excludedItems[i].itemName)
-                            {
-                                Debug.Log($"[BASKET]: Item {gObject} is in excluded items list.");
-                                return;
-                            }
-                        }
-                        if (gObject.itemProperties.twoHanded)
-                        {
+                            Debug.Log($"[BASKET]: Item {gObject} is in excluded items list.");
+                            StartCoroutine(ChangeCursorTipAndRevert(gObject, "[Too big!]"));
                             return;
                         }
-                        else
-                        {
-                            Debug.Log($"[BASKET]: Found object {gObject}.");
-                            PutObjectInBasketAndSync(gObject);
-                        }
                     }
-                    else
+
+                    if (basketObject != null)
                     {
-                        Debug.Log("[BASKET]: No item found.");
+                        StartCoroutine(ChangeCursorTipAndRevert(gObject, "[Basket full!]"));
+                    }
+
+                    else if (gObject.itemProperties.twoHanded)
+                    {
+                        StartCoroutine(ChangeCursorTipAndRevert(gObject, "[Too big!]"));
                         return;
                     }
+
+                    else
+                    {
+                        Debug.Log($"[BASKET]: Found object {gObject}.");
+                        PutObjectInBasketAndSync(gObject);
+                    }
+                }
+                
+                else
+                {
+                    Debug.Log("[BASKET]: No item found.");
+                    return;
                 }
             }
         }
+    }
+
+    private IEnumerator ChangeCursorTipAndRevert(GrabbableObject gObject, string tooltip)
+    {
+        if (gObject.customGrabTooltip == tooltip)
+        {
+            yield return null;
+        }
+
+        string defaultTip = gObject.customGrabTooltip;
+        gObject.customGrabTooltip = tooltip;
+        yield return new WaitForSeconds(0.4f);
+        gObject.customGrabTooltip = defaultTip;
     }
 
     public void TryDropBasketObject()
