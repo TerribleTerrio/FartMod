@@ -109,64 +109,79 @@ public class Basket : AnimatedItem
         if (playerHeldBy)
         {
             RaycastHit hitInfo;
-            Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide);
-
-            interactObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
-
-            if (interactObject != null)
+            if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
             {
-                prevInteractObject = interactObject;
-                defaultTooltip = interactObject.customGrabTooltip;
+                interactObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
 
-                if (playerHeldBy.isHoldingInteract)
+                //BASKET HELD AND LOOKING AT ITEM
+                if (interactObject != null)
                 {
-                    if (basketObject != null)
-                    {
-                        interactObject.customGrabTooltip = "[Basket full!]";
-                        return;
-                    }
+                    defaultTooltip = interactObject.customGrabTooltip;
 
-                    for (int i = 0; i < excludedItems.Length; i++)
+                    if (playerHeldBy.isHoldingInteract)
                     {
-                        if (interactObject.itemProperties.itemName == excludedItems[i].itemName)
+                        if (basketObject != null)
+                        {
+                            interactObject.customGrabTooltip = "[Basket full!]";
+                            return;
+                        }
+
+                        for (int i = 0; i < excludedItems.Length; i++)
+                        {
+                            if (interactObject.itemProperties.itemName == excludedItems[i].itemName)
+                            {
+                                interactObject.customGrabTooltip = "[Too big!]";
+                                return;
+                            }
+                        }
+
+                        if (interactObject.itemProperties.twoHanded)
                         {
                             interactObject.customGrabTooltip = "[Too big!]";
                             return;
                         }
                     }
 
-                    if (interactObject.itemProperties.twoHanded)
+                    else
                     {
-                        interactObject.customGrabTooltip = "[Too big!]";
+                        interactObject.customGrabTooltip = "Put in basket : [E]";
                         return;
                     }
                 }
 
+                //BASKET HELD LOOKING AT SOMETHING THAT ISNT AN ITEM
                 else
                 {
-                    interactObject.customGrabTooltip = "Put in basket : [E]";
-                    return;
+                    interactObject = null;
                 }
             }
 
+            //BASKET HELD LOOKING AT NOTHING
             else
             {
-                if (prevInteractObject != null)
-                {
-                    prevInteractObject.customGrabTooltip = defaultTooltip;
-                    prevInteractObject = null;
-                }
+                interactObject = null;
             }
         }
 
+        //BASKET NOT HELD
         else
         {
-            if (interactObject != null)
-            {
-                interactObject.customGrabTooltip = defaultTooltip;
-                prevInteractObject = null;
-                interactObject = null;
-            }
+            interactObject = null;
+        }
+
+        //SET OBJECT TOOLTIP BACK TO DEFAULT
+        if (interactObject != prevInteractObject && prevInteractObject != null)
+        {
+            prevInteractObject.customGrabTooltip = defaultTooltip;
+        }
+
+        if (interactObject != null)
+        {
+            prevInteractObject = interactObject;
+        }
+        else
+        {
+            prevInteractObject = null;
         }
     }
 
