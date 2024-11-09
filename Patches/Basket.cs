@@ -106,49 +106,66 @@ public class Basket : AnimatedItem
 
     private void SetCursorTextOnInteract()
     {
-        RaycastHit hitInfo;
-        Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide);
-
-        interactObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
-
-        if (prevInteractObject != interactObject && prevInteractObject != null)
+        if (playerHeldBy)
         {
-            prevInteractObject.customGrabTooltip = defaultTooltip;
-            prevInteractObject = interactObject;
-        }
+            RaycastHit hitInfo;
+            Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide);
 
-        if (playerHeldBy != null && interactObject != null)
-        {
-            defaultTooltip = interactObject.customGrabTooltip;
+            interactObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
 
-            if (playerHeldBy.isHoldingInteract)
+            if (interactObject != null)
             {
-                if (basketObject != null)
-                {
-                    interactObject.customGrabTooltip = "[Basket full!]";
-                    return;
-                }
+                prevInteractObject = interactObject;
+                defaultTooltip = interactObject.customGrabTooltip;
 
-                for (int i = 0; i < excludedItems.Length; i++)
+                if (playerHeldBy.isHoldingInteract)
                 {
-                    if (interactObject.itemProperties.itemName == excludedItems[i].itemName)
+                    if (basketObject != null)
+                    {
+                        interactObject.customGrabTooltip = "[Basket full!]";
+                        return;
+                    }
+
+                    for (int i = 0; i < excludedItems.Length; i++)
+                    {
+                        if (interactObject.itemProperties.itemName == excludedItems[i].itemName)
+                        {
+                            interactObject.customGrabTooltip = "[Too big!]";
+                            return;
+                        }
+                    }
+
+                    if (interactObject.itemProperties.twoHanded)
                     {
                         interactObject.customGrabTooltip = "[Too big!]";
                         return;
                     }
                 }
 
-                if (interactObject.itemProperties.twoHanded)
+                else
                 {
-                    interactObject.customGrabTooltip = "[Too big!]";
+                    interactObject.customGrabTooltip = "Put in basket : [E]";
                     return;
                 }
             }
 
             else
             {
-                interactObject.customGrabTooltip = "Put in basket : [E]";
-                return;
+                if (prevInteractObject != null)
+                {
+                    prevInteractObject.customGrabTooltip = defaultTooltip;
+                    prevInteractObject = null;
+                }
+            }
+        }
+
+        else
+        {
+            if (interactObject != null)
+            {
+                interactObject.customGrabTooltip = defaultTooltip;
+                prevInteractObject = null;
+                interactObject = null;
             }
         }
     }
