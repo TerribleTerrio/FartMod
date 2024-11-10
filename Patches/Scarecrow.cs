@@ -4,6 +4,7 @@ using System.Linq;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class Scarecrow : EnemyAI
 {
@@ -46,6 +47,8 @@ public class Scarecrow : EnemyAI
     public Transform[] lineOfSightTriggers;
 
     public Transform scareTriggerTransform;
+
+    private FloodWeather floodWeather;
 
     [Space(10f)]
     [Header("Wind Levels On Moons")]
@@ -216,6 +219,11 @@ public class Scarecrow : EnemyAI
             // }
             // changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
             // GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+        }
+
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
+        {
+            floodWeather = Object.FindObjectOfType<FloodWeather>();
         }
 
         if (!useScanNode)
@@ -926,7 +934,7 @@ public class Scarecrow : EnemyAI
 
         if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
         {
-            if (newPosition.y < TimeOfDay.Instance.currentWeatherVariable)
+            if (newPosition.y < floodWeather.gameObject.transform.position.y + 1.5f)
             {
                 Debug.Log("New position is under flood level, did not move.");
                 return false;
