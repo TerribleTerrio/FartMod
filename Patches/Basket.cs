@@ -1,3 +1,4 @@
+using GameNetcodeStuff;
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
@@ -32,6 +33,8 @@ public class Basket : AnimatedItem
 
     private GameObject defaultOffset;
 
+	private PlayerControllerB previousPlayerHeldBy;
+    
     public override void Start()
     {
         base.Start();
@@ -151,6 +154,7 @@ public class Basket : AnimatedItem
     {
         base.GrabItem();
         base.playerHeldBy.equippedUsableItemQE = true;
+        previousPlayerHeldBy = playerHeldBy;
 
         if (basketObject != null)
         {
@@ -307,10 +311,10 @@ public class Basket : AnimatedItem
         {
             yield return null;
         }
-
+        yield return null;
         string defaultTip = gObject.customGrabTooltip;
         gObject.customGrabTooltip = tooltip;
-        yield return new WaitForSeconds(0.4f);
+        yield return new WaitWhile(() => previousPlayerHeldBy.isHoldingInteract);
         gObject.customGrabTooltip = defaultTip;
     }
 
@@ -458,8 +462,8 @@ public class Basket : AnimatedItem
         playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight - (basketObject.itemProperties.weight - 1f), 1f, 10f);
 
         //PLAY SOUND FOR DROPPED OBJECT
-        GrabbableObject droppedObject = basketObject;
-        StartCoroutine(DetectDroppedItemHitGround(droppedObject));
+        // GrabbableObject droppedObject = basketObject;
+        // StartCoroutine(DetectDroppedItemHitGround(droppedObject));
 
         basketObject = null;
     }
@@ -517,6 +521,15 @@ public class Basket : AnimatedItem
             basketObject.transform.SetParent(StartOfRound.Instance.propsContainer, worldPositionStays: true);
         }
 
+		if (base.IsOwner)
+		{
+			if (basketObject.playerHeldBy != null)
+			{
+				basketObject.playerHeldBy.IsInspectingItem = false;
+				basketObject.playerHeldBy.activatingItem = false;
+			}
+		}
+
         basketObject.heldByPlayerOnServer = false;
         basketObject.parentObject = null;
         basketObject.isInElevator = droppedInElevator;
@@ -529,6 +542,7 @@ public class Basket : AnimatedItem
         basketObject.startFallingPosition = basketObject.transform.parent.InverseTransformPoint(basketObject.transform.position);
         basketObject.targetFloorPosition = targetFloorPosition + Vector3.up * basketObject.itemProperties.verticalOffset - Vector3.up * itemProperties.verticalOffset;
         basketObject.floorYRot = floorYRot;
+        basketObject.playerHeldBy = null;
     }
 
     public void StartAnimatedItem()
@@ -540,11 +554,14 @@ public class Basket : AnimatedItem
             {
                 aObject.gameObject.GetComponent<MeshFilter>().mesh = aObject.alternateMesh;
                 aObject.itemAudio.Stop();
+                return;
             }
+            aObject.gameObject.GetComponent<MeshFilter>().mesh = aObject.normalMesh;
         }
         if (aObject.itemRandomChance.Next(0, 100) > aObject.chanceToTriggerAnimation)
         {
             aObject.itemAudio.Stop();
+            return;
         }
         if (aObject.itemAnimator != null)
         {
@@ -572,10 +589,12 @@ public class Basket : AnimatedItem
         if (!aObject.makeAnimationWhenDropping)
         {
             aObject.itemAudio.Stop();
+            return;
         }
         if (aObject.itemRandomChance.Next(0, 100) < chanceToTriggerAnimation)
         {
             aObject.itemAudio.Stop();
+            return;
         }
         if (aObject.itemAnimator != null)
         {

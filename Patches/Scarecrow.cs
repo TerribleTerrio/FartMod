@@ -142,8 +142,6 @@ public class Scarecrow : EnemyAI
 
     public int endValue;
 
-    private ScanNodeProperties scanNode;
-
     public float rotAmount;
 
     [Space(10f)]
@@ -179,6 +177,15 @@ public class Scarecrow : EnemyAI
 
     public AudioClip[] decoySounds;
 
+    [Space(5f)]
+    public bool useScanNode;
+
+    public ScanNodeProperties scanNode;
+
+    public TerminalNode newScarecrowNode;
+
+	public Terminal currentTerminal;
+
     public override void Start()
     {
         if (IsOwner)
@@ -209,6 +216,30 @@ public class Scarecrow : EnemyAI
             // }
             // changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
             // GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+        }
+
+        if (!useScanNode)
+        {
+            scanNode.creatureScanID = -1;
+        }
+        else
+        {
+            currentTerminal = Object.FindObjectOfType<Terminal>();
+            for (int i = 0; i < currentTerminal.enemyFiles.Count; i++)
+            {
+                if (currentTerminal.enemyFiles[i].creatureName != "Scarecrow")
+                {
+                    continue;
+                }
+                else
+                {
+                    currentTerminal.enemyFiles[i].clearPreviousText = true;
+                    currentTerminal.enemyFiles[i].displayText = newScarecrowNode.displayText;
+                    currentTerminal.enemyFiles[i].loadImageSlowly = true;
+                    currentTerminal.enemyFiles[i].maxCharactersToType = 35;
+                    break;
+                }
+            }
         }
 
         base.Start();
