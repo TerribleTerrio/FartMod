@@ -934,9 +934,9 @@ public class Scarecrow : EnemyAI
 
         if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
         {
-            if (newPosition.y < floodWeather.gameObject.transform.position.y + 1.5f)
+            if (newPosition.y < floodWeather.gameObject.transform.position.y)
             {
-                Debug.Log("New position is under flood level, did not move.");
+                Debug.Log($"New position y ({newPosition.y}) is under current flood level ({floodWeather.gameObject.transform.position.y}), did not move.");
                 return false;
             }
         }
