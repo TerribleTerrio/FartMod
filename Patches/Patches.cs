@@ -236,4 +236,29 @@ namespace CoronaMod.Patches
         }
 
     }
+
+    [HarmonyPatch(typeof(Terminal))]
+    internal class TerminalPatch
+    {
+        [HarmonyPatch("Awake")]
+        [HarmonyPostfix]
+
+        static void TerminalAwakeScarecrow(Terminal __instance)
+        {
+            for (int i = 0; i < __instance.enemyFiles.Count; i++)
+            {
+                if (__instance.enemyFiles[i].creatureName != "Scarecrow")
+                {
+                    continue;
+                }
+                else
+                {
+                    __instance.enemyFiles[i].clearPreviousText = true;
+                    __instance.enemyFiles[i].displayText = "Scarecrow\n\nWe led so firmly into the deep below Earth, when we saw thousands of candles burning in rows, some large, others small. Every instant some were extinguished, and others again burnt up, so that the flames seemed to leap hither and thither in perpetual change. See now, these are the lights of lives. One must go out before a new one is lighted. The little belong to the old and young, to the prime belong the large, and to you belonged the most bright and pleasant, which filled the room with warmth. It was extinguished and you fell to the ground. Your body was exhumed and adorned and revered, all clime had come to know what was your worth, and then many more candles were burning even brighter in your place.";
+                    __instance.enemyFiles[i].loadImageSlowly = true;
+                    __instance.enemyFiles[i].maxCharactersToType = 35;
+                }
+            }
+        }
+    }
 }

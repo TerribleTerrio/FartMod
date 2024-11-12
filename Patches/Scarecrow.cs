@@ -230,25 +230,6 @@ public class Scarecrow : EnemyAI
         {
             scanNode.creatureScanID = -1;
         }
-        else
-        {
-            currentTerminal = Object.FindObjectOfType<Terminal>();
-            for (int i = 0; i < currentTerminal.enemyFiles.Count; i++)
-            {
-                if (currentTerminal.enemyFiles[i].creatureName != "Scarecrow")
-                {
-                    continue;
-                }
-                else
-                {
-                    currentTerminal.enemyFiles[i].clearPreviousText = true;
-                    currentTerminal.enemyFiles[i].displayText = newScarecrowNode.displayText;
-                    currentTerminal.enemyFiles[i].loadImageSlowly = true;
-                    currentTerminal.enemyFiles[i].maxCharactersToType = 35;
-                    break;
-                }
-            }
-        }
 
         base.Start();
 
