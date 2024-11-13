@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
@@ -7,8 +8,13 @@ public class HandMirror : GrabbableObject
     [HideInInspector]
     public RuntimeAnimatorController playerDefaultAnimatorController;
 
-    [Header("Override animator to replace current player animator")]
-    public AnimatorOverrideController playerOverrideAnimator;
+    [HideInInspector]
+    public RuntimeAnimatorController otherPlayerDefaultAnimatorController;
+
+    [Header("Animators to replace default player animators")]
+    public RuntimeAnimatorController playerMirrorAnimatorController;
+
+    public RuntimeAnimatorController otherPlayerMirrorAnimatorController;
 
     [Header("Reflection")]
     public Camera reflectionCamera;
@@ -23,6 +29,18 @@ public class HandMirror : GrabbableObject
 
 	private PlayerControllerB previousPlayerHeldBy;
 
+    private bool isCrouching;
+
+    private bool isJumping;
+
+    private bool isWalking;
+
+    private bool isSprinting;
+
+    private AnimatorStateInfo currentStateInfo;
+
+    private float currentAnimationTime;
+
     public override void Update()
     {
         base.Update();
@@ -34,8 +52,8 @@ public class HandMirror : GrabbableObject
         {
             if (previousPlayerHeldBy.isPlayerDead)
             {
-                // CancelLookCloser();
-                // SetAnimatorAsOverrideServerRpc(setOverride: false);
+                CancelLookCloser();
+                SetAnimator(setOverride: false);
                 RemoveCameraTexture();
                 reflectionCamera.enabled = false;
             }
@@ -48,21 +66,21 @@ public class HandMirror : GrabbableObject
         reflectionCamera.enabled = false;
     }
 
-    // public override void ItemActivate(bool used, bool buttonDown = true)
-	// {
-	// 	base.ItemActivate(used, buttonDown);
-	// 	if (!(playerHeldBy == null) && base.IsOwner)
-	// 	{
-	// 		playerHeldBy.playerBodyAnimator.SetBool("HoldMask", buttonDown);
-	// 		playerHeldBy.activatingItem = buttonDown;
-    //     }
-	// }
+    public override void ItemActivate(bool used, bool buttonDown = true)
+	{
+		base.ItemActivate(used, buttonDown);
+		if (!(playerHeldBy == null) && base.IsOwner)
+		{
+			playerHeldBy.playerBodyAnimator.SetBool("HoldMirror", buttonDown);
+			playerHeldBy.activatingItem = buttonDown;
+        }
+	}
 
 	public override void EquipItem()
 	{
 		base.EquipItem();
 		previousPlayerHeldBy = playerHeldBy;
-        // SetAnimatorAsOverrideServerRpc(setOverride: true);
+        SetAnimator(setOverride: true);
         CreateCameraTexture();
         reflectionCamera.enabled = true;
 	}
@@ -71,8 +89,8 @@ public class HandMirror : GrabbableObject
 	{
 		base.DiscardItem();
 		previousPlayerHeldBy.activatingItem = false;
-		// CancelLookCloser();
-        // SetAnimatorAsOverrideServerRpc(setOverride: false);
+		CancelLookCloser();
+        SetAnimator(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
 	}
@@ -81,70 +99,87 @@ public class HandMirror : GrabbableObject
 	{
 		base.PocketItem();
 		playerHeldBy.activatingItem = false;
-		// CancelLookCloser();
-        // SetAnimatorAsOverrideServerRpc(setOverride: false);
+		CancelLookCloser();
+        SetAnimator(setOverride: false);
         RemoveCameraTexture();
         reflectionCamera.enabled = false;
 	}
 
-    [ServerRpc(RequireOwnership = false)]
-    private void SetAnimatorAsOverrideServerRpc(bool setOverride)
-    {
-        SetAnimatorAsOverrideClientRpc(setOverride);
-    }
-
-    [ClientRpc]
-    private void SetAnimatorAsOverrideClientRpc(bool setOverride)
+    private void SetAnimator(bool setOverride)
     {
         if (setOverride == true)
         {
             if (playerHeldBy != null)
             {
-                if (playerDefaultAnimatorController != playerOverrideAnimator)
+                if (playerHeldBy == StartOfRound.Instance.localPlayerController)
                 {
-                    playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                    SaveAnimatorStates(playerHeldBy.playerBodyAnimator);
+                    if (playerDefaultAnimatorController != playerMirrorAnimatorController)
+                    {
+                        playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                    }
+                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerMirrorAnimatorController;
+                    SetAnimatorStates(playerHeldBy.playerBodyAnimator);
                 }
-                playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerOverrideAnimator;
+                else
+                {
+                    SaveAnimatorStates(playerHeldBy.playerBodyAnimator);
+                    if (otherPlayerDefaultAnimatorController != otherPlayerMirrorAnimatorController)
+                    {
+                        otherPlayerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                    }
+                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = otherPlayerMirrorAnimatorController;
+                    SetAnimatorStates(playerHeldBy.playerBodyAnimator);
+                }
             }
         }
-
         else
         {
             if (previousPlayerHeldBy != null)
             {
-                previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
+                if (previousPlayerHeldBy == StartOfRound.Instance.localPlayerController)
+                {
+                    SaveAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                    previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
+                    SetAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                }
+                else
+                {
+                    SaveAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                    previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = otherPlayerDefaultAnimatorController;
+                    SetAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                }
             }
         }
     }
 
-    // private void SetAnimatorAsOverride()
-    // {
-	// 	if (previousPlayerHeldBy != null)
-	// 	{
-    //         if (playerDefaultAnimatorController != playerOverrideAnimator)
-    //         {
-    //             playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
-    //         }
-    //         playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerOverrideAnimator;
-    //     }
-    // }
+    private void CancelLookCloser()
+    {
+		if (previousPlayerHeldBy != null)
+		{
+			previousPlayerHeldBy.activatingItem = false;
+			previousPlayerHeldBy.playerBodyAnimator.SetBool("HoldMirror", value: false);
+		}
+    }
 
-    // private void SetAnimatorAsDefault()
-    // {
-	// 	if (previousPlayerHeldBy != null)
-	// 	{
-    //         previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
-    //     }
-    // }
+    public void SaveAnimatorStates(Animator animator)
+    {
+        isCrouching = animator.GetBool("crouching");
+        isJumping = animator.GetBool("Jumping");
+        isWalking = animator.GetBool("Walking");
+        isSprinting = animator.GetBool("Sprinting");
+        currentStateInfo = animator.GetCurrentAnimatorStateInfo(0);
+        currentAnimationTime = currentStateInfo.normalizedTime;
+    }
 
-    // private void CancelLookCloser()
-    // {
-	// 	if (previousPlayerHeldBy != null)
-	// 	{
-	// 		previousPlayerHeldBy.activatingItem = false;
-	// 		previousPlayerHeldBy.playerBodyAnimator.SetBool("HoldMask", value: false);
-	// 	}
-    // }
+    public void SetAnimatorStates(Animator animator)
+    {
+        animator.Play(currentStateInfo.fullPathHash, 0, currentAnimationTime);
+        animator.SetBool("crouching", isCrouching);
+        animator.SetBool("Jumping", isJumping);
+        animator.SetBool("Walking", isWalking);
+        animator.SetBool("Sprinting", isSprinting);
+    }
 
     private void CreateCameraTexture()
     {

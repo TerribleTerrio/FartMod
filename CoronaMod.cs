@@ -6,8 +6,11 @@ using System.IO;
 using System.Reflection;
 using Unity.Netcode;
 using UnityEngine;
+using LethalLib.Modules;
+using LethalLib.Extras;
 
 [BepInPlugin(modGUID, modName, modVersion)]
+[BepInDependency(LethalLib.Plugin.ModGUID, BepInDependency.DependencyFlags.HardDependency)] 
 public class CoronaMod : BaseUnityPlugin
 {
     private const string modGUID = "CoronaTerrio.CoronaMod";
@@ -19,6 +22,25 @@ public class CoronaMod : BaseUnityPlugin
     internal ManualLogSource nls;
     public static AssetBundle networkbundle;
     public GameObject networkPrefab;
+
+    public static AssetBundle unlockablebundle;
+
+    public UnlockableItemDef fridgeUnlockable;
+
+    public GameObject fridgePrefab;
+
+    public TerminalNode fridgeBuyNode;
+
+    public TerminalNode fridgeBuyConfirm;
+
+
+    public UnlockableItemDef punchingBagUnlockable;
+
+    public GameObject punchingBagPrefab;
+
+    public TerminalNode punchingBagBuyNode;
+
+    public TerminalNode punchingBagBuyConfirm;
 
     private static void NetcodePatcher()
     {
@@ -53,6 +75,22 @@ public class CoronaMod : BaseUnityPlugin
         AssetBundle networkBundle = AssetBundle.LoadFromFile(assetDir);
         networkPrefab = networkBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/Scripts/NetworkHandler.prefab");
         networkPrefab.AddComponent<NetworkHandler>();
+
+        //IMPORT UNLOCKABLE OBJECTS
+        string unlockableDir = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "unlockablebundle");        
+        AssetBundle unlockableBundle = AssetBundle.LoadFromFile(unlockableDir);
+ 
+        fridgeUnlockable = unlockableBundle.LoadAsset<UnlockableItemDef>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/FridgeDef.asset");
+        fridgePrefab = unlockableBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/Fridge.prefab");
+        fridgeBuyNode = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/FridgeBuy.asset");
+        fridgeBuyConfirm = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/FridgeBuyConfirm.asset");
+        LethalLib.Modules.Unlockables.RegisterUnlockable(fridgeUnlockable, StoreType.Decor, fridgeBuyNode, fridgeBuyConfirm, null, 110);
+
+        punchingBagUnlockable = unlockableBundle.LoadAsset<UnlockableItemDef>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBagDef.asset");
+        punchingBagPrefab = unlockableBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBag.prefab");
+        punchingBagBuyNode = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBagBuy.asset");
+        punchingBagBuyConfirm = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBagBuyConfirm.asset");
+        LethalLib.Modules.Unlockables.RegisterUnlockable(punchingBagUnlockable, StoreType.Decor, punchingBagBuyNode, punchingBagBuyConfirm, null, 75);
 
         harmony.PatchAll();
 
