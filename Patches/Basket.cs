@@ -56,6 +56,7 @@ public class Basket : AnimatedItem
                 {
                     RoundManager.Instance.CollectNewScrapForThisRound(basketObject);
                 }
+                basketObject.isInShipRoom = playerHeldBy.isInHangarShipRoom;
             }
 
             if (basketObject.playerHeldBy != null)
@@ -140,6 +141,7 @@ public class Basket : AnimatedItem
         if (basketObject != null)
         {
             RoundManager.Instance.CollectNewScrapForThisRound(basketObject);
+            basketObject.isInShipRoom = playerHeldBy.isInHangarShipRoom;
         }
     }
 
