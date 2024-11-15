@@ -189,12 +189,11 @@ namespace CoronaMod.Patches
 
         static void ShootGun(ShotgunItem __instance, Vector3 shotgunPosition, Vector3 shotgunForward)
         {
-            RaycastHit[] colliders = Physics.SphereCastAll(shotgunPosition, 5f, shotgunForward, 15f, 1076363336, QueryTriggerInteraction.Ignore);
+            RaycastHit[] colliders = Physics.SphereCastAll(shotgunPosition, 5f, shotgunForward, 15f, 1076363336, QueryTriggerInteraction.Collide);
 
             for (int i = 0; i < colliders.Length; i++)
             {
                 GameObject otherObject = colliders[i].collider.gameObject;
-
                 if (Physics.Linecast(shotgunPosition, colliders[i].transform.position + Vector3.up * 0.3f, 1073742080, QueryTriggerInteraction.Ignore))
                 {
                     continue;
@@ -210,6 +209,12 @@ namespace CoronaMod.Patches
                 {
                     Vase vase = otherObject.GetComponentInParent<Vase>();
                     vase.ExplodeAndSync();
+                    continue;
+                }
+
+                if (otherObject.GetComponentInParent<PunchingBag>() != null)
+                {
+                    otherObject.GetComponentInParent<PunchingBag>().PunchAndSync(true, "Shotgun");
                     continue;
                 }
 
