@@ -126,6 +126,14 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
                 punchingBagAnimator.SetInteger("ripstate", ripState);
             }
         }
+        else if (punchSource == "Blowtorch")
+        {
+            if (ripState != 4)
+            {
+                ripState++;
+                punchingBagAnimator.SetInteger("ripstate", ripState);
+            }
+        }
 
         if (damageState != 4)
         {

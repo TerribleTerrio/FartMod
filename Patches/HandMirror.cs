@@ -12,9 +12,9 @@ public class HandMirror : GrabbableObject
     public RuntimeAnimatorController otherPlayerDefaultAnimatorController;
 
     [Header("Animators to replace default player animators")]
-    public RuntimeAnimatorController playerMirrorAnimatorController;
+    public RuntimeAnimatorController playerCustomAnimatorController;
 
-    public RuntimeAnimatorController otherPlayerMirrorAnimatorController;
+    public RuntimeAnimatorController otherPlayerCustomAnimatorController;
 
     [Header("Reflection")]
     public Camera reflectionCamera;
@@ -114,21 +114,21 @@ public class HandMirror : GrabbableObject
                 if (playerHeldBy == StartOfRound.Instance.localPlayerController)
                 {
                     SaveAnimatorStates(playerHeldBy.playerBodyAnimator);
-                    if (playerDefaultAnimatorController != playerMirrorAnimatorController)
+                    if (playerDefaultAnimatorController != playerCustomAnimatorController)
                     {
                         playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
                     }
-                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerMirrorAnimatorController;
+                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerCustomAnimatorController;
                     SetAnimatorStates(playerHeldBy.playerBodyAnimator);
                 }
                 else
                 {
                     SaveAnimatorStates(playerHeldBy.playerBodyAnimator);
-                    if (otherPlayerDefaultAnimatorController != otherPlayerMirrorAnimatorController)
+                    if (otherPlayerDefaultAnimatorController != otherPlayerCustomAnimatorController)
                     {
                         otherPlayerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
                     }
-                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = otherPlayerMirrorAnimatorController;
+                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = otherPlayerCustomAnimatorController;
                     SetAnimatorStates(playerHeldBy.playerBodyAnimator);
                 }
             }
