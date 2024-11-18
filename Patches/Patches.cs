@@ -81,6 +81,16 @@ namespace CoronaMod.Patches
                     otherObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
                 }
 
+                if (otherObject.GetComponent<PunchingBag>() != null)
+                {
+                    if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+                    {
+                        continue;
+                    }
+                    Debug.Log($"Ray hit {hitInfo.collider}.");
+                    otherObject.GetComponent<PunchingBag>().PunchAndSync(true, "Explosion");
+                }
+
                 if (otherObject.GetComponent<Vase>() != null)
                 {
                     if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
@@ -97,6 +107,16 @@ namespace CoronaMod.Patches
                         otherObject.GetComponent<Vase>().Wobble(2);
                         otherObject.GetComponent<Vase>().WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
                     }
+                }
+                
+                if (otherObject.GetComponentInParent<HydraulicStabilizer>() != null)
+                {
+                    if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+                    {
+                        continue;
+                    }
+                    Debug.Log($"Ray hit {hitInfo.collider}.");
+                    otherObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
                 }
 
                 if (otherObject.GetComponent<PlayerControllerB>() != null)
@@ -116,17 +136,6 @@ namespace CoronaMod.Patches
                         }
                     }
                 }
-
-                if (otherObject.GetComponentInParent<HydraulicStabilizer>() != null)
-                {
-                    if (Physics.Linecast(explosionPosition, colliders[i].transform.position + Vector3.up * 0.3f, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
-                    {
-                        continue;
-                    }
-                    Debug.Log($"Ray hit {hitInfo.collider}.");
-                    otherObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
-                }
-
             }
         }
     }

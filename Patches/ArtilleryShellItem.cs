@@ -68,6 +68,8 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public AudioClip shellZapped;
 
+	private Coroutine waitToBeEatenCoroutine;
+	
 	public override void Start()
 	{
 		base.Start();
@@ -81,8 +83,39 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		pushRange *= dangerMultiplier;
 	}
 
+    public override void GrabItem()
+	{
+		base.GrabItem();
+		if (waitToBeEatenCoroutine != null)
+		{
+			StopCoroutine(waitToBeEatenCoroutine);
+			waitToBeEatenCoroutine = null;
+		}
+		waitToBeEatenCoroutine = StartCoroutine(WaitToBeEaten());
+	}
+
+	private IEnumerator WaitToBeEaten()
+	{
+		yield return new WaitUntil(() => (bool)playerHeldBy.inAnimationWithEnemy);
+		if (playerHeldBy.inAnimationWithEnemy.enemyType.enemyName == "ForestGiant")
+		{
+			Debug.Log("FOREST GIANT EATING A BOMB!!!");
+			yield return new WaitForSeconds(4.4f);
+			ExplodeAndSync();
+		}
+		else
+		{
+			Debug.Log("In special animation with enemy while holding a bomb.");
+		}
+	}
+
 	public override void DiscardItem()
 	{
+		if (waitToBeEatenCoroutine != null)
+		{
+			StopCoroutine(waitToBeEatenCoroutine);
+			waitToBeEatenCoroutine = null;
+		}
 		if (playerHeldBy.isPlayerDead == true)
 		{
 			//DIED BY BLAST
@@ -147,6 +180,13 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void ArmShellAndSync()
 	{
+		if (!explodeInOrbit)
+		{
+			if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+			{
+				return;
+			}
+		}
 		ArmShell();
 		ArmShellServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
 	}
@@ -180,36 +220,32 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	public IEnumerator DelayDetonate(float delay)
 	{
 		yield return new WaitForSeconds(delay);
-		ExplodeClientRpc();
+		ExplodeAndSync();
 		// base.gameObject.GetComponent<NetworkObject>().Despawn();
 	}
 
 	public void ExplodeAndSync()
 	{
-		if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+		if (!explodeInOrbit)
 		{
-			if (explodeInOrbit)
+			if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
 			{
-				Explode();
-				ExplodeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+				return;
 			}
 		}
+		ExplodeServerRpc();
 	}
 
 	[ServerRpc(RequireOwnership = false)]
-	public void ExplodeServerRpc(int clientWhoSentRpc)
+	public void ExplodeServerRpc()
 	{
-		ExplodeClientRpc(clientWhoSentRpc);
-		// base.gameObject.GetComponent<NetworkObject>().Despawn();
+		ExplodeClientRpc();
 	}
 
 	[ClientRpc]
-	public void ExplodeClientRpc(int clientWhoSentRpc = -1)
+	public void ExplodeClientRpc()
 	{
-		if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
-		{
-			Explode();
-		}
+		Explode();
 	}
 
 	public void Explode()
@@ -229,10 +265,6 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 		//SET FLAGS
 		exploded = true;
-		if (heldByPlayerOnServer)
-		{
-			playerHeldBy.DropItemAheadOfPlayer();
-		}
 
 		//CHECK FOR COLLIDERS IN RANGE
 		Collider[] colliders = Physics.OverlapSphere(this.gameObject.transform.position, pushRange, 3, QueryTriggerInteraction.Collide);
@@ -287,19 +319,18 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		//SPAWN EXPLOSION EFFECT (DETECTS OBJECTS EFFECTED BY EXPLOSIONS)
 		Landmine.SpawnExplosion(this.gameObject.transform.position + Vector3.up, true, killRange, damageRange, nonLethalDamage, physicsForce, explosionPrefab, true);
 		
-		//DOUBLE CHECK IF HELD BEFORE DESPAWNING
-		if (playerHeldBy)
-        {
-            base.playerHeldBy.DiscardHeldObject();
-        }
+		// DROP THE SHELL
+		if (heldByPlayerOnServer)
+		{
+			playerHeldBy.DiscardHeldObject();
+		}
         else if (isHeldByEnemy)
         {
-            base.DiscardItemFromEnemy();
+            DiscardItemFromEnemy();
         }
-
-		if (IsOwner)
+		if (IsServer)
 		{
-			base.gameObject.GetComponent<NetworkObject>().Despawn();
+			gameObject.GetComponent<NetworkObject>().Despawn();
 		}
 	}
 

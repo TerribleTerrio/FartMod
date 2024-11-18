@@ -73,37 +73,7 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
             return;
         }
 
-        if (punchSource == "Shotgun")
-        {
-            if (canBeBroken)
-            {
-                ripState = 4;
-                punchingBagAnimator.SetInteger("ripstate", ripState);
-                punchingBagAnimator.Play("Rip Layer.Rip 4");
-                punchingBagAnimator.SetTrigger("break");
-                isBroken = true;
-                interactCollider.enabled = false;
-                return;
-            }
-            ripState = 4;
-            punchingBagAnimator.SetInteger("ripstate", ripState);
-        }
-        else if (punchSource == "Lunging dog")
-        {
-            if (canBeBroken)
-            {
-                ripState = 4;
-                punchingBagAnimator.SetInteger("ripstate", ripState);
-                punchingBagAnimator.Play("Rip Layer.Rip 4");
-                punchingBagAnimator.SetTrigger("break");
-                isBroken = true;
-                interactCollider.enabled = false;
-                return;
-            }
-            ripState = 4;
-            punchingBagAnimator.SetInteger("ripstate", ripState);
-        }
-        else if (punchSource == "Chasing dog")
+        if (punchSource == "Shotgun" || punchSource == "Explosion" || punchSource == "Lunging dog" || punchSource == "Chasing dog")
         {
             if (canBeBroken)
             {

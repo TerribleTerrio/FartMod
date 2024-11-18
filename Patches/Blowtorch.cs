@@ -137,7 +137,7 @@ public class Blowtorch : AnimatedItem
 		}
         if (isBurning && isHeld)
 		{
-            torchTank = Mathf.Max(torchTank - Time.deltaTime / 120f, 0f);
+            torchTank = Mathf.Max(torchTank - Time.deltaTime / 180f, 0f);
             if (torchTank <= 0f)
             {
                 tankEmpty = true;
@@ -175,9 +175,11 @@ public class Blowtorch : AnimatedItem
 
             if (sparkInterval <= 0f)
             {
-                sparkInterval = 0.5f;
+                sparkInterval = UnityEngine.Random.Range(0.2f, 0.7f);
                 if (isBurning && Physics.Raycast(ray, out sprayHit, burnRange, sprayPaintMask, QueryTriggerInteraction.Collide))
                 {
+                    // I wanted to do this but I'm not sure, I'll just leave it here
+                    // && sprayHit.collider.gameObject.tag != "Gravel" && sprayHit.collider.gameObject.tag != "Snow" && sprayHit.collider.gameObject.tag != "Grass"
                     Spark();
                 }
             }
@@ -200,7 +202,18 @@ public class Blowtorch : AnimatedItem
 		base.DiscardItem();
 		previousPlayerHeldBy.activatingItem = false;
         SetAnimator(setOverride: false);
+        if (toggleTorchCoroutine != null)
+        {
+            StopCoroutine(toggleTorchCoroutine);
+            toggleTorchCoroutine = null;
+        }
+        if (waitForTankCoroutine != null)
+        {
+            StopCoroutine(waitForTankCoroutine);
+            waitForTankCoroutine = null;
+        }
         itemAnimator.Play("off");
+        inToggleTorchAnimation = false;
         isOn = false;
 	}
 
@@ -208,10 +221,20 @@ public class Blowtorch : AnimatedItem
 	{
 		base.PocketItem();
 		playerHeldBy.activatingItem = false;
-        SetAnimator(setOverride: false);
+        SetAnimator(setOverride: false);     
+        if (toggleTorchCoroutine != null)
+        {
+            StopCoroutine(toggleTorchCoroutine);
+            toggleTorchCoroutine = null;
+        }
+        if (waitForTankCoroutine != null)
+        {
+            StopCoroutine(waitForTankCoroutine);
+            waitForTankCoroutine = null;
+        }
         itemAnimator.Play("off");
+        inToggleTorchAnimation = false;
         isOn = false;
-
 	}
 
     public override void ItemActivate(bool used, bool buttonDown = true)
@@ -245,6 +268,7 @@ public class Blowtorch : AnimatedItem
 
     private IEnumerator ToggleTorchAnimation(bool turningon = true, bool empty = false)
     {
+        Debug.Log($"Blowtorch tank: {torchTank}.");
         Debug.Log($"Toggling torch animation, turning on: {turningon}, empty: {empty}.");
         inToggleTorchAnimation = true;
 		playerHeldBy.activatingItem = true;
@@ -280,6 +304,7 @@ public class Blowtorch : AnimatedItem
     {
         Debug.Log("Starting wait for tank coroutine.");
         yield return new WaitUntil(() => tankEmpty);
+        Debug.Log($"Blowtorch tank: {torchTank}, turning off.");
         isBurning = false;
         StopBurning();
         itemAnimator.Play("emptying");
@@ -311,7 +336,9 @@ public class Blowtorch : AnimatedItem
         {
             currentSparkClip = 0;
         }
+        MakeNoise();
         sparkAudio.PlayOneShot(sparkAudioClips[currentSparkClip]);
+        WalkieTalkie.TransmitOneShotAudio(sparkAudio, sparkAudioClips[currentSparkClip]);
         SparkServerRpc(currentSparkClip);
         GameObject newSpark = UnityEngine.Object.Instantiate(sparkParticles, sparkParticles.transform.position, Quaternion.identity, null);
         newSpark.SetActive(true);
@@ -328,7 +355,9 @@ public class Blowtorch : AnimatedItem
     {
         if (!base.IsOwner)
         {
+            MakeNoise();
             sparkAudio.PlayOneShot(sparkAudioClips[clip]);
+            WalkieTalkie.TransmitOneShotAudio(sparkAudio, sparkAudioClips[currentSparkClip]);
             GameObject newSpark = UnityEngine.Object.Instantiate(sparkParticles, sparkParticles.transform.position, Quaternion.identity, null);
             newSpark.SetActive(true);
         }
@@ -350,12 +379,20 @@ public class Blowtorch : AnimatedItem
             if (colliders[i].gameObject.layer == 3)
             {
                 PlayerControllerB playerControllerB = colliders[i].gameObject.GetComponent<PlayerControllerB>();
-                Debug.Log($"Blowtorch detected {playerControllerB}.");
+                Debug.Log($"Blowtorch detected a player.");
                 if (playerControllerB != null && playerControllerB != playerHeldBy)
                 {
                     Vector3 bodyVelocity = Vector3.Normalize(playerControllerB.gameplayCamera.transform.position - base.transform.position) * 80f / Vector3.Distance(playerControllerB.gameplayCamera.transform.position, base.transform.position);
                     playerControllerB.DamagePlayer(5, hasDamageSFX: true, callRPC: true, CauseOfDeath.Burning);
-                    Debug.Log($"Blowtorch damaged {playerControllerB}.");
+                    Debug.Log($"Blowtorch damaged a player.");
+                    Spark();
+                    if (playerControllerB.isHoldingObject)
+                    {
+                        if (playerControllerB.currentlyHeldObjectServer.gameObject.GetComponent<Vase>())
+                        {
+                            playerControllerB.currentlyHeldObjectServer.gameObject.GetComponent<Vase>().ExplodeAndSync();
+                        }
+                    }
                 }
             }
 
@@ -363,24 +400,75 @@ public class Blowtorch : AnimatedItem
             else if (colliders[i].gameObject.layer == 19)
             {
                 EnemyAICollisionDetect enemy = colliders[i].gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
-                Debug.Log($"Blowtorch detected {enemy}.");
+                Debug.Log($"Blowtorch detected an enemy.");
                 if (enemy != null && enemy.mainScript.IsOwner)
                 {
                     enemy.mainScript.HitEnemyOnLocalClient(damage, transform.forward, playerHeldBy, playHitSFX: true);
-                    Debug.Log($"Blowtorch damaged {enemy}.");
+                    Debug.Log($"Blowtorch damaged an enemy.");
+                    Spark();
                 }
             }
 
             //FOR ITEMS
-            if (colliders[i].gameObject.GetComponentInParent<ArtilleryShellItem>() != null)
+            else if (colliders[i].gameObject.GetComponentInParent<ArtilleryShellItem>() != null)
             {
+                Debug.Log($"Blowtorch detected Artillery Shell.");
+                Spark();
                 colliders[i].gameObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
                 continue;
             }
 
-            if (colliders[i].gameObject.GetComponentInParent<PunchingBag>() != null)
+            else if (colliders[i].gameObject.GetComponentInParent<PunchingBag>() != null)
             {
+                Debug.Log($"Blowtorch detected Punching Bag.");
+                Spark();
                 colliders[i].gameObject.GetComponentInParent<PunchingBag>().PunchAndSync(true, "Blowtorch");
+            }
+
+            else if (colliders[i].gameObject.GetComponentInParent<HydraulicStabilizer>() != null)
+            {
+                Debug.Log($"Blowtorch detected Hydraulic.");
+                Spark();
+                colliders[i].gameObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
+            }
+
+            else if (colliders[i].gameObject.GetComponentInParent<Vase>() != null)
+            {
+                Debug.Log($"Blowtorch detected Vase.");
+                Spark();
+                colliders[i].gameObject.GetComponentInParent<Vase>().ExplodeAndSync();
+            }
+
+            else if (colliders[i].gameObject.GetComponentInParent<Toaster>() != null)
+            {
+                Debug.Log($"Blowtorch detected Toaster.");
+                Spark();
+                colliders[i].gameObject.GetComponentInParent<Toaster>().Eject();
+                colliders[i].gameObject.GetComponentInParent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            }
+
+            //FOR HAZARDS
+            else if (colliders[i].gameObject.GetComponentInParent<Landmine>() != null)
+            {
+                Debug.Log($"Blowtorch detected Landmine.");
+                Spark();
+                Landmine landmine = colliders[i].gameObject.GetComponentInParent<Landmine>();
+                landmine.SetOffMineAnimation();
+                landmine.sendingExplosionRPC = true;
+                landmine.ExplodeMineServerRpc();
+            }
+
+            else if (colliders[i].gameObject.GetComponentInParent<Turret>() != null)
+            {
+                Debug.Log($"Blowtorch detected Turret.");
+                Spark();
+                Turret turret = colliders[i].gameObject.GetComponentInParent<Turret>();
+                if (turret.turretMode == TurretMode.Berserk || turret.turretMode == TurretMode.Firing)
+                {
+                    return;
+                }
+                turret.SwitchTurretMode(3);
+                turret.EnterBerserkModeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
             }
         }
     }
@@ -399,7 +487,7 @@ public class Blowtorch : AnimatedItem
 
     private Collider[] checkColliders()
     {
-        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.2f, 2621448, QueryTriggerInteraction.Collide);
+        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.2f, 1076363336, QueryTriggerInteraction.Collide);
         return colliders;
     }
 
