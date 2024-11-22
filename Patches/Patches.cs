@@ -2,6 +2,7 @@ using UnityEngine;
 using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
+using System.Collections;
 
 namespace CoronaMod.Patches
 {
@@ -140,22 +141,61 @@ namespace CoronaMod.Patches
         }
     }
 
-    // [HarmonyPatch(typeof(SpikeRoofTrap))]
-    // internal class SpikeRoofTrapPatch
-    // {
-    //     [HarmonyPatch("OnTriggerStay")]
-    //     [HarmonyPostfix]
+    [HarmonyPatch(typeof(SpikeRoofTrap))]
+    internal class SpikeRoofTrapPatch
+    {
+        [HarmonyPatch("SlamSpikeTrapSequence")]
+        [HarmonyPostfix]
 
-    //     static void OnTriggerStay(SpikeRoofTrap __instance, Collider other)
-    //     {
-    //         Debug.Log($"Trigger hit collider {other.gameObject}.");
-    //         ArtilleryShellItem shell = other.gameObject.GetComponent<ArtilleryShellItem>();
-    //         if (shell != null && !shell.exploded)
-    //         {
-    //             shell.ExplodeAndSync();
-    //         }
-    //     }
-    // }
+        static IEnumerator SlamSpikeTrapSequence(IEnumerator result, SpikeRoofTrap __instance)
+        {
+            while (result.MoveNext())
+            {
+                yield return result.Current;
+            }
+            Collider[] colliders = Physics.OverlapSphere(__instance.transform.position - Vector3.down * 1f, 2.5f, 1076363336, QueryTriggerInteraction.Collide);
+            RaycastHit hitInfo;
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                GameObject otherObject = colliders[i].gameObject;
+                Debug.Log($"SlamSpikeTrapSequence found object {otherObject} on layer {otherObject.layer}.");
+
+                if (otherObject.GetComponent<Toaster>() != null)
+                {
+                    otherObject.GetComponent<Toaster>().Eject();
+                    otherObject.GetComponent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                }
+
+                if (otherObject.GetComponent<ArtilleryShellItem>() != null)
+                {
+                    otherObject.GetComponent<ArtilleryShellItem>().ExplodeAndSync();
+                }
+
+                if (otherObject.GetComponent<Vase>() != null)
+                {
+                    otherObject.GetComponent<Vase>().ExplodeAndSync();
+                }
+                
+                if (otherObject.GetComponent<HydraulicStabilizer>() != null)
+                {
+                    otherObject.GetComponent<HydraulicStabilizer>().GoPsycho();
+                }
+
+                if (otherObject.GetComponent<PlayerControllerB>() != null)
+                {
+                    PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
+                    if (player.isHoldingObject)
+                    {
+                        if (player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>() != null)
+                        {
+                            Vase vase = player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>();
+                            vase.ExplodeAndSync();
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     [HarmonyPatch(typeof(MouthDogAI))]
     internal class MouthDogAIPatch

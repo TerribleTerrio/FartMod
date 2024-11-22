@@ -70,6 +70,8 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	private Coroutine waitToBeEatenCoroutine;
 	
+	private bool hasBeenSeen;
+
 	public override void Start()
 	{
 		base.Start();
@@ -82,6 +84,23 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		damageRange *= dangerMultiplier;
 		pushRange *= dangerMultiplier;
 	}
+
+    public override void Update()
+    {
+        base.Update();
+
+        if (!hasBeenSeen)
+        {
+            for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
+            {
+                if (StartOfRound.Instance.allPlayerScripts[i].HasLineOfSightToPosition(transform.position))
+                {
+                    hasBeenSeen = true;
+                    Debug.Log($"[ARTILLERY SHELL]: Has been seen by {StartOfRound.Instance.allPlayerScripts[i]}.");
+                }
+            }
+        }
+    }
 
     public override void GrabItem()
 	{
@@ -187,6 +206,10 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 				return;
 			}
 		}
+		if (!hasBeenSeen)
+		{
+			return;
+		}
 		ArmShell();
 		ArmShellServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
 	}
@@ -232,6 +255,10 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 			{
 				return;
 			}
+		}
+		if (!hasBeenSeen)
+		{
+			return;
 		}
 		ExplodeServerRpc();
 	}
