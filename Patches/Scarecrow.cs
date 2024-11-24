@@ -51,6 +51,8 @@ public class Scarecrow : EnemyAI
 
     private FloodWeather floodWeather;
 
+    private Collider enemyCollider;
+
     [Space(10f)]
     [Header("Wind Levels On Moons")]
     public string[] noWindMoons;
@@ -277,6 +279,8 @@ public class Scarecrow : EnemyAI
                 }
             }
         }
+
+        enemyCollider = base.gameObject.GetComponentInChildren<EnemyAICollisionDetect>().gameObject.GetComponent<Collider>();
 
         tweakOutChance = tweakOutStartingChance;
         facePlayerChance = facePlayerStartingChance;
@@ -604,6 +608,12 @@ public class Scarecrow : EnemyAI
             }
         }
 
+        if (invisible && playersWithLineOfSight.Count < 1)
+        {
+            invisible = false;
+            SetInvisibleServerRpc(false);
+        }
+
         switch (currentBehaviourStateIndex)
         {
 
@@ -707,6 +717,7 @@ public class Scarecrow : EnemyAI
                 targetPlayer = null;
                 MoveToRandomPosition(escaping: true);
                 currentBehaviourStateIndex = 1;
+                break;
             }
 
             //IF NO PLAYERS WITHIN RANGE
@@ -907,13 +918,13 @@ public class Scarecrow : EnemyAI
     private IEnumerator ChangePositionWhileInvisible(Vector3 position, float time)
     {
         SetInvisibleServerRpc(true);
-        // invisible = true;
+        invisible = true;
         transform.position = position;
         Debug.Log("Scarecrow moved.");
         // currentBehaviourStateIndex = 0;
         yield return new WaitForSeconds(time);
         // changePositionCoroutine = null;
-        SetInvisibleServerRpc(false);
+        // SetInvisibleServerRpc(false);
 
     }
 
@@ -931,12 +942,14 @@ public class Scarecrow : EnemyAI
             Debug.Log("Scarecrow set invisible.");
             invisible = true;
             EnableEnemyMesh(false);
+            enemyCollider.enabled = false;
         }
         else
         {
             Debug.Log("Scarecrow set visible.");
             invisible = false;
             EnableEnemyMesh(true);
+            enemyCollider.enabled = true;
         }
     }
 
