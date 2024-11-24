@@ -4,9 +4,8 @@ using System.Linq;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
-public class Scarecrow : EnemyAI
+public class ScarecrowNew : EnemyAI
 {
     [Space(15f)]
     [Header("Scarecrow Settings")]
@@ -25,6 +24,8 @@ public class Scarecrow : EnemyAI
     public Transform meshContainer;
 
     private List<PlayerControllerB> playersInRange;
+
+    private PlayerControllerB targetPlayer;
 
     public float scareRange;
 
@@ -62,8 +63,24 @@ public class Scarecrow : EnemyAI
     [Header("Chances & Cooldowns")]
 
     [Space(5f)]
+    public float minSearchTime = 100f;
+    
+    public float maxSearchTime = 300f;
+
+    private float searchTimer;
+
+    [Space(5f)]
+    public float minChaseTime = 100f;
+
+    public float maxChaseTime = 300f;
+
+    private float chaseTimer;
+
+    [Space(5f)]
     [Range(0f, 100f)]
-    public float tweakOutChance = 20;
+    public float tweakOutStartingChance = 20;
+
+    private float tweakOutChance;
 
     public float tweakOutCooldown = 10f;
 
@@ -71,7 +88,9 @@ public class Scarecrow : EnemyAI
 
     [Space(5f)]
     [Range(0f, 100f)]
-    public float facePlayerChance = 20;
+    public float facePlayerStartingChance = 20;
+
+    private float facePlayerChance;
 
     public float facePlayerCooldown = 10f;
 
@@ -79,7 +98,9 @@ public class Scarecrow : EnemyAI
 
     [Space(5f)]
     [Range(0f, 100f)]
-    public float detectSoundChance = 20;
+    public float detectSoundStartingChance = 20;
+
+    private float detectSoundChance;
 
     public float detectSoundCooldown = 10f;
 
@@ -87,7 +108,9 @@ public class Scarecrow : EnemyAI
 
     [Space(5f)]
     [Range(0f, 100f)]
-    public float moveChance = 20;
+    public float moveStartingChance = 20;
+
+    private float moveChance;
 
     public float minMoveCooldown = 60f;
 
@@ -97,7 +120,9 @@ public class Scarecrow : EnemyAI
 
     [Space(5f)]
     [Range(0f, 100f)]
-    public float scarePlayerChance = 20;
+    public float scarePlayerStartingChance = 20;
+
+    private float scarePlayerChance;
 
     public float scarePlayerCooldown = 5f;
 
@@ -105,7 +130,9 @@ public class Scarecrow : EnemyAI
 
     [Space(5f)]
     [Range(0f, 100f)]
-    public float decoySoundChance = 20;
+    public float decoySoundStartingChance = 20;
+
+    private float decoySoundChance;
 
     public float decoySoundCooldown = 5f;
 
@@ -197,7 +224,7 @@ public class Scarecrow : EnemyAI
             if (StartOfRound.Instance.gameStats.daysSpent < daysBeforeScarecrowSpawns)
             {
                 //DESPAWN SCARECROW
-                Debug.Log($"Tried to spawn scarecrow before {daysBeforeScarecrowSpawns} days!");
+                Debug.Log($"[SCARECROW]: Tried to spawn before {daysBeforeScarecrowSpawns} days!");
                 RoundManager.Instance.DespawnEnemyOnServer(base.NetworkObject);
 
                 //TRY SPAWN RANDOM DAYTIME ENEMY INSTEAD
@@ -211,14 +238,10 @@ public class Scarecrow : EnemyAI
             GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
 
             //MOVE TO VALID POSITION
-            // Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
-            // while (!CheckPositionIsValid(newPosition))
-            // {
-            //     Debug.Log("[SCARECROW]: Spawn location invalid, finding new spawn point.");
-            //     newPosition = GetRandomNavMeshPositionNearAINode();
-            // }
-            // changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
-            // GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            if (!CheckPositionIsValid(transform.position))
+            {
+                // MoveToRandomPosition();
+            }
         }
 
         if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
@@ -255,12 +278,19 @@ public class Scarecrow : EnemyAI
             }
         }
 
-        Debug.Log("---Scarecrow Spawn Values---");
-        Debug.Log($"Danger value: {dangerValue}");
-        Debug.Log($"Minimum enemy spawn increase: {enemySpawnIncrease}");
-        Debug.Log($"Max enemy power increase: {enemyPowerIncrease}");
-        Debug.Log($"Start value: {startValue}");
-        Debug.Log($"End value: {endValue}");
+        tweakOutChance = tweakOutStartingChance;
+        facePlayerChance = facePlayerStartingChance;
+        detectSoundChance = detectSoundStartingChance;
+        moveChance = moveStartingChance;
+        scarePlayerChance = scarePlayerStartingChance;
+        decoySoundChance = decoySoundStartingChance;
+
+        Debug.Log("[SCARECROW]: Spawned!");
+        Debug.Log($"[SCARECROW]: Danger value: {dangerValue}");
+        Debug.Log($"[SCARECROW]: Minimum enemy spawn increase: {enemySpawnIncrease}");
+        Debug.Log($"[SCARECROW]: Max enemy power increase: {enemyPowerIncrease}");
+        Debug.Log($"[SCARECROW]: Start value: {startValue}");
+        Debug.Log($"[SCARECROW]: End value: {endValue}");
     }
 
     public void SetDangerLevelsAndSync()
@@ -470,7 +500,7 @@ public class Scarecrow : EnemyAI
             {
                 PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
                 playersInRange.Add(player);
-                Debug.Log($"Scarecrow added {player.playerUsername} to detected players.");
+                Debug.Log($"[SCARECROW]: Added {player.playerUsername} to detected players.");
                 SetStateBasedOnPlayers(playersInRange.Count);
             }
         }
@@ -484,7 +514,7 @@ public class Scarecrow : EnemyAI
             {
                 PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
                 playersInRange.Remove(player);
-                Debug.Log($"Scarecrow removed {player.playerUsername} from detected players.");
+                Debug.Log($"[SCARECROW]: Removed {player.playerUsername} from detected players.");
                 SetStateBasedOnPlayers(playersInRange.Count);
             }
         }
@@ -494,25 +524,25 @@ public class Scarecrow : EnemyAI
     {
         if (RoundManager.Instance.timeScript.normalizedTimeOfDay < normalizedTimeInDayToBecomeActive || isEnemyDead || invisible)
         {
-            Debug.Log("Scarecrow inactive or invisible, remaining in inactive state.");
+            Debug.Log("[SCARECROW]: Inactive or invisible, remaining in inactive state.");
             return;
         }
 
         if (numPlayers == 0)
         {
-            Debug.Log("No players in range, switching to state 1");
+            Debug.Log("[SCARECROW]: No players in range, switching to state 1");
             SwitchToBehaviourState(1);
         }
 
         else if (numPlayers == 1)
         {
-            Debug.Log("One player in range, switching to state 2");
+            Debug.Log("[SCARECROW]: One player in range, switching to state 2");
             SwitchToBehaviourState(2);
         }
 
         else if (numPlayers > 1)
         {
-            Debug.Log("Players in range, switching to state 4");
+            Debug.Log("[SCARECROW]: Players in range, switching to state 4");
             SwitchToBehaviourState(4);
         }
     }
@@ -526,9 +556,17 @@ public class Scarecrow : EnemyAI
             return;
         }
 
+        if (searchTimer > 0)
+        {
+            searchTimer--;
+        }
         if (moveTimer > 0)
         {
             moveTimer--;
+        }
+        if (chaseTimer > 0)
+        {
+            chaseTimer--;
         }
         if (facePlayerTimer > 0)
         {
@@ -556,12 +594,12 @@ public class Scarecrow : EnemyAI
             PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
             if (CheckLineOfSightForScarecrow(player) && !playersWithLineOfSight.Contains(player))
             {
-                Debug.Log($"Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} has line of sight to scarecrow.");
+                Debug.Log($"[SCARECROW]: Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} has line of sight.");
                 playersWithLineOfSight.Add(player);
             }
             if (!CheckLineOfSightForScarecrow(player) && playersWithLineOfSight.Contains(player))
             {
-                Debug.Log($"Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} lost line of sight to scarecrow.");
+                Debug.Log($"[SCARECROW]: Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} lost line of sight.");
                 playersWithLineOfSight.Remove(player);
             }
         }
@@ -578,275 +616,200 @@ public class Scarecrow : EnemyAI
 
             if (invisible && changePositionCoroutine == null && playersWithLineOfSight.Count == 0)
             {
-                Debug.Log("Scarecrow out of view of all players, re-enabling meshes.");
+                Debug.Log("[SCARECROW]: Out of view of all players, re-enabling meshes.");
                 SetInvisibleServerRpc(false);
             }
 
             if (RoundManager.Instance.timeScript.normalizedTimeOfDay > normalizedTimeInDayToBecomeActive && !isEnemyDead && !invisible)
             {
-                SetStateBasedOnPlayers(playersInRange.Count);
+                currentBehaviourStateIndex = 1;
             }
 
             break;
 
-        //NO PLAYERS NEARBY
+        //SEARCHING
         case 1:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                scarePrimed = false;
+                Debug.Log("[SCARECROW]: Searching.");
                 moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
+                searchTimer = Random.Range(minSearchTime, maxSearchTime);
 
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
-            if (moveTimer <= 0)
+            //IF SEARCH EXCEEDS SEARCH TIME
+            if (searchTimer <= 0)
             {
-                if (playersWithLineOfSight.Count == 0)
+                for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
+                {
+                    PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
+                    if (targetPlayer == null)
+                    {
+                        if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                        {
+                            targetPlayer = player;
+                            continue;
+                        }
+                    }
+                    else if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                    {
+                        if (Vector3.Distance(player.transform.position, transform.position) < Vector3.Distance(targetPlayer.transform.position, transform.position))
+                        {
+                            targetPlayer = player;
+                        }
+                    }
+                }
+
+                if (targetPlayer != null)
+                {
+                    Debug.Log("[SCARECROW]: Search exceeded search time. Target player selected.");
+                    currentBehaviourStateIndex = 2;
+                }
+            }
+
+            //IF NO PLAYERS WITHIN RANGE
+            if (playersInRange.Count < 1)
+            {
+                if (moveTimer <= 0 && playersWithLineOfSight.Count == 0)
                 {
                     moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                     if (Random.Range(0f,100f) < moveChance)
                     {
-                        Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
-                        if (CheckPositionIsValid(newPosition))
-                        {
-                            changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
-                            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-                        }
+                        MoveToRandomPosition();
                     }
                 }
             }
 
-            break;
-
-        //1 PLAYER IN RANGE
-        case 2:
-            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
+            //IF ONE PLAYER WITHIN RANGE
+            else if (playersInRange.Count == 1)
             {
-                decoySoundTimer = decoySoundCooldown;
-                scarePrimed = false;
-
-                //IF PLAYER IS IN SCARE RANGE
-                if (Vector3.Distance(playersInRange[0].transform.position, transform.position) < scareRange)
-                {
-                    Debug.Log("Player already in scare range, switching to state 3.");
-                    currentBehaviourStateIndex = 3;
-                }
-
-                //IF COMING FROM NO PLAYERS STATE
-                if (previousBehaviourStateIndex == 1)
-                {
-                    if (detectSoundTimer <= 0)
-                    {
-                        detectSoundTimer = detectSoundCooldown;
-                        if (Random.Range(0f,100f) < detectSoundChance && playersWithLineOfSight.Count == 0)
-                        {
-                            PlayDetectSoundServerRpc();
-                        }
-                    }
-                }
-
-                //IF PLAYER ENTERED RANGE WHILE LOOKING AT SCARECROW
-                if (CheckLineOfSightForScarecrow(playersInRange[0]))
-                {
-                    targetPlayerEnteredDetectWhileWatching = true;
-                }
-
-                previousBehaviourStateIndex = currentBehaviourStateIndex;
+                targetPlayer = playersInRange[0];
+                currentBehaviourStateIndex = 2;
             }
 
-            //IF PLAYER BREAKS LOS
-            if (!CheckLineOfSightForScarecrow(playersInRange[0]))
+            //IF MULTIPLE PLAYERS WITHIN RANGE
+            else if (playersInRange.Count > 1)
             {
-                decoySoundTimer = decoySoundCooldown;
-
-                //AND NO ONE IS WATCHING
-                if (playersWithLineOfSight.Count == 0)
-                {
-                    if (facePlayerTimer <= 0)
-                    {
-                        facePlayerTimer = facePlayerCooldown;
-                        if (Random.Range(0f,100f) < facePlayerChance)
-                        {
-                            FacePosition(playersInRange[0].transform.position);
-                            GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-
-                            if (tweakOutTimer <= 0)
-                            {
-                                tweakOutTimer = tweakOutCooldown;
-                                if (Random.Range(0f,100f) < tweakOutChance)
-                                {
-                                    TweakOutServerRpc((int)playersInRange[0].playerClientId);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            //IF PLAYER IS LOOKING AT SCARECROW
-            else
-            {
-                if (decoySoundTimer <= 0)
-                {
-                    decoySoundTimer = decoySoundCooldown;
-                    if (Random.Range(0f,100f) < decoySoundChance && playersWithLineOfSight.Count == 1)
-                    {
-                        PlayDecoySoundServerRpc();
-                    }
-                }
-            }
-
-            //IF PLAYER ENTERS SCARE RANGE
-            if (Vector3.Distance(playersInRange[0].transform.position, transform.position) < scareRange)
-            {
-                Debug.Log("1 player in range entered scare range, switching to state 3.");
                 currentBehaviourStateIndex = 3;
             }
 
             break;
 
-        //1 PLAYER IN SCARE RANGE (WHILE NO ONE ELSE IS IN RANGE)
+        //CHASING
+        case 2:
+            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
+            {
+                Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
+                chaseTimer = Random.Range(minChaseTime, maxChaseTime);
+
+                previousBehaviourStateIndex = currentBehaviourStateIndex;
+            }
+
+            //IF UNABLE TO SCARE PLAYER
+            if (chaseTimer <= 0 || targetPlayer.isInsideFactory || targetPlayer.isPlayerDead)
+            {
+                Debug.Log("[SCARECROW]: Unable to scare player, returning to search.");
+                targetPlayer = null;
+                MoveToRandomPosition(escaping: true);
+                currentBehaviourStateIndex = 1;
+            }
+
+            //IF NO PLAYERS WITHIN RANGE
+            if (playersInRange.Count < 1)
+            {
+                if (moveTimer <= 0 && playersWithLineOfSight.Count == 0)
+                {
+                    moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
+                    if (Random.Range(0f,100f) < moveChance)
+                    {
+                        MoveToTargetPlayer();
+                    }
+                }
+            }
+
+            //IF ONE PLAYER WITHIN RANGE
+            else if (playersInRange.Count == 1)
+            {
+                //IF PLAYER IS NOT TARGET PLAYER
+                if (targetPlayer != playersInRange[0])
+                {
+                    targetPlayer = playersInRange[0];
+                    Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
+                    chaseTimer = Random.Range(minChaseTime, maxChaseTime);
+                }
+
+                //IF PLAYER IS HOLDING WEAPON
+                if (playersInRange[0].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon)
+                {
+                    currentBehaviourStateIndex = 3;
+                }
+            }
+
+            //IF MULTIPLE PLAYERS WITHIN RANGE
+            else if (playersInRange.Count > 1)
+            {
+                currentBehaviourStateIndex = 3;
+            }
+
+            break;
+
+        //ESCAPING
         case 3:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                //IF PLAYER ENTERED SCARE RANGE WHILE LOOKING
-                if (CheckLineOfSightForScarecrow(playersInRange[0]))
-                {
-                    if (scarePlayerTimer <= 0)
-                    {
-                        scarePlayerTimer = scarePlayerCooldown;
-                        if (Random.Range(0f,100f) < 5f && playersWithLineOfSight.Count == 1)
-                        {
-                            Debug.Log("Calling ScarePlayerServerRpc!");
-                            ScarePlayerServerRpc((int)playersInRange[0].playerClientId);
-                        }
-                    }
-                }
-
+                Debug.Log("[SCARECROW]: Escaping.");
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
-            //ANY TIME PLAYER BREAKS LOS
-            if (!CheckLineOfSightForScarecrow(playersInRange[0]))
+            //IF NO PLAYERS HAVE LINE OF SIGHT
+            if (playersWithLineOfSight.Count < 1)
             {
-                if (facePlayerTimer <= 0 && playersWithLineOfSight.Count == 0)
-                {
-                    facePlayerTimer = facePlayerCooldown;
-                    if (Random.Range(0f,100f) < facePlayerChance)
-                    {
-                        FacePosition(playersInRange[0].transform.position);
-                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-                    }
-                }
-
-                if (scarePlayerTimer <= 0 && playersWithLineOfSight.Count == 0)
-                {
-                    scarePlayerTimer = scarePlayerCooldown;
-                    if (Random.Range(0f,100f) < scarePlayerChance)
-                    {
-                        FacePosition(playersInRange[0].transform.position);
-                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-                        scarePrimed = true;
-                    }
-                }
-            }
-
-            //ANY TIME PLAYER HAS LOS
-            else
-            {
-                //AND SCARE IS PRIMED
-                if (scarePrimed && playersInRange[0].HasLineOfSightToPosition(scareTriggerTransform.position))
-                {
-                    scarePrimed = false;
-                    if (playersWithLineOfSight.Count == 1)
-                    {
-                        Debug.Log("Calling ScarePlayerServerRpc!");
-                        ScarePlayerServerRpc((int)playersInRange[0].playerClientId);
-                    }
-                }
-            }
-
-            if (Vector3.Distance(playersInRange[0].transform.position, transform.position) > scareRange)
-            {
-                Debug.Log("1 player in range exited scare range, switching to state 2.");
-                currentBehaviourStateIndex = 2;
+                MoveToRandomPosition(escaping: true);
+                currentBehaviourStateIndex = 1;
             }
 
             break;
 
-        //MULTIPLE PLAYERS IN RANGE
-        case 4:
-            if (previousBehaviourStateIndex != currentBehaviourStateIndex)
-            {
-                scarePrimed = false;
-                decoySoundTimer = decoySoundCooldown;
-
-                previousBehaviourStateIndex = currentBehaviourStateIndex;
-            }
-
-            //UPDATE LIST OF PLAYERS IN RANGE WITH LOS
-            List<PlayerControllerB> playersInRangeWithLineOfSight = new List<PlayerControllerB>(playersInRange);
-            for (int i = 0; i < playersInRangeWithLineOfSight.Count; i++)
-            {
-                PlayerControllerB player = playersInRangeWithLineOfSight[i];
-                if (!CheckLineOfSightForScarecrow(player))
-                {
-                    playersInRangeWithLineOfSight.Remove(player);
-                }
-            }
-
-            //IF ONLY 1 PLAYER IN RANGE IS LOOKING
-            if (playersInRangeWithLineOfSight.Count == 1)
-            {
-                //AND NO ONE ELSE IS LOOKING
-                if (playersWithLineOfSight.Count == 1)
-                {
-                    if (tweakOutTimer <= 0f)
-                    {
-                        tweakOutTimer = tweakOutCooldown;
-                        if (Random.Range(0f,100f) < tweakOutChance)
-                        {
-                            TweakOutServerRpc((int)playersInRangeWithLineOfSight[0].playerClientId);
-                        }
-                    }
-                }
-            }
-
-            //IF MORE THAN 1 PLAYER IN RANGE IS LOOKING
-            if (playersInRangeWithLineOfSight.Count > 1)
-            {
-                //AND ALL PLAYERS IN RANGE ARE LOOKING AND NO ONE ELSE IS LOOKING
-                if (playersInRangeWithLineOfSight.Count == playersWithLineOfSight.Count)
-                {
-                    if (decoySoundTimer <= 0f)
-                    {
-                        decoySoundTimer = decoySoundCooldown;
-                        if (Random.Range(0f,100f) < decoySoundChance)
-                        {
-                            PlayDecoySoundServerRpc();
-                        }
-                    }
-                }
-            }
-
-            break;
         }
     }
 
-    public bool CheckPositionIsValid(Vector3 newPosition)
+    public void MoveToRandomPosition(bool escaping = false)
+    {
+        Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
+        while(!CheckPositionIsValid(newPosition, escaping))
+        {
+            newPosition = GetRandomNavMeshPositionNearAINode();
+        }
+        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    public void MoveToTargetPlayer()
+    {
+        Vector3 newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
+        while (!CheckPositionIsValid(newPosition))
+        {
+            newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
+        }
+        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    public bool CheckPositionIsValid(Vector3 newPosition, bool escaping = false)
     {
         PlayerControllerB[] players = StartOfRound.Instance.allPlayerScripts;
         float c;
 
-        Debug.Log($"Trying new position: {newPosition}");
+        Debug.Log($"[SCARECROW]: Trying new position: {newPosition}");
 
         bool inViewOfPlayer = false;
         for (int i = 0; i < players.Length; i++)
         {
-            //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER
-            if (CheckLineOfSightForScarecrow(players[i]))
+            //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER (IF NOT ESCAPING)
+            if (CheckLineOfSightForScarecrow(players[i]) && !escaping)
             {
-                Debug.Log($"Current position in view of {players[i].playerUsername}, scarecrow did not move.");
+                Debug.Log($"[SCARECROW]: Current position in view of {players[i].playerUsername}, did not move.");
                 return false;
             }
 
@@ -855,14 +818,20 @@ public class Scarecrow : EnemyAI
             {
                 for (int j = 0; j < lineOfSightTriggers.Length; j++)
                 {
-                    Debug.Log($"Line of sight trigger: {newPosition + lineOfSightTriggers[j].localPosition}");
+                    Debug.Log($"[SCARECROW]: Line of sight trigger: {newPosition + lineOfSightTriggers[j].localPosition}");
                     if (players[i].HasLineOfSightToPosition(newPosition + lineOfSightTriggers[j].localPosition, range: 100))
                     {
-                        Debug.Log($"LOS trigger visible to {players[i].playerUsername} in new position, scarecrow did not move.");
+                        Debug.Log($"[SCARECROW]: LOS trigger visible to {players[i].playerUsername} in new position, did not move.");
                         inViewOfPlayer = true;
                         break;
                     }
                 }
+            }
+
+            //PREVENT FROM MOVING NEAR PLAYERS WHEN ESCAPING
+            if (escaping && Vector3.Distance(newPosition, players[i].transform.position) < 10f)
+            {
+                return false;
             }
         }
 
@@ -884,32 +853,32 @@ public class Scarecrow : EnemyAI
         {
             if (hitInfo.collider.gameObject.tag == invalidTerrainTags[i])
             {
-                Debug.Log($"New position on {invalidTerrainTags[i]}.");
+                Debug.Log($"[SCARECROW]: New position on {invalidTerrainTags[i]}.");
                 onInvalidTerrain = true;
             }
         }
 
         if (onInvalidTerrain)
         {
-            Debug.Log("Scarecrow attempting to move to invalid terrain.");
+            Debug.Log("[SCARECROW]: Attempting to move to invalid terrain.");
             c = Random.Range(0f,100f);
             if (c > 90f)
             {
-                Debug.Log("Scarecrow did not move.");
+                Debug.Log("[SCARECROW]: Did not move.");
                 return false;
             }
         }
 
         if (Vector3.Angle(Vector3.up, hitInfo.normal) > 35f)
         {
-            Debug.Log("New position on too steep of ground, scarecrow did not move.");
+            Debug.Log("[SCARECROW]: New position on too steep of ground, did not move.");
             return false;
         }
 
         Collider[] headCollisions = Physics.OverlapSphere(newPosition + scareTriggerTransform.localPosition, 0.1f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
         if (headCollisions.Length > 0)
         {
-            Debug.Log("New position obscures head, did not move.");
+            Debug.Log("[SCARECROW]: New position obscures head, did not move.");
             return false;
         }
 
@@ -917,7 +886,7 @@ public class Scarecrow : EnemyAI
         {
             if (newPosition.y < floodWeather.gameObject.transform.position.y)
             {
-                Debug.Log($"New position y ({newPosition.y}) is under current flood level ({floodWeather.gameObject.transform.position.y}), did not move.");
+                Debug.Log($"[SCARECROW]: New position y ({newPosition.y}) is under current flood level ({floodWeather.gameObject.transform.position.y}), did not move.");
                 return false;
             }
         }
@@ -930,8 +899,7 @@ public class Scarecrow : EnemyAI
             {
                 if (c < 80f)
                 {
-                    Debug.Log("New position too close to spawn denial point.");
-                    Debug.Log("Scarecrow did not move.");
+                    Debug.Log("[SCARECROW]: New position too close to spawn denial point, did not move.");
                     return false;
                 }
             }
@@ -984,6 +952,12 @@ public class Scarecrow : EnemyAI
         // tempTransform.position = newPosition;
         // tempTransform.eulerAngles = new Vector3(0f, furthestRotation, 0f);
         // newPosition += tempTransform.forward * Random.Range(1f, 2f);
+        return newPosition;
+    }
+
+    public Vector3 GetRandomNavMeshPositionNearPlayer(PlayerControllerB player, float radius = 10f)
+    {
+        Vector3 newPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(player.transform.position, radius);
         return newPosition;
     }
 
