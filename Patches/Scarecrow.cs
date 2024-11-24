@@ -27,6 +27,8 @@ public class Scarecrow : EnemyAI
 
     private PlayerControllerB targetPlayer;
 
+    public float detectRange;
+
     public float scareRange;
 
     public string[] invalidTerrainTags;
@@ -496,58 +498,21 @@ public class Scarecrow : EnemyAI
         }
     }
 
-    public void AddDetectedPlayer(Collider other)
+    public void AddDetectedPlayer(PlayerControllerB player)
     {
         if (IsOwner)
         {
-            if (other.gameObject.GetComponent<PlayerControllerB>() != null)
-            {
-                PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
-                playersInRange.Add(player);
-                Debug.Log($"[SCARECROW]: Added {player.playerUsername} to detected players.");
-                // SetStateBasedOnPlayers(playersInRange.Count);
-            }
+            playersInRange.Add(player);
+            Debug.Log($"[SCARECROW]: Added {player.playerUsername} to detected players.");
         }
     }
 
-    public void RemoveDetectedPlayer(Collider other)
+    public void RemoveDetectedPlayer(PlayerControllerB player)
     {
         if (IsOwner)
         {
-            if (other.gameObject.GetComponent<PlayerControllerB>() != null)
-            {
-                PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
-                playersInRange.Remove(player);
-                Debug.Log($"[SCARECROW]: Removed {player.playerUsername} from detected players.");
-                // SetStateBasedOnPlayers(playersInRange.Count);
-            }
-        }
-    }
-
-    public void SetStateBasedOnPlayers(int numPlayers)
-    {
-        if (RoundManager.Instance.timeScript.normalizedTimeOfDay < normalizedTimeInDayToBecomeActive || isEnemyDead || invisible)
-        {
-            Debug.Log("[SCARECROW]: Inactive or invisible, remaining in inactive state.");
-            return;
-        }
-
-        if (numPlayers == 0)
-        {
-            Debug.Log("[SCARECROW]: No players in range, switching to state 1");
-            SwitchToBehaviourState(1);
-        }
-
-        else if (numPlayers == 1)
-        {
-            Debug.Log("[SCARECROW]: One player in range, switching to state 2");
-            SwitchToBehaviourState(2);
-        }
-
-        else if (numPlayers > 1)
-        {
-            Debug.Log("[SCARECROW]: Players in range, switching to state 4");
-            SwitchToBehaviourState(4);
+            playersInRange.Remove(player);
+            Debug.Log($"[SCARECROW]: Removed {player.playerUsername} from detected players.");
         }
     }
 
@@ -612,6 +577,25 @@ public class Scarecrow : EnemyAI
         {
             invisible = false;
             SetInvisibleServerRpc(false);
+        }
+
+        for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
+        {
+            PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
+            if (!playersInRange.Contains(player))
+            {
+                if (Vector3.Distance(player.transform.position, transform.position) <= detectRange)
+                {
+                    playersInRange.Add(player);
+                }
+            }
+            else
+            {
+                if (Vector3.Distance(player.transform.position, transform.position) > detectRange)
+                {
+                    playersInRange.Remove(player);
+                }
+            }
         }
 
         switch (currentBehaviourStateIndex)
@@ -943,7 +927,7 @@ public class Scarecrow : EnemyAI
             invisible = true;
             EnableEnemyMesh(false);
             enemyCollider.enabled = false;
-            scanNode.enabled = false;
+            scanNode.gameObject.SetActive(false);
         }
         else
         {
@@ -951,7 +935,7 @@ public class Scarecrow : EnemyAI
             invisible = false;
             EnableEnemyMesh(true);
             enemyCollider.enabled = true;
-            scanNode.enabled = true;
+            scanNode.gameObject.SetActive(true);
         }
     }
 
