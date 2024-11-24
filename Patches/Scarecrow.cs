@@ -608,7 +608,7 @@ public class Scarecrow : EnemyAI
             }
         }
 
-        if (invisible && playersWithLineOfSight.Count < 1)
+        if (invisible && changePositionCoroutine == null && playersWithLineOfSight.Count < 1)
         {
             invisible = false;
             SetInvisibleServerRpc(false);
@@ -789,7 +789,7 @@ public class Scarecrow : EnemyAI
         {
             newPosition = GetRandomNavMeshPositionNearAINode();
         }
-        StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
@@ -800,7 +800,7 @@ public class Scarecrow : EnemyAI
         {
             newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
         }
-        StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
@@ -923,7 +923,7 @@ public class Scarecrow : EnemyAI
         Debug.Log("Scarecrow moved.");
         // currentBehaviourStateIndex = 0;
         yield return new WaitForSeconds(time);
-        // changePositionCoroutine = null;
+        changePositionCoroutine = null;
         // SetInvisibleServerRpc(false);
 
     }
@@ -943,6 +943,7 @@ public class Scarecrow : EnemyAI
             invisible = true;
             EnableEnemyMesh(false);
             enemyCollider.enabled = false;
+            scanNode.enabled = false;
         }
         else
         {
@@ -950,6 +951,7 @@ public class Scarecrow : EnemyAI
             invisible = false;
             EnableEnemyMesh(true);
             enemyCollider.enabled = true;
+            scanNode.enabled = true;
         }
     }
 
