@@ -5,7 +5,7 @@ using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
 
-public class ScarecrowNew : EnemyAI
+public class Scarecrow : EnemyAI
 {
     [Space(15f)]
     [Header("Scarecrow Settings")]
@@ -501,7 +501,7 @@ public class ScarecrowNew : EnemyAI
                 PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
                 playersInRange.Add(player);
                 Debug.Log($"[SCARECROW]: Added {player.playerUsername} to detected players.");
-                SetStateBasedOnPlayers(playersInRange.Count);
+                // SetStateBasedOnPlayers(playersInRange.Count);
             }
         }
     }
@@ -515,7 +515,7 @@ public class ScarecrowNew : EnemyAI
                 PlayerControllerB player = other.gameObject.GetComponent<PlayerControllerB>();
                 playersInRange.Remove(player);
                 Debug.Log($"[SCARECROW]: Removed {player.playerUsername} from detected players.");
-                SetStateBasedOnPlayers(playersInRange.Count);
+                // SetStateBasedOnPlayers(playersInRange.Count);
             }
         }
     }
@@ -612,12 +612,6 @@ public class ScarecrowNew : EnemyAI
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
-            }
-
-            if (invisible && changePositionCoroutine == null && playersWithLineOfSight.Count == 0)
-            {
-                Debug.Log("[SCARECROW]: Out of view of all players, re-enabling meshes.");
-                SetInvisibleServerRpc(false);
             }
 
             if (RoundManager.Instance.timeScript.normalizedTimeOfDay > normalizedTimeInDayToBecomeActive && !isEnemyDead && !invisible)
@@ -740,9 +734,12 @@ public class ScarecrowNew : EnemyAI
                 }
 
                 //IF PLAYER IS HOLDING WEAPON
-                if (playersInRange[0].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon)
+                if (playersInRange[0].currentlyHeldObjectServer != null)
                 {
-                    currentBehaviourStateIndex = 3;
+                    if (playersInRange[0].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon)
+                    {
+                        currentBehaviourStateIndex = 3;
+                    }
                 }
             }
 
@@ -781,7 +778,7 @@ public class ScarecrowNew : EnemyAI
         {
             newPosition = GetRandomNavMeshPositionNearAINode();
         }
-        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
@@ -792,7 +789,7 @@ public class ScarecrowNew : EnemyAI
         {
             newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
         }
-        changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
+        StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
@@ -818,7 +815,6 @@ public class ScarecrowNew : EnemyAI
             {
                 for (int j = 0; j < lineOfSightTriggers.Length; j++)
                 {
-                    Debug.Log($"[SCARECROW]: Line of sight trigger: {newPosition + lineOfSightTriggers[j].localPosition}");
                     if (players[i].HasLineOfSightToPosition(newPosition + lineOfSightTriggers[j].localPosition, range: 100))
                     {
                         Debug.Log($"[SCARECROW]: LOS trigger visible to {players[i].playerUsername} in new position, did not move.");
@@ -911,12 +907,14 @@ public class ScarecrowNew : EnemyAI
     private IEnumerator ChangePositionWhileInvisible(Vector3 position, float time)
     {
         SetInvisibleServerRpc(true);
-        invisible = true;
+        // invisible = true;
         transform.position = position;
         Debug.Log("Scarecrow moved.");
-        currentBehaviourStateIndex = 0;
+        // currentBehaviourStateIndex = 0;
         yield return new WaitForSeconds(time);
-        changePositionCoroutine = null;
+        // changePositionCoroutine = null;
+        SetInvisibleServerRpc(false);
+
     }
 
     [ServerRpc(RequireOwnership = false)]
