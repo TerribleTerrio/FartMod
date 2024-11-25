@@ -33,8 +33,6 @@ public class Scarecrow : EnemyAI
 
     public string[] invalidTerrainTags;
 
-    private bool targetPlayerEnteredDetectWhileWatching;
-
     private bool invisible;
 
     private Coroutine changePositionCoroutine;
@@ -576,6 +574,11 @@ public class Scarecrow : EnemyAI
         if (invisible && changePositionCoroutine == null && playersWithLineOfSight.Count < 1)
         {
             invisible = false;
+            PlayerControllerB nearestPlayer = NearestPlayer();
+            if (nearestPlayer != null && Vector3.Distance(nearestPlayer.transform.position, transform.position) < detectRange * 1.5f)
+            {
+                FacePosition(NearestPlayer().transform.position);
+            }
             SetInvisibleServerRpc(false);
         }
 
@@ -586,14 +589,14 @@ public class Scarecrow : EnemyAI
             {
                 if (Vector3.Distance(player.transform.position, transform.position) <= detectRange)
                 {
-                    playersInRange.Add(player);
+                    AddDetectedPlayer(player);
                 }
             }
             else
             {
                 if (Vector3.Distance(player.transform.position, transform.position) > detectRange)
                 {
-                    playersInRange.Remove(player);
+                    RemoveDetectedPlayer(player);
                 }
             }
         }
@@ -615,6 +618,8 @@ public class Scarecrow : EnemyAI
 
             break;
 
+
+
         //SEARCHING
         case 1:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
@@ -629,6 +634,7 @@ public class Scarecrow : EnemyAI
             //IF SEARCH EXCEEDS SEARCH TIME
             if (searchTimer <= 0)
             {
+                Debug.Log("[SCARECROW]: Search exceeded search time.");
                 for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
                 {
                     PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
@@ -651,8 +657,13 @@ public class Scarecrow : EnemyAI
 
                 if (targetPlayer != null)
                 {
-                    Debug.Log("[SCARECROW]: Search exceeded search time. Target player selected.");
+                    Debug.Log("[SCARECROW]: Closest valid player selected as target.");
                     currentBehaviourStateIndex = 2;
+                }
+                else
+                {
+                    Debug.Log("[SCARECROW]: No valid players, restarting search.");
+                    searchTimer = Random.Range(minSearchTime, maxSearchTime);
                 }
             }
 
@@ -684,22 +695,56 @@ public class Scarecrow : EnemyAI
 
             break;
 
+
+
         //CHASING
         case 2:
+            if (targetPlayer == null)
+            {
+                Debug.LogError("[SCARECROW]: Entered chase while target was null! Returning to search.");
+                currentBehaviourStateIndex = 1;
+                break;
+            }
+
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
                 chaseTimer = Random.Range(minChaseTime, maxChaseTime);
 
+                //CHANCE TO PLAY DETECT SOUND
+                if (detectSoundTimer <= 0)
+                {
+                    tweakOutTimer = tweakOutCooldown;
+                    detectSoundTimer = detectSoundCooldown;
+                    if (Random.Range(0f,100f) < detectSoundChance)
+                    {
+                        PlayDetectSoundServerRpc();
+                        detectSoundChance = detectSoundStartingChance;
+                    }
+                    else
+                    {
+                        detectSoundChance = detectSoundChance + 5;
+                    }
+                }
+
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
-            //IF UNABLE TO SCARE PLAYER
-            if (chaseTimer <= 0 || targetPlayer.isInsideFactory || targetPlayer.isPlayerDead)
+            //IF CHASE EXCEEDS CHASE TIME
+            if (chaseTimer <= 0)
             {
-                Debug.Log("[SCARECROW]: Unable to scare player, returning to search.");
+                Debug.Log("[SCARECROW]: Chase exceeded chase time, returning to search.");
                 targetPlayer = null;
                 MoveToRandomPosition(escaping: true);
+                currentBehaviourStateIndex = 1;
+                break;
+            }
+
+            //IF PLAYER IS NOT ACCESSIBLE
+            if (targetPlayer.isInsideFactory || targetPlayer.isPlayerDead)
+            {
+                Debug.Log("[SCARECROW]: Target player dead or inaccessible, returning to search.");
+                targetPlayer = null;
                 currentBehaviourStateIndex = 1;
                 break;
             }
@@ -717,15 +762,39 @@ public class Scarecrow : EnemyAI
                 }
             }
 
+            //IF MULTIPLE PLAYERS WITHIN RANGE
+            else if (playersInRange.Count > 1)
+            {
+                targetPlayer = null;
+                currentBehaviourStateIndex = 3;
+            }
+
             //IF ONE PLAYER WITHIN RANGE
             else if (playersInRange.Count == 1)
             {
+
                 //IF PLAYER IS NOT TARGET PLAYER
                 if (targetPlayer != playersInRange[0])
                 {
                     targetPlayer = playersInRange[0];
                     Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
                     chaseTimer = Random.Range(minChaseTime, maxChaseTime);
+
+                    //CHANCE TO PLAY DETECT SOUND
+                    if (detectSoundTimer <= 0)
+                    {
+                        tweakOutTimer = tweakOutCooldown;
+                        detectSoundTimer = detectSoundCooldown;
+                        if (Random.Range(0f,100f) < detectSoundChance)
+                        {
+                            PlayDetectSoundServerRpc();
+                            detectSoundChance = detectSoundStartingChance;
+                        }
+                        else
+                        {
+                            detectSoundChance = detectSoundChance + 5;
+                        }
+                    }
                 }
 
                 //IF PLAYER IS HOLDING WEAPON
@@ -733,32 +802,208 @@ public class Scarecrow : EnemyAI
                 {
                     if (playersInRange[0].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon)
                     {
+                        targetPlayer = null;
                         currentBehaviourStateIndex = 3;
+                    }
+                }
+
+                //ONCE PLAYER IS SET TO TARGET PLAYER
+                if (targetPlayer == playersInRange[0] && !invisible)
+                {
+
+                    //IF PLAYER IS NOT WITHIN SCARE RANGE
+                    if (Vector3.Distance(targetPlayer.transform.position, transform.position) > scareRange)
+                    {
+
+                        //IF TARGET PLAYER HAS LOS
+                        if (CheckLineOfSightForScarecrow(targetPlayer))
+                        {
+
+                            //AND NO ONE ELSE IS LOOKING
+                            if (playersWithLineOfSight.Count == 1)
+                            {
+
+                                //CHANCE TO TWEAK OUT
+                                if (tweakOutTimer <= 0)
+                                {
+                                    tweakOutTimer = tweakOutCooldown;
+                                    if (Random.Range(0f,100f) < tweakOutChance)
+                                    {
+                                        TweakOutServerRpc((int)targetPlayer.playerClientId);
+                                    }
+                                    else
+                                    {
+                                        tweakOutChance = tweakOutChance + 5;
+                                    }
+                                }
+                            }
+                        }
+
+                        //IF TARGET PLAYER BREAKS LOS
+                        else
+                        {
+
+                            //AND NO ONE ELSE IS LOOKING
+                            if (playersWithLineOfSight.Count == 0)
+                            {
+
+                                //CHANCE TO FACE PLAYER
+                                if (facePlayerTimer <= 0)
+                                {
+                                    facePlayerTimer = facePlayerCooldown;
+                                    if (Random.Range(0f,100f) < facePlayerChance)
+                                    {
+                                        FacePosition(targetPlayer.transform.position);
+                                        facePlayerChance = facePlayerStartingChance;
+                                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                                    }
+                                    else
+                                    {
+                                        facePlayerChance = facePlayerChance + 2;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    //IF TARGET PLAYER IS WITHIN SCARE RANGE
+                    else
+                    {
+
+                        //IF TARGET PLAYER HAS LOS
+                        if (CheckLineOfSightForScarecrow(targetPlayer))
+                        {
+
+                            //AND NO ONE ELSE IS LOOKING
+                            if (playersWithLineOfSight.Count == 1)
+                            {
+
+                                //AND SCARE HAS BEEN PRIMED (+ PLAYER HAS LOS TO SCARE TRIGGER)
+                                if (scarePrimed && targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position))
+                                {
+                                    scarePlayerChance = scarePlayerStartingChance;
+                                    scarePlayerTimer = scarePlayerCooldown;
+                                    FacePosition(targetPlayer.transform.position);
+                                    ScarePlayerServerRpc((int)targetPlayer.playerClientId);
+                                }
+
+                                //CHANCE TO PLAY DECOY SOUNDS
+                                if (decoySoundTimer <= 0)
+                                {
+                                    decoySoundTimer = decoySoundCooldown;
+                                    if (Random.Range(0f,100f) < decoySoundChance)
+                                    {
+                                        PlayDecoySoundServerRpc();
+                                        decoySoundChance = decoySoundStartingChance;
+                                    }
+                                    else
+                                    {
+                                        decoySoundChance = decoySoundChance + 10;
+                                    }
+                                }
+                            }
+                        }
+
+                        //IF TARGET PLAYER BREAKS LOS
+                        else
+                        {
+
+                            //AND NO ONE ELSE IS LOOKING
+                            if (playersWithLineOfSight.Count == 0)
+                            {
+
+                                //CHANCE TO TWEAK OUT
+                                if (tweakOutTimer <= 0)
+                                {
+                                    tweakOutTimer = tweakOutCooldown;
+                                    if (Random.Range(0f,100f) < tweakOutChance)
+                                    {
+                                        TweakOutServerRpc((int)targetPlayer.playerClientId);
+                                    }
+                                    else
+                                    {
+                                        tweakOutChance = tweakOutChance + 5;
+                                    }
+                                }
+
+                                //CHANCE TO PRIME SCARE
+                                if (scarePlayerTimer <= 0)
+                                {
+                                    scarePlayerTimer = scarePlayerCooldown;
+                                    if (Random.Range(0f,100f) < scarePlayerChance)
+                                    {
+                                        scarePrimed = true;
+                                        FacePosition(targetPlayer.transform.position);
+                                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                                    }
+                                    else
+                                    {
+                                        scarePlayerChance = scarePlayerChance + 10;
+                                    }
+                                }
+
+                                //CHANCE TO FACE PLAYER
+                                if (facePlayerTimer <= 0)
+                                {
+                                    facePlayerTimer = facePlayerCooldown;
+                                    if (Random.Range(0f,100f) < facePlayerChance)
+                                    {
+                                        FacePosition(targetPlayer.transform.position);
+                                        facePlayerChance = facePlayerStartingChance;
+                                        GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                                    }
+                                    else
+                                    {
+                                        facePlayerChance = facePlayerChance + 2;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            //IF MULTIPLE PLAYERS WITHIN RANGE
-            else if (playersInRange.Count > 1)
-            {
-                currentBehaviourStateIndex = 3;
-            }
-
             break;
+
+
 
         //ESCAPING
         case 3:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 Debug.Log("[SCARECROW]: Escaping.");
+                decoySoundTimer = decoySoundCooldown;
+
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
-            //IF NO PLAYERS HAVE LINE OF SIGHT
+            //IF NO PLAYERS HAVE LOS
             if (playersWithLineOfSight.Count < 1)
             {
+
+                //ESCAPE
                 MoveToRandomPosition(escaping: true);
                 currentBehaviourStateIndex = 1;
+            }
+
+            //IF MORE THAN ONE PLAYER HAS LOS
+            if (playersWithLineOfSight.Count > 1)
+            {
+
+                //CHANCE TO PLAY DECOY SOUND
+                if (decoySoundTimer <= 0)
+                {
+                    decoySoundTimer = decoySoundCooldown;
+                    if (Random.Range(0f,100f) < decoySoundChance)
+                    {
+                        PlayDecoySoundServerRpc();
+                        decoySoundChance = decoySoundStartingChance;
+                    }
+                    else
+                    {
+                        decoySoundChance = decoySoundChance + 10;
+                    }
+                }
             }
 
             break;
@@ -779,10 +1024,23 @@ public class Scarecrow : EnemyAI
 
     public void MoveToTargetPlayer()
     {
+        int chaseAttempts = 0;
         Vector3 newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
         while (!CheckPositionIsValid(newPosition))
         {
-            newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
+            chaseAttempts++;
+
+            if (chaseAttempts < 4)
+            {
+                newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
+            }
+            else
+            {
+                Debug.Log($"[SCARECROW]: Failed to find valid position near player after {chaseAttempts} tries, returning to search.");
+                targetPlayer = null;
+                currentBehaviourStateIndex = 1;
+                return;
+            }
         }
         changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
@@ -897,6 +1155,31 @@ public class Scarecrow : EnemyAI
         }
 
         return true;
+    }
+
+    public PlayerControllerB NearestPlayer()
+    {
+        PlayerControllerB nearestPlayer = null;
+        for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
+        {
+            PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
+            if (nearestPlayer == null)
+            {
+                nearestPlayer = player;
+            }
+            else if (Vector3.Distance(player.transform.position, transform.position) < Vector3.Distance(nearestPlayer.transform.position, transform.position))
+            {
+                nearestPlayer = player;
+            }
+        }
+        if (nearestPlayer != null)
+        {
+            return nearestPlayer;
+        }
+        else
+        {
+            return null;
+        }
     }
 
     private IEnumerator ChangePositionWhileInvisible(Vector3 position, float time)
@@ -1066,7 +1349,6 @@ public class Scarecrow : EnemyAI
         decoyAudio.PlayOneShot(decoySounds[decoySound]);
     }
 
-    //MIGHT BE SYNCED ALREADY
     public override void HitEnemy(int force = 1, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
     {
         base.HitEnemy(force, playerWhoHit, playHitSFX, hitID);
