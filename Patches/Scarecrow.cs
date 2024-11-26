@@ -745,11 +745,16 @@ public class Scarecrow : EnemyAI
             //IF CHASE EXCEEDS CHASE TIME
             if (chaseTimer <= 0)
             {
-                Debug.Log("[SCARECROW]: Chase exceeded chase time, returning to search.");
-                targetPlayer = null;
-                MoveToRandomPosition(escaping: true);
-                currentBehaviourStateIndex = 1;
-                break;
+
+                //AND NO ONE IS LOOKING
+                if (playersWithLineOfSight.Count < 1)
+                {
+                    Debug.Log("[SCARECROW]: Chase exceeded chase time, returning to search.");
+                    targetPlayer = null;
+                    MoveToRandomPosition(escaping: true);
+                    currentBehaviourStateIndex = 1;
+                    break;
+                }
             }
 
             //IF NO PLAYERS WITHIN RANGE
@@ -1021,10 +1026,22 @@ public class Scarecrow : EnemyAI
 
     public void MoveToRandomPosition(bool escaping = false)
     {
+        int moveAttempts = 0;
         Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
         while(!CheckPositionIsValid(newPosition, escaping))
         {
-            newPosition = GetRandomNavMeshPositionNearAINode();
+            moveAttempts++;
+
+            if (moveAttempts < 20)
+            {
+                newPosition = GetRandomNavMeshPositionNearAINode();
+            }
+            else
+            {
+                Debug.Log("[SCARECROW]: Failed to find valid position near AI node, restarting move cooldown.");
+                moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
+                return;
+            }
         }
         changePositionCoroutine = StartCoroutine(ChangePositionWhileInvisible(newPosition, 1.5f));
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
