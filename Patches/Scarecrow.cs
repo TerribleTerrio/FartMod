@@ -699,6 +699,8 @@ public class Scarecrow : EnemyAI
 
         //CHASING
         case 2:
+
+            //IF TARGET PLAYER IS NULL
             if (targetPlayer == null)
             {
                 Debug.LogError("[SCARECROW]: Entered chase while target was null! Returning to search.");
@@ -706,6 +708,16 @@ public class Scarecrow : EnemyAI
                 break;
             }
 
+            //IF PLAYER IS NOT ACCESSIBLE
+            if (targetPlayer.isInsideFactory || targetPlayer.isPlayerDead)
+            {
+                Debug.Log("[SCARECROW]: Target player dead or inaccessible, returning to search.");
+                targetPlayer = null;
+                currentBehaviourStateIndex = 1;
+                break;
+            }
+
+            //WHEN FIRST ENTERING CHASE STATE
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
@@ -740,24 +752,20 @@ public class Scarecrow : EnemyAI
                 break;
             }
 
-            //IF PLAYER IS NOT ACCESSIBLE
-            if (targetPlayer.isInsideFactory || targetPlayer.isPlayerDead)
-            {
-                Debug.Log("[SCARECROW]: Target player dead or inaccessible, returning to search.");
-                targetPlayer = null;
-                currentBehaviourStateIndex = 1;
-                break;
-            }
-
             //IF NO PLAYERS WITHIN RANGE
             if (playersInRange.Count < 1)
             {
                 if (moveTimer <= 0 && playersWithLineOfSight.Count == 0)
                 {
                     moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
-                    if (Random.Range(0f,100f) < moveChance)
+                    if (Random.Range(0f,100f) < moveChance + 25)
                     {
                         MoveToTargetPlayer();
+                        moveChance = moveStartingChance;
+                    }
+                    else
+                    {
+                        moveChance = moveChance + 5;
                     }
                 }
             }
@@ -1030,15 +1038,14 @@ public class Scarecrow : EnemyAI
         {
             chaseAttempts++;
 
-            if (chaseAttempts < 4)
+            if (chaseAttempts < 5)
             {
                 newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
             }
             else
             {
-                Debug.Log($"[SCARECROW]: Failed to find valid position near player after {chaseAttempts} tries, returning to search.");
-                targetPlayer = null;
-                currentBehaviourStateIndex = 1;
+                Debug.Log($"[SCARECROW]: Failed to find valid position near player after {chaseAttempts + 1} tries, restarting move cooldown.");
+                moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                 return;
             }
         }
@@ -1056,8 +1063,8 @@ public class Scarecrow : EnemyAI
         bool inViewOfPlayer = false;
         for (int i = 0; i < players.Length; i++)
         {
-            //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER (IF NOT ESCAPING)
-            if (CheckLineOfSightForScarecrow(players[i]) && !escaping)
+            //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER
+            if (CheckLineOfSightForScarecrow(players[i]))
             {
                 Debug.Log($"[SCARECROW]: Current position in view of {players[i].playerUsername}, did not move.");
                 return false;
