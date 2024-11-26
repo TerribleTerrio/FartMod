@@ -84,6 +84,8 @@ public class Scarecrow : EnemyAI
 
     private float tweakOutChance;
 
+    public float tweakOutChanceIncrement;
+
     public float tweakOutCooldown = 10f;
 
     private float tweakOutTimer;
@@ -93,6 +95,8 @@ public class Scarecrow : EnemyAI
     public float facePlayerStartingChance = 20;
 
     private float facePlayerChance;
+
+    public float facePlayerChanceIncrement;
 
     public float facePlayerCooldown = 10f;
 
@@ -104,6 +108,8 @@ public class Scarecrow : EnemyAI
 
     private float detectSoundChance;
 
+    public float detectSoundChanceIncrement;
+
     public float detectSoundCooldown = 10f;
 
     private float detectSoundTimer;
@@ -113,6 +119,8 @@ public class Scarecrow : EnemyAI
     public float moveStartingChance = 20;
 
     private float moveChance;
+
+    public float moveChanceIncrement;
 
     public float minMoveCooldown = 60f;
 
@@ -126,6 +134,16 @@ public class Scarecrow : EnemyAI
 
     private float scarePlayerChance;
 
+    public float scarePlayerChanceIncrement;
+
+    [Space(5f)]
+    [Range(0f, 100f)]
+    public float instantScareStartingChance = 5;
+
+    private float instantScareChance;
+
+    public float instantScareChanceIncrement;
+
     public float scarePlayerCooldown = 5f;
 
     private float scarePlayerTimer;
@@ -135,6 +153,8 @@ public class Scarecrow : EnemyAI
     public float decoySoundStartingChance = 20;
 
     private float decoySoundChance;
+
+    public float decoySoundChanceIncrement;
 
     public float decoySoundCooldown = 5f;
 
@@ -676,6 +696,11 @@ public class Scarecrow : EnemyAI
                     if (Random.Range(0f,100f) < moveChance)
                     {
                         MoveToRandomPosition();
+                        moveChance = moveStartingChance;
+                    }
+                    else
+                    {
+                        moveChance += moveChanceIncrement;
                     }
                 }
             }
@@ -700,6 +725,8 @@ public class Scarecrow : EnemyAI
         //CHASING
         case 2:
 
+            bool instantScare = false;
+
             //IF TARGET PLAYER IS NULL
             if (targetPlayer == null)
             {
@@ -722,6 +749,18 @@ public class Scarecrow : EnemyAI
             {
                 Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
                 chaseTimer = Random.Range(minChaseTime, maxChaseTime);
+                scarePrimed = false;
+                
+                //DETERMINE INSTANT SCARE
+                if (Random.Range(0f,100f) < instantScareChance)
+                {
+                    instantScare = true;
+                    instantScareChance = instantScareStartingChance;
+                }
+                else
+                {
+                    instantScareChance += instantScareChanceIncrement;
+                }
 
                 //CHANCE TO PLAY DETECT SOUND
                 if (detectSoundTimer <= 0)
@@ -735,7 +774,7 @@ public class Scarecrow : EnemyAI
                     }
                     else
                     {
-                        detectSoundChance = detectSoundChance + 5;
+                        detectSoundChance += detectSoundChanceIncrement;
                     }
                 }
 
@@ -770,7 +809,7 @@ public class Scarecrow : EnemyAI
                     }
                     else
                     {
-                        moveChance = moveChance + 5;
+                        moveChance += moveChanceIncrement;
                     }
                 }
             }
@@ -805,7 +844,7 @@ public class Scarecrow : EnemyAI
                         }
                         else
                         {
-                            detectSoundChance = detectSoundChance + 5;
+                            detectSoundChance += detectSoundChanceIncrement;
                         }
                     }
                 }
@@ -846,7 +885,7 @@ public class Scarecrow : EnemyAI
                                     }
                                     else
                                     {
-                                        tweakOutChance = tweakOutChance + 5;
+                                        tweakOutChance += tweakOutChanceIncrement;
                                     }
                                 }
                             }
@@ -872,7 +911,7 @@ public class Scarecrow : EnemyAI
                                     }
                                     else
                                     {
-                                        facePlayerChance = facePlayerChance + 2;
+                                        facePlayerChance += facePlayerChanceIncrement;
                                     }
                                 }
                             }
@@ -890,6 +929,16 @@ public class Scarecrow : EnemyAI
                             //AND NO ONE ELSE IS LOOKING
                             if (playersWithLineOfSight.Count == 1)
                             {
+
+                                //AND INSTANT SCARE IS TRUE
+                                if (instantScare)
+                                {
+                                    scarePlayerChance = scarePlayerStartingChance;
+                                    scarePlayerTimer = scarePlayerCooldown;
+                                    scarePrimed = false;
+                                    FacePosition(targetPlayer.transform.position);
+                                    ScarePlayerServerRpc((int)targetPlayer.playerClientId);
+                                }
 
                                 //AND SCARE HAS BEEN PRIMED (+ PLAYER HAS LOS TO SCARE TRIGGER)
                                 if (scarePrimed && targetPlayer.HasLineOfSightToPosition(scareTriggerTransform.position))
@@ -911,7 +960,7 @@ public class Scarecrow : EnemyAI
                                     }
                                     else
                                     {
-                                        decoySoundChance = decoySoundChance + 10;
+                                        decoySoundChance += decoySoundChanceIncrement;
                                     }
                                 }
                             }
@@ -935,7 +984,7 @@ public class Scarecrow : EnemyAI
                                     }
                                     else
                                     {
-                                        tweakOutChance = tweakOutChance + 5;
+                                        tweakOutChance += tweakOutChanceIncrement;
                                     }
                                 }
 
@@ -951,7 +1000,7 @@ public class Scarecrow : EnemyAI
                                     }
                                     else
                                     {
-                                        scarePlayerChance = scarePlayerChance + 10;
+                                        scarePlayerChance += scarePlayerChanceIncrement;
                                     }
                                 }
 
@@ -967,7 +1016,7 @@ public class Scarecrow : EnemyAI
                                     }
                                     else
                                     {
-                                        facePlayerChance = facePlayerChance + 2;
+                                        facePlayerChance += facePlayerChanceIncrement;
                                     }
                                 }
                             }
@@ -1014,7 +1063,7 @@ public class Scarecrow : EnemyAI
                     }
                     else
                     {
-                        decoySoundChance = decoySoundChance + 10;
+                        decoySoundChance += decoySoundChanceIncrement;
                     }
                 }
             }
