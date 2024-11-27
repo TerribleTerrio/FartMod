@@ -549,31 +549,31 @@ public class Scarecrow : EnemyAI
 
         if (searchTimer > 0)
         {
-            searchTimer--;
+            searchTimer -= Time.deltaTime;
         }
         if (moveTimer > 0)
         {
-            moveTimer--;
+            moveTimer -= Time.deltaTime;
         }
         if (facePlayerTimer > 0)
         {
-            facePlayerTimer--;
+            facePlayerTimer -= Time.deltaTime;
         }
         if (scarePlayerTimer > 0)
         {
-            scarePlayerTimer--;
+            scarePlayerTimer -= Time.deltaTime;
         }
         if (detectSoundTimer > 0)
         {
-            detectSoundTimer--;
+            detectSoundTimer -= Time.deltaTime;
         }
         if (tweakOutTimer > 0)
         {
-            tweakOutTimer--;
+            tweakOutTimer -= Time.deltaTime;
         }
         if (decoySoundTimer > 0)
         {
-            decoySoundTimer--;
+            decoySoundTimer -= Time.deltaTime;
         }
 
         for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
