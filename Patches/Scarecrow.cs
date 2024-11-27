@@ -72,11 +72,15 @@ public class Scarecrow : EnemyAI
     private float searchTimer;
 
     [Space(5f)]
-    public float minChaseTime = 100f;
+    public int minChaseMoves = 3;
 
-    public float maxChaseTime = 300f;
+    public int maxChaseMoves = 10;
 
-    private float chaseTimer;
+    private int chaseMoves;
+
+    public float chaseMoveAddedChance = 20f;
+
+    public float chaseMoveCooldownMultiplier = 0.5f;
 
     [Space(5f)]
     [Range(0f, 100f)]
@@ -551,10 +555,6 @@ public class Scarecrow : EnemyAI
         {
             moveTimer--;
         }
-        if (chaseTimer > 0)
-        {
-            chaseTimer--;
-        }
         if (facePlayerTimer > 0)
         {
             facePlayerTimer--;
@@ -730,16 +730,15 @@ public class Scarecrow : EnemyAI
             //IF TARGET PLAYER IS NULL
             if (targetPlayer == null)
             {
-                Debug.LogError("[SCARECROW]: Entered chase while target was null! Returning to search.");
+                Debug.LogError("[SCARECROW]: Target player is null, Returning to search.");
                 currentBehaviourStateIndex = 1;
                 break;
             }
 
-            //IF PLAYER IS NOT ACCESSIBLE
-            if (targetPlayer.isInsideFactory || targetPlayer.isPlayerDead)
+            //IF TARGET PLAYER IS DEAD OR INACCESSIBLE
+            if (targetPlayer.isPlayerDead || targetPlayer.isInsideFactory)
             {
                 Debug.Log("[SCARECROW]: Target player dead or inaccessible, returning to search.");
-                targetPlayer = null;
                 currentBehaviourStateIndex = 1;
                 break;
             }
@@ -747,8 +746,8 @@ public class Scarecrow : EnemyAI
             //WHEN FIRST ENTERING CHASE STATE
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
-                Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
-                chaseTimer = Random.Range(minChaseTime, maxChaseTime);
+                chaseMoves = Random.Range(minChaseMoves, maxChaseMoves);
+                Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername} with {chaseMoves} moves.");
                 scarePrimed = false;
                 
                 //DETERMINE INSTANT SCARE
@@ -781,31 +780,28 @@ public class Scarecrow : EnemyAI
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
-            //IF CHASE EXCEEDS CHASE TIME
-            if (chaseTimer <= 0)
-            {
-
-                //AND NO ONE IS LOOKING
-                if (playersWithLineOfSight.Count < 1)
-                {
-                    Debug.Log("[SCARECROW]: Chase exceeded chase time, returning to search.");
-                    targetPlayer = null;
-                    MoveToRandomPosition(escaping: true);
-                    currentBehaviourStateIndex = 1;
-                    break;
-                }
-            }
-
             //IF NO PLAYERS WITHIN RANGE
             if (playersInRange.Count < 1)
             {
                 if (moveTimer <= 0 && playersWithLineOfSight.Count == 0)
                 {
-                    moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
-                    if (Random.Range(0f,100f) < moveChance + 25)
+                    moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown) * chaseMoveCooldownMultiplier;
+                    if (Random.Range(0f,100f) < moveChance + chaseMoveAddedChance)
                     {
+
+                        //IF OUT OF CHASE MOVES
+                        if (chaseMoves <= 0)
+                        {
+                            Debug.Log("[SCARECROW]: Out of chase moves, returning to search.");
+                            targetPlayer = null;
+                            MoveToRandomPosition(escaping: true);
+                            currentBehaviourStateIndex = 1;
+                            break;
+                        }
+
                         MoveToTargetPlayer();
                         moveChance = moveStartingChance;
+                        chaseMoves--;
                     }
                     else
                     {
@@ -829,8 +825,9 @@ public class Scarecrow : EnemyAI
                 if (targetPlayer != playersInRange[0])
                 {
                     targetPlayer = playersInRange[0];
-                    Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername}.");
-                    chaseTimer = Random.Range(minChaseTime, maxChaseTime);
+                    chaseMoves = Random.Range(minChaseMoves, maxChaseMoves);
+                    Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername} with {chaseMoves} moves.");
+                    scarePrimed = false;
 
                     //CHANCE TO PLAY DETECT SOUND
                     if (detectSoundTimer <= 0)
