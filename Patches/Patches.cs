@@ -3,6 +3,7 @@ using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using System.Collections;
+using UnityEngine.Animations.Rigging;
 
 namespace CoronaMod.Patches
 {
@@ -225,6 +226,32 @@ namespace CoronaMod.Patches
             if (enemy.enemyType.enemyName == "Scarecrow")
             {
                 enemyScript.enemyType = __instance.enemyType;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(DoublewingAI))]
+    internal class DoubleWingAIPatch
+    {
+        [HarmonyPatch("DoAIInterval")]
+        [HarmonyPostfix]
+
+        static void DoAIInterval(DoublewingAI __instance)
+        {
+            if (__instance.currentBehaviourStateIndex == 0 && __instance.oddInterval && !__instance.alertingBird)
+            {
+                Scarecrow[] scarecrows = GameObject.FindObjectsByType<Scarecrow>(FindObjectsSortMode.None);
+                if (scarecrows.Length > 0)
+                {
+                    for (int i = 0; i < scarecrows.Length; i++)
+                    {
+                        if (Vector3.Distance(scarecrows[i].transform.position, __instance.transform.position) < 8f)
+                        {
+                            __instance.alertingBird = true;
+                            __instance.AlertBirdServerRpc();
+                        }
+                    }
+                }
             }
         }
     }
