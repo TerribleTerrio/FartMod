@@ -262,12 +262,6 @@ public class Scarecrow : EnemyAI
 
             SetDangerLevelsAndSync();
             GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-
-            //MOVE TO VALID POSITION
-            if (!CheckPositionIsValid(transform.position))
-            {
-                // MoveToRandomPosition();
-            }
         }
 
         if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
@@ -312,6 +306,11 @@ public class Scarecrow : EnemyAI
         moveChance = moveStartingChance;
         scarePlayerChance = scarePlayerStartingChance;
         decoySoundChance = decoySoundStartingChance;
+
+        if (IsOwner)
+        {
+            MoveToRandomPosition();
+        }
 
         Debug.Log("[SCARECROW]: Spawned!");
         Debug.Log($"[SCARECROW]: Danger value: {dangerValue}");
@@ -576,6 +575,7 @@ public class Scarecrow : EnemyAI
             decoySoundTimer -= Time.deltaTime;
         }
 
+        //CHECK PLAYERS FOR LOS
         for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
         {
             PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
@@ -591,17 +591,26 @@ public class Scarecrow : EnemyAI
             }
         }
 
-        if (invisible && changePositionCoroutine == null && playersWithLineOfSight.Count < 1)
+        //PAUSE BEHAVIOURS WHILE INVISIBLE
+        if (invisible)
         {
-            invisible = false;
-            PlayerControllerB nearestPlayer = NearestPlayer();
-            if (nearestPlayer != null && Vector3.Distance(nearestPlayer.transform.position, transform.position) < detectRange * 1.5f)
+            if (changePositionCoroutine == null && playersWithLineOfSight.Count < 1)
             {
-                FacePosition(NearestPlayer().transform.position);
+                invisible = false;
+                PlayerControllerB nearestPlayer = NearestPlayer();
+                if (nearestPlayer != null && Vector3.Distance(nearestPlayer.transform.position, transform.position) < detectRange * 1.5f)
+                {
+                    FacePosition(NearestPlayer().transform.position);
+                }
+                SetInvisibleServerRpc(false);
             }
-            SetInvisibleServerRpc(false);
+            else
+            {
+                return;
+            }
         }
 
+        //DETECT PLAYERS WITHIN RANGE
         for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
         {
             PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
@@ -935,6 +944,7 @@ public class Scarecrow : EnemyAI
                                     scarePrimed = false;
                                     FacePosition(targetPlayer.transform.position);
                                     ScarePlayerServerRpc((int)targetPlayer.playerClientId);
+                                    decoySoundTimer = decoySoundCooldown;
                                 }
 
                                 //AND SCARE HAS BEEN PRIMED (+ PLAYER HAS LOS TO SCARE TRIGGER)
@@ -944,6 +954,7 @@ public class Scarecrow : EnemyAI
                                     scarePlayerTimer = scarePlayerCooldown;
                                     FacePosition(targetPlayer.transform.position);
                                     ScarePlayerServerRpc((int)targetPlayer.playerClientId);
+                                    decoySoundTimer = decoySoundCooldown;
                                 }
 
                                 //CHANCE TO PLAY DECOY SOUNDS
@@ -1076,15 +1087,14 @@ public class Scarecrow : EnemyAI
         Vector3 newPosition = GetRandomNavMeshPositionNearAINode();
         while(!CheckPositionIsValid(newPosition, escaping))
         {
-            moveAttempts++;
-
             if (moveAttempts < 20)
             {
                 newPosition = GetRandomNavMeshPositionNearAINode();
+                moveAttempts++;
             }
             else
             {
-                Debug.Log("[SCARECROW]: Failed to find valid position near AI node, restarting move cooldown.");
+                Debug.Log($"[SCARECROW]: Failed to find valid position near AI node after {moveAttempts} tries, restarting move cooldown.");
                 moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                 return;
             }
@@ -1099,15 +1109,14 @@ public class Scarecrow : EnemyAI
         Vector3 newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
         while (!CheckPositionIsValid(newPosition))
         {
-            chaseAttempts++;
-
             if (chaseAttempts < 5)
             {
                 newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
+                chaseAttempts++;
             }
             else
             {
-                Debug.Log($"[SCARECROW]: Failed to find valid position near player after {chaseAttempts + 1} tries, restarting move cooldown.");
+                Debug.Log($"[SCARECROW]: Failed to find valid position near player after {chaseAttempts} tries, restarting move cooldown.");
                 moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
                 return;
             }
