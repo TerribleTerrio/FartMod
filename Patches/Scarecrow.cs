@@ -1329,17 +1329,55 @@ public class Scarecrow : EnemyAI
         int nodeSelected = Random.Range(0, nodes.Count);
         Vector3 nodePosition = nodes[nodeSelected].transform.position;
         Vector3 newPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(nodePosition, radius);
-        // float furthestRotation = RoundManager.Instance.YRotationThatFacesTheFarthestFromPosition(newPosition, 2f);
-        // Transform tempTransform = transform;
-        // tempTransform.position = newPosition;
-        // tempTransform.eulerAngles = new Vector3(0f, furthestRotation, 0f);
-        // newPosition += tempTransform.forward * Random.Range(1f, 2f);
-        return newPosition;
+        return PositionAwayFromWall(newPosition);
     }
 
     public Vector3 GetRandomNavMeshPositionNearPlayer(PlayerControllerB player, float radius = 10f)
     {
         Vector3 newPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(player.transform.position, radius);
+        return PositionAwayFromWall(newPosition);
+    }
+
+    public Vector3 PositionAwayFromWall(Vector3 pos, float maxDistance = 1.5f, int resolution = 6)
+    {
+        Vector3 newPosition = pos;
+        Transform tempTransform = new Transform();
+        float shortestDistance = maxDistance;
+        float yRotation = -1;
+
+        //CAST RAYS AROUND POSITION TO FIND NEAREST WALL
+        for (int i = 0; i < 360; i += 360/resolution)
+        {
+            tempTransform.eulerAngles = new Vector3(0f, i, 0f);
+            if (Physics.Raycast(pos, tempTransform.forward, out var hitInfo, maxDistance, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+            {
+                if (hitInfo.distance < shortestDistance)
+                {
+                    shortestDistance = hitInfo.distance;
+                    yRotation = i;
+                }
+            }
+        }
+
+        //IF WALL WAS FOUND
+        if (yRotation != -1)
+        {
+            //MOVE POSITION AWAY FROM NEAREST WALL
+            tempTransform.eulerAngles = new Vector3(0f, yRotation, 0f);
+            newPosition = pos + tempTransform.forward * (maxDistance - shortestDistance);
+
+            //ENSURE NEW POSITION IS ON GROUND
+            Vector3 checkFromPosition = newPosition + base.transform.up * 2f;
+            if (Physics.Raycast(pos, checkFromPosition, out var hitInfo, 4f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+            {
+                newPosition = hitInfo.point;
+            }
+            else
+            {
+                newPosition = pos;
+            }
+        }
+
         return newPosition;
     }
 
