@@ -72,6 +72,14 @@ public class Scarecrow : EnemyAI
     private float searchTimer;
 
     [Space(5f)]
+    [Range(0f, 100f)]
+    public float chaseStartingChance = 65f;
+
+    private float chaseChance;
+
+    public float chaseChanceIncrement = 5f;
+
+    [Space(5f)]
     public int minChaseMoves = 3;
 
     public int maxChaseMoves = 10;
@@ -306,6 +314,7 @@ public class Scarecrow : EnemyAI
         moveChance = moveStartingChance;
         scarePlayerChance = scarePlayerStartingChance;
         decoySoundChance = decoySoundStartingChance;
+        chaseChance = chaseStartingChance;
 
         if (IsOwner)
         {
@@ -664,34 +673,48 @@ public class Scarecrow : EnemyAI
             if (searchTimer <= 0)
             {
                 Debug.Log("[SCARECROW]: Search exceeded search time.");
-                for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
+
+                if (Random.Range(0f,100f) < chaseChance)
                 {
-                    PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
-                    if (targetPlayer == null)
+                    chaseChance = chaseStartingChance;
+
+                    Debug.Log("[SCARECROW]: Checking for valid players to target.");
+                    for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
                     {
-                        if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                        PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
+                        if (targetPlayer == null)
                         {
-                            targetPlayer = player;
-                            continue;
+                            if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                            {
+                                targetPlayer = player;
+                                continue;
+                            }
+                        }
+                        else if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                        {
+                            if (Vector3.Distance(player.transform.position, transform.position) < Vector3.Distance(targetPlayer.transform.position, transform.position))
+                            {
+                                targetPlayer = player;
+                            }
                         }
                     }
-                    else if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+
+                    if (targetPlayer != null)
                     {
-                        if (Vector3.Distance(player.transform.position, transform.position) < Vector3.Distance(targetPlayer.transform.position, transform.position))
-                        {
-                            targetPlayer = player;
-                        }
+                        Debug.Log("[SCARECROW]: Closest valid player selected as target.");
+                        currentBehaviourStateIndex = 2;
+                    }
+                    else
+                    {
+                        Debug.Log("[SCARECROW]: No valid players, restarting search.");
+                        searchTimer = Random.Range(minSearchTime, maxSearchTime);
                     }
                 }
 
-                if (targetPlayer != null)
-                {
-                    Debug.Log("[SCARECROW]: Closest valid player selected as target.");
-                    currentBehaviourStateIndex = 2;
-                }
                 else
                 {
-                    Debug.Log("[SCARECROW]: No valid players, restarting search.");
+                    Debug.Log("[SCARECROW]: Restarting search.");
+                    chaseChance += chaseChanceIncrement;
                     searchTimer = Random.Range(minSearchTime, maxSearchTime);
                 }
             }
