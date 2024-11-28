@@ -1136,11 +1136,11 @@ public class Scarecrow : EnemyAI
         for (int i = 0; i < players.Length; i++)
         {
             //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER
-            if (CheckLineOfSightForScarecrow(players[i]))
-            {
-                Debug.Log($"[SCARECROW]: Current position in view of {players[i].playerUsername}, did not move.");
-                return false;
-            }
+            // if (CheckLineOfSightForScarecrow(players[i]))
+            // {
+            //     Debug.Log($"[SCARECROW]: Current position in view of {players[i].playerUsername}, did not move.");
+            //     return false;
+            // }
 
             //PREVENT FROM MOVING TO NEW POSITION IN VIEW OF PLAYER
             if (lineOfSightTriggers.Length > 0)
