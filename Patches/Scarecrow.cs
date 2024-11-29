@@ -12,6 +12,8 @@ public class Scarecrow : EnemyAI
 
     public int daysBeforeScarecrowSpawns = 5;
 
+    public Transform screenShakeTransform;
+
     [Range(0f, 1f)]
     public float normalizedTimeInDayToBecomeActive;
 
@@ -235,6 +237,9 @@ public class Scarecrow : EnemyAI
     public AudioClip[] warningSoundsMedium;
 
     public AudioClip[] warningSoundsHigh;
+
+    [Space(5f)]
+    public AudioSource rumbleAudio;
 
     [Space(5f)]
     public AudioSource decoyAudio;
@@ -1639,20 +1644,56 @@ public class Scarecrow : EnemyAI
     [ClientRpc]
     private void PlayWarningSoundClientRpc(Vector3 soundPosition, int clip)
     {
+        //PLAY WARNING SOUND
         warningAudio.transform.position = soundPosition;
-        
+        AudioClip warningSoundClip;
         if (dangerValue < 33)
         {
-            warningAudio.PlayOneShot(warningSoundsLow[clip]);
+            warningSoundClip = warningSoundsLow[clip];
         }
         else if (dangerValue < 66)
         {
-            warningAudio.PlayOneShot(warningSoundsMedium[clip]);
+            warningSoundClip = warningSoundsMedium[clip];
         }
         else
         {
-            warningAudio.PlayOneShot(warningSoundsHigh[clip]);
+            warningSoundClip = warningSoundsHigh[clip];
         }
+        warningAudio.PlayOneShot(warningSoundClip);
+
+        //PLAY GROUND RUMBLE SOUND
+        rumbleAudio.Play();
+
+        //SHAKE PLAYER SCREEN
+        StartCoroutine(ShakeScreen(rumbleAudio.clip.length));
+    }
+
+    public IEnumerator ShakeScreen(float duration)
+    {
+        float timeElapsed = 0f;
+        float layerWeight = 0f;
+
+        //LERP LAYER WEIGHT ON
+        while (timeElapsed < duration)
+        {
+            timeElapsed += Time.deltaTime;
+
+            if (timeElapsed < duration/3)
+            {
+                layerWeight = Mathf.Lerp(0f, 1f, timeElapsed / (duration/3f));
+            }
+
+            if (timeElapsed > duration/3*2)
+            {
+                layerWeight = Mathf.Lerp(1f, 0f, timeElapsed / (duration/3f));
+            }
+
+            creatureAnimator.SetLayerWeight(2, layerWeight);
+        }
+        
+        GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.position += screenShakeTransform.localPosition;
+
+        yield return null;
     }
 
     public int RemapInt(float value, float min1, float max1, float min2, float max2)
