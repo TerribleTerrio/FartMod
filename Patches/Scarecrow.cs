@@ -1403,7 +1403,7 @@ public class Scarecrow : EnemyAI
     {
         PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
 
-        FacePosition(player.transform.position);
+        FacePositionLerp(player.transform.position, 0.2f);
         AudioClip clip = scareSounds[scareSound];
         scareAudio.PlayOneShot(clip);
         RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
@@ -1453,6 +1453,30 @@ public class Scarecrow : EnemyAI
         tempTransform.LookAt(lookPosition);
         tempTransform.eulerAngles = new Vector3(0f, tempTransform.eulerAngles.y, 0f);
         base.transform.eulerAngles = tempTransform.eulerAngles;
+    }
+
+    public IEnumerator FacePositionLerp(Vector3 lookPosition, float length)
+    {
+        Transform tempTransform = base.transform;
+        tempTransform.LookAt(lookPosition);
+
+        float timeElapsed = 0f;
+        float duration = length;
+
+        float rotation;
+        float startRotation = base.transform.eulerAngles.y;
+        float newRotation = tempTransform.eulerAngles.y;
+
+        while (timeElapsed < duration)
+        {
+            rotation = Mathf.Lerp(startRotation, newRotation, timeElapsed / duration);
+            timeElapsed += Time.deltaTime;
+        }
+
+        rotation = newRotation;
+        base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
+
+        yield return null;
     }
 
     [ServerRpc]
@@ -1690,6 +1714,8 @@ public class Scarecrow : EnemyAI
 
             creatureAnimator.SetLayerWeight(2, layerWeight);
         }
+
+        creatureAnimator.SetLayerWeight(2, 0);
         
         GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.position += screenShakeTransform.localPosition;
 
