@@ -4,6 +4,8 @@ using System.Linq;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
+using System.Threading.Tasks;
+using UnityEngine.Rendering;
 
 public class Scarecrow : EnemyAI
 {
@@ -246,6 +248,16 @@ public class Scarecrow : EnemyAI
 
     public AudioClip[] decoySounds;
 
+    public AudioClip[] decoySoundsDesperate;
+
+    private bool decoyAudioPlaying;
+    
+    private bool desperate;
+
+    public Volume screenShakeVolume;
+
+    public GameObject screenShakeParticles;
+
     [Space(5f)]
     public bool useScanNode;
 
@@ -296,20 +308,20 @@ public class Scarecrow : EnemyAI
 
         List<GameObject> outsideAINodes = GameObject.FindGameObjectsWithTag("OutsideAINode").ToList<GameObject>();
         nodes = outsideAINodes;
-        spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
-        for (int i = 0; i < outsideAINodes.Count; i++)
-        {
-            for (int j = 0; j < spawnDenialPoints.Length; j++)
-            {
-                if (Vector3.Distance(outsideAINodes[i].transform.position, spawnDenialPoints[j].transform.position) < 30)
-                {
-                    if (nodes.Contains(outsideAINodes[i]))
-                    {
-                        nodes.Remove(outsideAINodes[i]);
-                    }
-                }
-            }
-        }
+        // spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
+        // for (int i = 0; i < outsideAINodes.Count; i++)
+        // {
+        //     for (int j = 0; j < spawnDenialPoints.Length; j++)
+        //     {
+        //         if (Vector3.Distance(outsideAINodes[i].transform.position, spawnDenialPoints[j].transform.position) < 30)
+        //         {
+        //             if (nodes.Contains(outsideAINodes[i]))
+        //             {
+        //                 nodes.Remove(outsideAINodes[i]);
+        //             }
+        //         }
+        //     }
+        // }
 
         enemyCollider = base.gameObject.GetComponentInChildren<EnemyAICollisionDetect>().gameObject.GetComponent<Collider>();
 
@@ -970,7 +982,6 @@ public class Scarecrow : EnemyAI
                                     scarePlayerChance = scarePlayerStartingChance;
                                     scarePlayerTimer = scarePlayerCooldown;
                                     scarePrimed = false;
-                                    FacePosition(targetPlayer.transform.position);
                                     ScarePlayerServerRpc((int)targetPlayer.playerClientId);
                                     decoySoundTimer = decoySoundCooldown;
                                 }
@@ -980,7 +991,6 @@ public class Scarecrow : EnemyAI
                                 {
                                     scarePlayerChance = scarePlayerStartingChance;
                                     scarePlayerTimer = scarePlayerCooldown;
-                                    FacePosition(targetPlayer.transform.position);
                                     ScarePlayerServerRpc((int)targetPlayer.playerClientId);
                                     decoySoundTimer = decoySoundCooldown;
                                 }
@@ -1071,7 +1081,7 @@ public class Scarecrow : EnemyAI
             {
                 Debug.Log("[SCARECROW]: Escaping.");
                 decoySoundTimer = decoySoundCooldown;
-
+                desperate = false;
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
@@ -1084,17 +1094,31 @@ public class Scarecrow : EnemyAI
                 currentBehaviourStateIndex = 1;
             }
 
-            //IF MORE THAN ONE PLAYER HAS LOS
-            if (playersWithLineOfSight.Count > 1)
+            //IF ANYONE HAS A WEAPON
+            for (int i = 0; i < playersInRange.Count; i++)
+            {
+                if (playersInRange[i].currentlyHeldObjectServer != null)
+                {
+                    if (playersInRange[i].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon && !desperate)
+                    {
+                        Debug.Log("[SCARECROW]: Player nearby has a weapon, desperate to leave!");
+                        decoySoundTimer = 0f;
+                        desperate = true;
+                    }
+                }
+            }
+
+            //IF ONE OR MORE PLAYERS HAVE LOS
+            if (playersWithLineOfSight.Count >= 1)
             {
 
                 //CHANCE TO PLAY DECOY SOUND
                 if (decoySoundTimer <= 0)
                 {
                     decoySoundTimer = decoySoundCooldown;
-                    if (Random.Range(0f,100f) < decoySoundChance)
+                    if (Random.Range(0f,100f) < decoySoundChance + 20)
                     {
-                        PlayDecoySoundServerRpc();
+                        PlayDecoySoundServerRpc(desperate);
                         decoySoundChance = decoySoundStartingChance;
                     }
                     else
@@ -1293,7 +1317,7 @@ public class Scarecrow : EnemyAI
     {
         SetInvisibleServerRpc(true);
         invisible = true;
-        transform.position = position;
+        agent.Warp(position);
         Debug.Log("Scarecrow moved.");
         // currentBehaviourStateIndex = 0;
         yield return new WaitForSeconds(time);
@@ -1346,7 +1370,7 @@ public class Scarecrow : EnemyAI
     public Vector3 PositionAwayFromWall(Vector3 pos, float maxDistance = 1.5f, int resolution = 6)
     {
         Vector3 newPosition = pos;
-        Transform tempTransform = new Transform();
+        Transform tempTransform = base.transform;
         float shortestDistance = maxDistance;
         float yRotation = -1;
 
@@ -1416,6 +1440,11 @@ public class Scarecrow : EnemyAI
             player.JumpToFearLevel(0.5f);
         }
 
+        if (decoyAudioPlaying)
+        {
+            decoyAudio.Stop();
+        }
+
         Debug.Log($"Scarecrow scared player {player.playerUsername}.");
     }
 
@@ -1455,28 +1484,32 @@ public class Scarecrow : EnemyAI
         base.transform.eulerAngles = tempTransform.eulerAngles;
     }
 
-    public IEnumerator FacePositionLerp(Vector3 lookPosition, float length)
+    public async void FacePositionLerp(Vector3 lookPosition, float length)
     {
         Transform tempTransform = base.transform;
-        tempTransform.LookAt(lookPosition);
 
         float timeElapsed = 0f;
         float duration = length;
-
         float rotation;
         float startRotation = base.transform.eulerAngles.y;
+        tempTransform.LookAt(lookPosition);
         float newRotation = tempTransform.eulerAngles.y;
+
+        Debug.Log("Scarecrow starting lerp!");
 
         while (timeElapsed < duration)
         {
-            rotation = Mathf.Lerp(startRotation, newRotation, timeElapsed / duration);
             timeElapsed += Time.deltaTime;
+
+            rotation = Mathf.LerpAngle(startRotation, newRotation, timeElapsed / duration);
+            base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
+
+            await Task.Yield();
         }
 
-        rotation = newRotation;
-        base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
+        Debug.Log("Scarecrow finished lerp!");
 
-        yield return null;
+        base.transform.eulerAngles = new Vector3(0f, newRotation, 0f);
     }
 
     [ServerRpc]
@@ -1493,7 +1526,7 @@ public class Scarecrow : EnemyAI
     }
 
     [ServerRpc]
-    public void PlayDecoySoundServerRpc()
+    public void PlayDecoySoundServerRpc(bool desperate = false)
     {
         int decoySound = Random.Range(0, decoySounds.Length);
 
@@ -1508,14 +1541,51 @@ public class Scarecrow : EnemyAI
         Vector3 decoyPosition = meanVector + direction * 10f;
         decoyPosition = RoundManager.Instance.GetRandomPositionInRadius(decoyPosition, 0f, 8f);
 
-        PlayDecoySoundClientRpc(decoySound, decoyPosition);
+        if (desperate)
+        {
+            int decoySoundDesperate = Random.Range(0, decoySoundsDesperate.Length);
+            PlayDecoySoundClientRpc(decoySoundDesperate, decoyPosition, true);
+        }
+        else
+        {
+            PlayDecoySoundClientRpc(decoySound, decoyPosition);
+        }
     }
 
     [ClientRpc]
-    public void PlayDecoySoundClientRpc(int decoySound, Vector3 soundPosition)
+    public void PlayDecoySoundClientRpc(int decoySound, Vector3 soundPosition, bool desperate = false)
     {
         decoyAudio.transform.position = soundPosition;
-        decoyAudio.PlayOneShot(decoySounds[decoySound]);
+        if (desperate)
+        {
+            decoyAudio.clip = decoySoundsDesperate[decoySound];
+            decoyAudio.Play();
+        }
+        else
+        {
+            decoyAudio.clip = decoySounds[decoySound];
+            decoyAudio.Play();
+        }
+        KeepDecoyPosition();
+    }
+
+    public async void KeepDecoyPosition()
+    {
+        decoyAudioPlaying = true;
+
+        Vector3 oldpos = decoyAudio.transform.position;
+        float timeElapsed = 0f;
+        float duration = decoyAudio.clip.length;
+
+        while (timeElapsed < duration)
+        {
+            timeElapsed += Time.deltaTime;
+
+            decoyAudio.transform.position = oldpos;
+            await Task.Yield();
+        }
+
+        decoyAudioPlaying = false;
     }
 
     public override void HitEnemy(int force = 1, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
@@ -1577,12 +1647,19 @@ public class Scarecrow : EnemyAI
     {
         Debug.Log("Called KillEnemy!");
         IncreaseEnemySpawnRate();
+        enemyCollider.enabled = false;
+
+        if (decoyAudioPlaying)
+        {
+            decoyAudio.Stop();
+        }
+
         base.KillEnemy(destroy);
     }
 
     public void DropItem(bool zapped = false)
     {
-        if (base.IsOwner)
+        if (base.IsServer)
         {
             DropItemServerRpc(zapped);
         }
@@ -1601,7 +1678,7 @@ public class Scarecrow : EnemyAI
         {
             prefab = dropItemPrefab;
         }
-        GameObject dropObject = Instantiate(prefab, dropItemTransform.position, dropItemTransform.rotation, RoundManager.Instance.spawnedScrapContainer);
+        GameObject dropObject = Instantiate(prefab, dropItemTransform.position, Quaternion.identity, RoundManager.Instance.spawnedScrapContainer);
         dropObject.GetComponent<NetworkObject>().Spawn();
         NetworkObjectReference dropObjectRef = dropObject.GetComponent<NetworkObject>();
 
@@ -1628,6 +1705,16 @@ public class Scarecrow : EnemyAI
         {
             gObject.SetScrapValue(5);
         }
+
+        DropItemStupidly(dropObject);
+    }
+
+    public async void DropItemStupidly(GameObject dropitem)
+    {
+        await Task.Yield();
+        dropitem.transform.position = dropItemTransform.position;
+        dropitem.GetComponent<GrabbableObject>().FallToGround();
+        dropitem.GetComponent<GrabbableObject>().hasHitGround = false;
     }
 
     private void IncreaseEnemySpawnRate()
@@ -1668,6 +1755,8 @@ public class Scarecrow : EnemyAI
     [ClientRpc]
     private void PlayWarningSoundClientRpc(Vector3 soundPosition, int clip)
     {
+        SoundManager.Instance.playingOutsideMusic = false;
+
         //PLAY WARNING SOUND
         warningAudio.transform.position = soundPosition;
         AudioClip warningSoundClip;
@@ -1685,41 +1774,93 @@ public class Scarecrow : EnemyAI
         }
         warningAudio.PlayOneShot(warningSoundClip);
 
-        //PLAY GROUND RUMBLE SOUND
-        rumbleAudio.Play();
-
         //SHAKE PLAYER SCREEN
-        StartCoroutine(ShakeScreen(rumbleAudio.clip.length));
+        StartCoroutine(ShakeScreen(rumbleAudio.clip.length - 3f));
+
+        //COLOR PLAYER SCREEN
+        StartCoroutine(ColorScreen(rumbleAudio.clip.length - 3f));
     }
 
     public IEnumerator ShakeScreen(float duration)
     {
+        yield return new WaitForSeconds(6f);
+        rumbleAudio.Play();
         float timeElapsed = 0f;
         float layerWeight = 0f;
+
+        Vector3 originalPosition = GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.localPosition;
+
+        bool particlesEnabled = false;
+        bool particlesAllowed = false;
+        Vector3 originalParticlePosition = screenShakeParticles.transform.position;
+        if (GameNetworkManager.Instance.localPlayerController.isInsideFactory)
+        {
+            particlesAllowed = true;
+        }
 
         //LERP LAYER WEIGHT ON
         while (timeElapsed < duration)
         {
             timeElapsed += Time.deltaTime;
 
-            if (timeElapsed < duration/3)
+            if (timeElapsed < duration/2)
             {
-                layerWeight = Mathf.Lerp(0f, 1f, timeElapsed / (duration/3f));
+                layerWeight = Mathf.Lerp(0f, 1f, timeElapsed / (duration/2f));
             }
 
-            if (timeElapsed > duration/3*2)
+            if (timeElapsed > duration/2)
             {
-                layerWeight = Mathf.Lerp(1f, 0f, timeElapsed / (duration/3f));
+                layerWeight = Mathf.Lerp(1f, 0f, (timeElapsed-(duration/2f)) / (duration/2f));
+            }
+
+            if (particlesAllowed)
+            {
+                if (timeElapsed > duration*0.2 && !particlesEnabled)
+                {
+                    screenShakeParticles.SetActive(true);
+                    particlesEnabled = true;
+                }
+                screenShakeParticles.transform.position = GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.position;
             }
 
             creatureAnimator.SetLayerWeight(2, layerWeight);
+            GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.localPosition = screenShakeTransform.localPosition;
+            yield return null;
         }
 
         creatureAnimator.SetLayerWeight(2, 0);
-        
-        GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.position += screenShakeTransform.localPosition;
+        GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.localPosition = originalPosition;
 
-        yield return null;
+        screenShakeParticles.SetActive(false);
+        screenShakeParticles.transform.position = originalParticlePosition;
+    }
+
+    public IEnumerator ColorScreen(float duration)
+    {
+        yield return new WaitForSeconds(4.5f);
+        float timeElapsed = 0f;
+        float volumeWeight = 0f;
+        screenShakeVolume.enabled = true;
+
+        while (timeElapsed < duration)
+        {
+            timeElapsed += Time.deltaTime;
+
+            if (timeElapsed < duration/2)
+            {
+                volumeWeight = Mathf.Lerp(0f, 0.4f, timeElapsed / (duration/2f));
+            }
+            if (timeElapsed > duration/2)
+            {
+                volumeWeight = Mathf.Lerp(0.4f, 0f, (timeElapsed-(duration/2f)) / (duration/2f));
+            }
+
+            screenShakeVolume.weight = volumeWeight;
+            yield return null;
+        }
+
+        screenShakeVolume.weight = 0;
+        screenShakeVolume.enabled = false;
     }
 
     public int RemapInt(float value, float min1, float max1, float min2, float max2)
