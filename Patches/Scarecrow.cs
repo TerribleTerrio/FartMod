@@ -1081,7 +1081,6 @@ public class Scarecrow : EnemyAI
             {
                 Debug.Log("[SCARECROW]: Escaping.");
                 decoySoundTimer = decoySoundCooldown;
-                desperate = false;
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
@@ -1091,6 +1090,7 @@ public class Scarecrow : EnemyAI
 
                 //ESCAPE
                 MoveToRandomPosition(escaping: true);
+                desperate = false;
                 currentBehaviourStateIndex = 1;
             }
 
@@ -1101,10 +1101,16 @@ public class Scarecrow : EnemyAI
                 {
                     if (playersInRange[i].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon && !desperate)
                     {
-                        Debug.Log("[SCARECROW]: Player nearby has a weapon, desperate to leave!");
                         decoySoundTimer = 0f;
                         desperate = true;
+                        Debug.Log("[SCARECROW]: Player with weapon in range, desperate set to true.");
+                        break;
                     }
+                }
+
+                if (desperate)
+                {
+                    desperate = false;
                 }
             }
 
@@ -1118,7 +1124,7 @@ public class Scarecrow : EnemyAI
                     decoySoundTimer = decoySoundCooldown;
                     if (Random.Range(0f,100f) < decoySoundChance + 20)
                     {
-                        PlayDecoySoundServerRpc(desperate);
+                        PlayDecoySoundServerRpc();
                         decoySoundChance = decoySoundStartingChance;
                     }
                     else
@@ -1427,9 +1433,9 @@ public class Scarecrow : EnemyAI
     {
         PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
 
-        FacePositionLerp(player.transform.position, 0.2f);
         AudioClip clip = scareSounds[scareSound];
         scareAudio.PlayOneShot(clip);
+        StartCoroutine(FacePositionForTime(player.transform.position, clip.length));
         RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
         scarePrimed = false;
         creatureAnimator.SetTrigger("ScarePlayer");
@@ -1484,32 +1490,45 @@ public class Scarecrow : EnemyAI
         base.transform.eulerAngles = tempTransform.eulerAngles;
     }
 
-    public async void FacePositionLerp(Vector3 lookPosition, float length)
+    public IEnumerator FacePositionLerp(Vector3 lookPosition, float length)
+    {
+        Transform tempTransform = base.transform;
+        tempTransform.LookAt(lookPosition);
+
+        float timeElapsed = 0f;
+        float duration = length;
+
+        float rotation;
+        float startRotation = base.transform.eulerAngles.y;
+        float newRotation = tempTransform.eulerAngles.y;
+
+        while (timeElapsed < duration)
+        {
+            rotation = Mathf.LerpAngle(startRotation, newRotation, timeElapsed / duration);
+            timeElapsed += Time.deltaTime;
+        }
+
+        rotation = newRotation;
+        base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
+
+        yield return null;
+    }
+
+    public IEnumerator FacePositionForTime(Vector3 lookPosition, float length)
     {
         Transform tempTransform = base.transform;
 
         float timeElapsed = 0f;
         float duration = length;
-        float rotation;
-        float startRotation = base.transform.eulerAngles.y;
-        tempTransform.LookAt(lookPosition);
-        float newRotation = tempTransform.eulerAngles.y;
-
-        Debug.Log("Scarecrow starting lerp!");
 
         while (timeElapsed < duration)
         {
-            timeElapsed += Time.deltaTime;
+            tempTransform.LookAt(lookPosition);
 
-            rotation = Mathf.LerpAngle(startRotation, newRotation, timeElapsed / duration);
-            base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
-
-            await Task.Yield();
+            base.transform.eulerAngles = new Vector3(0f, Mathf.LerpAngle(base.transform.eulerAngles.y, tempTransform.eulerAngles.y, Time.deltaTime), 0f);
         }
 
-        Debug.Log("Scarecrow finished lerp!");
-
-        base.transform.eulerAngles = new Vector3(0f, newRotation, 0f);
+        yield return null;
     }
 
     [ServerRpc]
@@ -1526,9 +1545,13 @@ public class Scarecrow : EnemyAI
     }
 
     [ServerRpc]
-    public void PlayDecoySoundServerRpc(bool desperate = false)
+    public void PlayDecoySoundServerRpc()
     {
         int decoySound = Random.Range(0, decoySounds.Length);
+        if (desperate)
+        {
+            decoySound = Random.Range(0, decoySoundsDesperate.Length);
+        }
 
         Vector3 meanVector = Vector3.zero;
         for (int i = 0; i < playersInRange.Count; i++)
@@ -1541,31 +1564,24 @@ public class Scarecrow : EnemyAI
         Vector3 decoyPosition = meanVector + direction * 10f;
         decoyPosition = RoundManager.Instance.GetRandomPositionInRadius(decoyPosition, 0f, 8f);
 
-        if (desperate)
-        {
-            int decoySoundDesperate = Random.Range(0, decoySoundsDesperate.Length);
-            PlayDecoySoundClientRpc(decoySoundDesperate, decoyPosition, true);
-        }
-        else
-        {
-            PlayDecoySoundClientRpc(decoySound, decoyPosition);
-        }
+        PlayDecoySoundClientRpc(decoySound, decoyPosition);
     }
 
     [ClientRpc]
-    public void PlayDecoySoundClientRpc(int decoySound, Vector3 soundPosition, bool desperate = false)
+    public void PlayDecoySoundClientRpc(int decoySound, Vector3 soundPosition)
     {
         decoyAudio.transform.position = soundPosition;
+
         if (desperate)
         {
             decoyAudio.clip = decoySoundsDesperate[decoySound];
-            decoyAudio.Play();
         }
         else
         {
             decoyAudio.clip = decoySounds[decoySound];
-            decoyAudio.Play();
         }
+
+        decoyAudio.Play();
         KeepDecoyPosition();
     }
 
