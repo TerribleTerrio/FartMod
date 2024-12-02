@@ -1524,8 +1524,8 @@ public class Scarecrow : EnemyAI
         while (timeElapsed < duration)
         {
             tempTransform.LookAt(lookPosition);
-
             base.transform.eulerAngles = new Vector3(0f, Mathf.LerpAngle(base.transform.eulerAngles.y, tempTransform.eulerAngles.y, Time.deltaTime), 0f);
+            timeElapsed += Time.deltaTime;
         }
 
         yield return null;
