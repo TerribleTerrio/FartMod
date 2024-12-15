@@ -6,6 +6,8 @@ using Unity.Netcode;
 using UnityEngine;
 using System.Threading.Tasks;
 using UnityEngine.Rendering;
+using UnityEngine.AI;
+using UnityEngine.Audio;
 
 public class Scarecrow : EnemyAI
 {
@@ -13,8 +15,6 @@ public class Scarecrow : EnemyAI
     [Header("Scarecrow Settings")]
 
     public int daysBeforeScarecrowSpawns = 5;
-
-    public Transform screenShakeTransform;
 
     [Range(0f, 1f)]
     public float normalizedTimeInDayToBecomeActive;
@@ -55,7 +55,7 @@ public class Scarecrow : EnemyAI
 
     private FloodWeather floodWeather;
 
-    private Collider enemyCollider;
+    public Collider enemyCollider;
 
     [Space(10f)]
     [Header("Wind Levels On Moons")]
@@ -66,6 +66,14 @@ public class Scarecrow : EnemyAI
     public string[] heavyWindMoons;
 
     [Space(10f)]
+    [Header("Nodes On Moons")]
+    public bool useScarecrowNodes;
+
+    public bool addScarecrowNodesToOutsideNodes;
+
+    public GameObject[] nodesList;
+
+    [Space(10f)]
     [Header("Chances & Cooldowns")]
 
     [Space(5f)]
@@ -74,6 +82,26 @@ public class Scarecrow : EnemyAI
     public float maxSearchTime = 300f;
 
     private float searchTimer;
+
+    public float startOfDayCooldownMultiplier = 1f;
+
+    public float endOfDayCooldownMultiplier = 2f;
+
+    public float startOfDayChanceMultiplier = 1f;
+
+    public float endOfDayChanceMultiplier = 2f;
+
+    public bool multiplyChances = false;
+
+    public bool multiplyCooldowns = true;
+
+    private float cooldownMultiplier;
+
+    private float chanceMultiplier;
+
+    private List<float> timers;
+
+    private List<float> chances;
 
     [Space(5f)]
     [Range(0f, 100f)]
@@ -241,6 +269,37 @@ public class Scarecrow : EnemyAI
     public AudioClip[] warningSoundsHigh;
 
     [Space(5f)]
+    public AudioSource spottedAudio;
+
+    public AudioClip spottedLow;
+
+    public AudioClip spottedMed;
+
+    public AudioClip spottedHigh;
+
+    public float initialSpottedTimer = 1f;
+
+    public int spottedDistance = 45;
+
+    public float spottedAngle = 8f;
+
+    public bool useSaveFileForMusic = false;
+
+    public string saveFileString = "PlayedScarecrowMusic";
+
+    public AudioMixerSnapshot spottedSnapshot;
+
+    public AudioMixer scarecrowMixer;
+
+    private float spottedTimer;
+
+    private bool spottedLocally;
+
+    private bool spottedOnce;
+
+    private Coroutine PlayMusicLocallyCoroutine;
+
+    [Space(5f)]
     public AudioSource rumbleAudio;
 
     [Space(5f)]
@@ -254,9 +313,12 @@ public class Scarecrow : EnemyAI
     
     private bool desperate;
 
+    [Space(5f)]
     public Volume screenShakeVolume;
 
     public GameObject screenShakeParticles;
+
+    public Transform screenShakeTransform;
 
     [Space(5f)]
     public bool useScanNode;
@@ -266,6 +328,31 @@ public class Scarecrow : EnemyAI
     public TerminalNode newScarecrowNode;
 
 	public Terminal currentTerminal;
+
+    private bool scanNodeActive;
+
+    public List<GameObject> debugNodes;
+
+    private bool hardMode = false;
+
+    private bool mediumMode = false;
+
+    private float hardModeTimer;
+
+    private float escapeRange = 25f;
+
+    private PlayerControllerB? attackerPlayer;
+
+    public class IterateJob(string name, float value, Coroutine coroutine, bool done)
+    {
+        public string Name = name;
+
+        public float Value = value;
+
+        public Coroutine Coroutine = coroutine;
+
+        public bool Done = done;
+    }
 
     public override void Start()
     {
@@ -291,39 +378,20 @@ public class Scarecrow : EnemyAI
 
         if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
         {
-            floodWeather = Object.FindObjectOfType<FloodWeather>();
+            floodWeather = FindObjectOfType<FloodWeather>();
         }
 
-        if (!useScanNode)
-        {
-            scanNode.creatureScanID = -1;
-        }
+        currentTerminal = FindObjectOfType<Terminal>();
+        currentTerminal.SyncTerminalValuesServerRpc();
 
         base.Start();
 
         SetWindLevel();
+        SetSpawnPoints();
+        SetScanNode();
 
         playersInRange = new List<PlayerControllerB>();
         playersWithLineOfSight = new List<PlayerControllerB>();
-
-        List<GameObject> outsideAINodes = GameObject.FindGameObjectsWithTag("OutsideAINode").ToList<GameObject>();
-        nodes = outsideAINodes;
-        // spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
-        // for (int i = 0; i < outsideAINodes.Count; i++)
-        // {
-        //     for (int j = 0; j < spawnDenialPoints.Length; j++)
-        //     {
-        //         if (Vector3.Distance(outsideAINodes[i].transform.position, spawnDenialPoints[j].transform.position) < 30)
-        //         {
-        //             if (nodes.Contains(outsideAINodes[i]))
-        //             {
-        //                 nodes.Remove(outsideAINodes[i]);
-        //             }
-        //         }
-        //     }
-        // }
-
-        enemyCollider = base.gameObject.GetComponentInChildren<EnemyAICollisionDetect>().gameObject.GetComponent<Collider>();
 
         tweakOutChance = tweakOutStartingChance;
         facePlayerChance = facePlayerStartingChance;
@@ -344,39 +412,6 @@ public class Scarecrow : EnemyAI
         Debug.Log($"[SCARECROW]: Max enemy power increase: {enemyPowerIncrease}");
         Debug.Log($"[SCARECROW]: Start value: {startValue}");
         Debug.Log($"[SCARECROW]: End value: {endValue}");
-    }
-
-    public void SetDangerLevelsAndSync()
-    {
-        normalizedTimeInDayToBecomeActive += 1 / RoundManager.Instance.timeScript.numberOfHours * Random.Range(-1, 1);
-
-        dangerValue = UnityEngine.Random.Range(0f,100f);
-        enemySpawnIncrease = RemapInt(dangerValue, 0, 100, minEnemySpawnIncrease, maxEnemySpawnIncrease);
-        enemyPowerIncrease = RemapInt(dangerValue, 0, 100, minEnemyPowerIncrease, maxEnemyPowerIncrease);
-
-        startValue = UnityEngine.Random.Range(minStartValue, maxStartValue);
-        endValue = UnityEngine.Random.Range(minEndValue, maxEndValue);
-
-        SetDangerLevelsServerRpc(normalizedTimeInDayToBecomeActive, dangerValue, enemySpawnIncrease, enemyPowerIncrease, startValue, endValue);
-    }
-
-    [ServerRpc]
-    public void SetDangerLevelsServerRpc(float activeTime, float danger, int spawnIncrease, int powerIncrease, int startPrice, int endPrice)
-    {
-        SetDangerLevelsClientRpc(activeTime, danger, spawnIncrease, powerIncrease, startPrice, endPrice);
-    }
-
-    [ClientRpc]
-    public void SetDangerLevelsClientRpc(float activeTime, float danger, int spawnIncrease, int powerIncrease, int startPrice, int endPrice)
-    {
-        normalizedTimeInDayToBecomeActive += activeTime;
-
-        dangerValue = danger;
-        enemySpawnIncrease = spawnIncrease;
-        enemyPowerIncrease = powerIncrease;
-
-        startValue = startPrice;
-        endValue = endPrice;
     }
 
     public void SetWindLevel(int level = -1)
@@ -413,7 +448,6 @@ public class Scarecrow : EnemyAI
                 creatureAnimator.SetInteger("WindLevel", 2);
             }
         }
-
         else
         {
             creatureAnimator.SetInteger("WindLevel", level);
@@ -423,17 +457,114 @@ public class Scarecrow : EnemyAI
         {
             creatureAnimator.SetInteger("WindLevel", 1);
         }
-
         else if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
         {
             creatureAnimator.SetInteger("WindLevel", 2);
         }
     }
 
+    public void SetSpawnPoints()
+    {
+        spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
+
+        if (useScarecrowNodes)
+        {
+            for (int i = 0; i < nodesList.Length; i++)
+            {
+                if (StartOfRound.Instance.currentLevel.levelID != i)
+                {
+                    continue;
+                }
+                else
+                {
+                    GameObject nodesParent = GameObject.Find("/NodesAndPoints");
+                    GameObject nodesTransform = Instantiate(nodesList[i], nodesParent.transform.position, Quaternion.identity, nodesParent.transform);
+                    nodesTransform.transform.localEulerAngles = new Vector3(0, 0, 0);
+                    List<GameObject> nodesForPlanet = new List<GameObject>();
+                    foreach (Transform child in nodesTransform.transform)
+                    {
+                        nodesForPlanet.Add(child.gameObject);
+                    }
+                    nodes = nodesForPlanet;
+                    Debug.Log($"[SCARECROW]: Current level {StartOfRound.Instance.currentLevel.PlanetName} has an ID of {StartOfRound.Instance.currentLevel.levelID}, which is in nodes list. Using nodes list for scarecrow spawn points.");
+                    if (addScarecrowNodesToOutsideNodes)
+                    {
+                        List<GameObject> outsideNodes = GameObject.FindGameObjectsWithTag("OutsideAINode").ToList();
+                        nodes.AddRange(outsideNodes);
+                        Debug.Log($"[SCARECROW]: Adding outside AI nodes to scarecrow spawn points.");
+                    }
+                    return;
+                }
+            }
+        }
+        List<GameObject> outsideAINodes = GameObject.FindGameObjectsWithTag("OutsideAINode").ToList<GameObject>();
+        nodes = outsideAINodes;
+        Debug.Log($"[SCARECROW]: Current level {StartOfRound.Instance.currentLevel.PlanetName} has an ID of {StartOfRound.Instance.currentLevel.levelID}, which is not in nodes list, using outside AI nodes instead.");
+    }
+
+    public void SetDangerLevelsAndSync()
+    {
+        normalizedTimeInDayToBecomeActive += 1 / RoundManager.Instance.timeScript.numberOfHours * Random.Range(-1, 1);
+
+        dangerValue = UnityEngine.Random.Range(0f,100f);
+        enemySpawnIncrease = RemapInt(dangerValue, 0, 100, minEnemySpawnIncrease, maxEnemySpawnIncrease);
+        enemyPowerIncrease = RemapInt(dangerValue, 0, 100, minEnemyPowerIncrease, maxEnemyPowerIncrease);
+
+        startValue = UnityEngine.Random.Range(minStartValue, maxStartValue);
+        endValue = UnityEngine.Random.Range(minEndValue, maxEndValue);
+
+        SetDangerLevelsServerRpc(normalizedTimeInDayToBecomeActive, dangerValue, enemySpawnIncrease, enemyPowerIncrease, startValue, endValue);
+        StartWaitForMusicServerRpc();
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetDangerLevelsServerRpc(float activeTime, float danger, int spawnIncrease, int powerIncrease, int startPrice, int endPrice)
+    {
+        SetDangerLevelsClientRpc(activeTime, danger, spawnIncrease, powerIncrease, startPrice, endPrice);
+    }
+
+    [ClientRpc]
+    public void SetDangerLevelsClientRpc(float activeTime, float danger, int spawnIncrease, int powerIncrease, int startPrice, int endPrice)
+    {
+        normalizedTimeInDayToBecomeActive += activeTime;
+
+        dangerValue = danger;
+        enemySpawnIncrease = spawnIncrease;
+        enemyPowerIncrease = powerIncrease;
+
+        startValue = startPrice;
+        endValue = endPrice;
+    }
+
+    public void SetScanNode(bool use = false)
+    {
+        if (!use)
+        {
+            scanNode.creatureScanID = -1;
+            scanNodeActive = false;
+        }
+        else
+        {
+            for (int i = 0; i < currentTerminal.enemyFiles.Count; i++)
+            {
+                if (currentTerminal.enemyFiles[i].creatureName != "Scarecrow")
+                {
+                    continue;
+                }
+                else
+                {
+                    scanNode.creatureScanID = currentTerminal.enemyFiles[i].creatureFileID;
+                    scanNodeActive = true;
+                    break;
+                }
+            }
+        }
+    }
+
     public void GiveRandomTiltAndSync(int clientWhoSentRpc)
     {
-        Vector3 randomTilt = new Vector3(Random.Range(-5f,5f), 0f, Random.Range(-12f,12f));
-        meshContainer.localEulerAngles = randomTilt;
+        Vector3 randomTilt = new Vector3(Random.Range(-3f,3f), 0f, Random.Range(-6f,6f));
+        StartCoroutine(GiveRandomTiltLerp(randomTilt, 0.1f));
         GiveRandomTiltServerRpc(randomTilt, clientWhoSentRpc);
     }
 
@@ -448,8 +579,25 @@ public class Scarecrow : EnemyAI
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            meshContainer.localEulerAngles = randomTilt;
+            StartCoroutine(GiveRandomTiltLerp(randomTilt, 0.1f));
         }
+    }
+
+    public IEnumerator GiveRandomTiltLerp(Vector3 randomTilt, float length)
+    {
+        float timeElapsed = 0f;
+        float duration = length;
+        float tiltX;
+        float tiltZ;
+        while (timeElapsed < duration)
+        {
+            timeElapsed += Time.deltaTime;
+            tiltX = Mathf.LerpAngle(meshContainer.localEulerAngles.x, randomTilt.x, timeElapsed / duration);
+            tiltZ = Mathf.LerpAngle(meshContainer.localEulerAngles.z, randomTilt.z, timeElapsed / duration);
+            meshContainer.localEulerAngles = new Vector3(tiltX, 0f, tiltZ);
+            yield return null;
+        }
+        meshContainer.localEulerAngles = randomTilt;
     }
 
     public bool CheckLineOfSightForScarecrow(PlayerControllerB player)
@@ -464,12 +612,98 @@ public class Scarecrow : EnemyAI
         return false;
     }
 
+    public void CheckForHardMode()
+    {
+        if (!hardMode)
+        {
+            GrabbableObject[] itemsList = FindObjectsOfType<GrabbableObject>();
+            for (int i = 0; i < itemsList.Length; i++)
+            {
+                if (itemsList[i].itemProperties.itemName != "Jetpack")
+                {
+                    continue;
+                }
+                else
+                {
+                    hardMode = true;
+                    moveStartingChance *= 1.4f;
+                    scarePlayerStartingChance *= 1.1f;
+                    decoySoundStartingChance *= 1.2f;
+                    minMoveCooldown *= 0.75f;
+                    maxMoveCooldown *= 0.75f;
+                    escapeRange = 55f;
+                    return;
+                }
+            }
+            if (!mediumMode)
+            {
+                if (FindObjectOfType<VehicleController>() != null)
+                {
+                    mediumMode = true;
+                    moveStartingChance *= 1.2f;
+                    decoySoundStartingChance *= 1.1f;
+                    minMoveCooldown *= 0.85f;
+                    maxMoveCooldown *= 0.85f;
+                    escapeRange = 40f;
+                    return;
+                }
+            }
+        }
+        return;
+    }
+
+    public void UpdateTimers()
+    {
+        timers = [searchTimer, moveTimer, facePlayerTimer, scarePlayerTimer, detectSoundTimer, tweakOutTimer, decoySoundTimer, hardModeTimer];
+        for (int i = 0; i < timers.Count; i++)
+        {
+            if (timers[i] > 0)
+            {
+                timers[i] = multiplyCooldowns ? timers[i] -= Time.deltaTime * cooldownMultiplier : timers[i] -= Time.deltaTime;
+            }
+        }
+        searchTimer = timers[0];
+        moveTimer = timers[1];
+        facePlayerTimer = timers[2];
+        scarePlayerTimer = timers[3];
+        detectSoundTimer = timers[4];
+        tweakOutTimer = timers[5];
+        decoySoundTimer = timers[6];
+        hardModeTimer = timers[7];
+
+        if (multiplyChances)
+        {
+            chances = [tweakOutStartingChance, facePlayerStartingChance, detectSoundStartingChance, moveStartingChance, scarePlayerStartingChance, decoySoundStartingChance, chaseStartingChance];
+            for (int i = 0; i < chances.Count; i++)
+            {
+                chances[i] = chances[i] * chanceMultiplier;
+            }
+            tweakOutStartingChance = chances[0];
+            facePlayerStartingChance = chances[1];
+            detectSoundStartingChance = chances[2];
+            moveStartingChance = chances[3];
+            scarePlayerStartingChance = chances[4];
+            decoySoundStartingChance = chances[5];
+            chaseStartingChance = chances[6];
+        }
+
+        if (hardModeTimer <= 0)
+        {
+            CheckForHardMode();
+            hardModeTimer = 30f;
+        }
+    }
+
     public override void Update()
     {
         float dayProgress = RoundManager.Instance.timeScript.normalizedTimeOfDay;
         currentValue = RemapInt(dayProgress, 0f, 1f, startValue, endValue);
         rotAmount = dayProgress;
         creatureAnimator.SetFloat("rot", rotAmount);
+        cooldownMultiplier = RemapFloat(dayProgress, 0f, 1f, startOfDayCooldownMultiplier, endOfDayCooldownMultiplier);
+        chanceMultiplier = RemapFloat(dayProgress, 0f, 1f, startOfDayChanceMultiplier, endOfDayChanceMultiplier);
+
+        UpdateTimers();
 
         if (stunnedByPlayer)
         {
@@ -484,14 +718,14 @@ public class Scarecrow : EnemyAI
                 {
                     audibleSoundCooldown = 20;
                     RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
-                    Debug.Log("Played audible sound!");
+                    Debug.Log("[SCARECROW]: Played audible sound!");
                 }
             }
         }
 
         if (!base.IsOwner)
         {
-            SetClientCalculatingAI(enable: true);
+            SetClientCalculatingAI(enable: false);
             if (!inSpecialAnimation)
 			{
 				if (RoundManager.Instance.currentDungeonType == 4 && Vector3.Distance(base.transform.position, RoundManager.Instance.currentMineshaftElevator.elevatorInsidePoint.position) < 1f)
@@ -563,6 +797,42 @@ public class Scarecrow : EnemyAI
         }
     }
 
+    public void AddPlayerToLineOfSightAndSync(int playerId, bool adding)
+    {
+        AddPlayerToLineOfSight(playerId, adding);
+        AddPlayerToLineOfSightServerRpc(playerId, adding);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void AddPlayerToLineOfSightServerRpc(int playerId, bool adding)
+    {
+        AddPlayerToLineOfSightClientRpc(playerId, adding);
+    }
+
+    [ClientRpc]
+    public void AddPlayerToLineOfSightClientRpc(int playerId, bool adding)
+    {
+        if (!IsOwner)
+        {
+            AddPlayerToLineOfSight(playerId, adding);
+        }
+    }
+
+    public void AddPlayerToLineOfSight(int playerId, bool adding)
+    {
+        PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
+        if (adding)
+        {
+            Debug.Log($"[SCARECROW]: Player {StartOfRound.Instance.allPlayerScripts[playerId].playerUsername} has line of sight.");
+            playersWithLineOfSight.Add(player);
+        }
+        else
+        {
+            Debug.Log($"[SCARECROW]: Player {StartOfRound.Instance.allPlayerScripts[playerId].playerUsername} lost line of sight.");
+            playersWithLineOfSight.Remove(player);
+        }
+    }
+
     public override void DoAIInterval()
     {
         base.DoAIInterval();
@@ -572,48 +842,17 @@ public class Scarecrow : EnemyAI
             return;
         }
 
-        if (searchTimer > 0)
-        {
-            searchTimer -= Time.deltaTime;
-        }
-        if (moveTimer > 0)
-        {
-            moveTimer -= Time.deltaTime;
-        }
-        if (facePlayerTimer > 0)
-        {
-            facePlayerTimer -= Time.deltaTime;
-        }
-        if (scarePlayerTimer > 0)
-        {
-            scarePlayerTimer -= Time.deltaTime;
-        }
-        if (detectSoundTimer > 0)
-        {
-            detectSoundTimer -= Time.deltaTime;
-        }
-        if (tweakOutTimer > 0)
-        {
-            tweakOutTimer -= Time.deltaTime;
-        }
-        if (decoySoundTimer > 0)
-        {
-            decoySoundTimer -= Time.deltaTime;
-        }
-
         //CHECK PLAYERS FOR LOS
         for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
         {
             PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
             if (CheckLineOfSightForScarecrow(player) && !playersWithLineOfSight.Contains(player))
             {
-                Debug.Log($"[SCARECROW]: Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} has line of sight.");
-                playersWithLineOfSight.Add(player);
+                AddPlayerToLineOfSightAndSync((int)player.playerClientId, true);
             }
             if (!CheckLineOfSightForScarecrow(player) && playersWithLineOfSight.Contains(player))
             {
-                Debug.Log($"[SCARECROW]: Player {StartOfRound.Instance.allPlayerScripts[i].playerUsername} lost line of sight.");
-                playersWithLineOfSight.Remove(player);
+                AddPlayerToLineOfSightAndSync((int)player.playerClientId, false);
             }
         }
 
@@ -624,7 +863,7 @@ public class Scarecrow : EnemyAI
             {
                 invisible = false;
                 PlayerControllerB nearestPlayer = NearestPlayer();
-                if (nearestPlayer != null && Vector3.Distance(nearestPlayer.transform.position, transform.position) < detectRange * 1.5f)
+                if (nearestPlayer != null)
                 {
                     FacePosition(NearestPlayer().transform.position);
                 }
@@ -663,12 +902,13 @@ public class Scarecrow : EnemyAI
         case 0:
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
+                Debug.Log("[SCARECROW]: Inactive.");
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
             if (RoundManager.Instance.timeScript.normalizedTimeOfDay > normalizedTimeInDayToBecomeActive && !isEnemyDead && !invisible)
             {
-                currentBehaviourStateIndex = 1;
+                SwitchToBehaviourState(1);
             }
 
             break;
@@ -677,6 +917,9 @@ public class Scarecrow : EnemyAI
 
         //SEARCHING
         case 1:
+
+            desperate = false;
+
             if (previousBehaviourStateIndex != currentBehaviourStateIndex)
             {
                 Debug.Log("[SCARECROW]: Searching.");
@@ -701,13 +944,13 @@ public class Scarecrow : EnemyAI
                         PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
                         if (targetPlayer == null)
                         {
-                            if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                            if (player.isPlayerControlled && !player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone && (player != attackerPlayer))
                             {
                                 targetPlayer = player;
                                 continue;
                             }
                         }
-                        else if (!player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone)
+                        else if (player.isPlayerControlled && !player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone && (player != attackerPlayer))
                         {
                             if (Vector3.Distance(player.transform.position, transform.position) < Vector3.Distance(targetPlayer.transform.position, transform.position))
                             {
@@ -719,7 +962,7 @@ public class Scarecrow : EnemyAI
                     if (targetPlayer != null)
                     {
                         Debug.Log("[SCARECROW]: Closest valid player selected as target.");
-                        currentBehaviourStateIndex = 2;
+                        SwitchToBehaviourState(2);
                     }
                     else
                     {
@@ -757,14 +1000,18 @@ public class Scarecrow : EnemyAI
             //IF ONE PLAYER WITHIN RANGE
             else if (playersInRange.Count == 1)
             {
+                if (attackerPlayer != null && playersInRange[0] == attackerPlayer)
+                {
+                    SwitchToBehaviourState(3);
+                }
                 targetPlayer = playersInRange[0];
-                currentBehaviourStateIndex = 2;
+                SwitchOwnershipAndSyncStatesServerRpc(2, targetPlayer.actualClientId);
             }
 
             //IF MULTIPLE PLAYERS WITHIN RANGE
             else if (playersInRange.Count > 1)
             {
-                currentBehaviourStateIndex = 3;
+                SwitchToBehaviourState(3);
             }
 
             break;
@@ -780,15 +1027,16 @@ public class Scarecrow : EnemyAI
             if (targetPlayer == null)
             {
                 Debug.LogError("[SCARECROW]: Target player is null, Returning to search.");
-                currentBehaviourStateIndex = 1;
+                SwitchToBehaviourState(1);
                 break;
             }
 
             //IF TARGET PLAYER IS DEAD OR INACCESSIBLE
-            if (targetPlayer.isPlayerDead || targetPlayer.isInsideFactory)
+            if (!targetPlayer.isPlayerControlled || targetPlayer.isPlayerDead || targetPlayer.isInsideFactory)
             {
-                Debug.Log("[SCARECROW]: Target player dead or inaccessible, returning to search.");
-                currentBehaviourStateIndex = 1;
+                Debug.Log("[SCARECROW]: Target player dead or inaccessible, escaping.");
+                targetPlayer = null;
+                SwitchToBehaviourState(3);
                 break;
             }
 
@@ -798,7 +1046,7 @@ public class Scarecrow : EnemyAI
                 chaseMoves = Random.Range(minChaseMoves, maxChaseMoves);
                 Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername} with {chaseMoves} moves.");
                 scarePrimed = false;
-                
+
                 //DETERMINE INSTANT SCARE
                 if (Random.Range(0f,100f) < instantScareChance)
                 {
@@ -844,7 +1092,7 @@ public class Scarecrow : EnemyAI
                             Debug.Log("[SCARECROW]: Out of chase moves, returning to search.");
                             targetPlayer = null;
                             MoveToRandomPosition(escaping: true);
-                            currentBehaviourStateIndex = 1;
+                            SwitchToBehaviourState(1);
                             break;
                         }
 
@@ -863,7 +1111,7 @@ public class Scarecrow : EnemyAI
             else if (playersInRange.Count > 1)
             {
                 targetPlayer = null;
-                currentBehaviourStateIndex = 3;
+                SwitchToBehaviourState(3);
             }
 
             //IF ONE PLAYER WITHIN RANGE
@@ -877,9 +1125,10 @@ public class Scarecrow : EnemyAI
                     chaseMoves = Random.Range(minChaseMoves, maxChaseMoves);
                     Debug.Log($"[SCARECROW]: Chasing {targetPlayer.playerUsername} with {chaseMoves} moves.");
                     scarePrimed = false;
+                    SwitchOwnershipAndSyncStatesServerRpc(2, targetPlayer.actualClientId);
 
-                    //CHANCE TO PLAY DETECT SOUND
-                    if (detectSoundTimer <= 0)
+                    //CHANCE TO PLAY DETECT SOUND (WHILE PLAYER IS OR ISNT LOOKING)
+                    if (detectSoundTimer <= 0 && playersWithLineOfSight.Count <= 1)
                     {
                         tweakOutTimer = tweakOutCooldown;
                         detectSoundTimer = detectSoundCooldown;
@@ -898,10 +1147,10 @@ public class Scarecrow : EnemyAI
                 //IF PLAYER IS HOLDING WEAPON
                 if (playersInRange[0].currentlyHeldObjectServer != null)
                 {
-                    if (playersInRange[0].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon)
+                    if (playersInRange[0].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon || playersInRange[0].currentlyHeldObjectServer.itemProperties.itemName == "Easter egg")
                     {
                         targetPlayer = null;
-                        currentBehaviourStateIndex = 3;
+                        SwitchToBehaviourState(3);
                     }
                 }
 
@@ -912,6 +1161,12 @@ public class Scarecrow : EnemyAI
                     //IF PLAYER IS NOT WITHIN SCARE RANGE
                     if (Vector3.Distance(targetPlayer.transform.position, transform.position) > scareRange)
                     {
+
+                        //SETTING SCAN NODE TERMINAL ENTRY INACCESSIBLE
+                        if (scanNodeActive)
+                        {
+                            SetScanNode(false);
+                        }
 
                         //IF TARGET PLAYER HAS LOS
                         if (CheckLineOfSightForScarecrow(targetPlayer))
@@ -951,7 +1206,7 @@ public class Scarecrow : EnemyAI
                                     facePlayerTimer = facePlayerCooldown;
                                     if (Random.Range(0f,100f) < facePlayerChance)
                                     {
-                                        FacePosition(targetPlayer.transform.position);
+                                        StartCoroutine(FacePositionLerp(targetPlayer.transform.position, 0.1f));
                                         facePlayerChance = facePlayerStartingChance;
                                         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
                                     }
@@ -967,6 +1222,16 @@ public class Scarecrow : EnemyAI
                     //IF TARGET PLAYER IS WITHIN SCARE RANGE
                     else
                     {
+
+                        //SETTING SCAN NODE TERMINAL ENTRY ACCESSIBLE
+                        if (!scanNodeActive && playersWithLineOfSight.Count == 1)
+                        {
+                            SetScanNode(true);
+                        }
+                        else if ((scanNodeActive && playersWithLineOfSight.Count > 1) || (scanNodeActive && playersWithLineOfSight.Count == 0))
+                        {
+                            SetScanNode(false);
+                        }
 
                         //IF TARGET PLAYER HAS LOS
                         if (CheckLineOfSightForScarecrow(targetPlayer))
@@ -1041,7 +1306,7 @@ public class Scarecrow : EnemyAI
                                     if (Random.Range(0f,100f) < scarePlayerChance)
                                     {
                                         scarePrimed = true;
-                                        FacePosition(targetPlayer.transform.position);
+                                        StartCoroutine(FacePositionLerp(targetPlayer.transform.position, 0.1f));
                                         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
                                     }
                                     else
@@ -1056,13 +1321,29 @@ public class Scarecrow : EnemyAI
                                     facePlayerTimer = facePlayerCooldown;
                                     if (Random.Range(0f,100f) < facePlayerChance)
                                     {
-                                        FacePosition(targetPlayer.transform.position);
+                                        StartCoroutine(FacePositionLerp(targetPlayer.transform.position, 0.1f));
                                         facePlayerChance = facePlayerStartingChance;
                                         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
                                     }
                                     else
                                     {
                                         facePlayerChance += facePlayerChanceIncrement;
+                                    }
+                                }
+
+                                //CHANCE TO PLAY DETECT SOUND
+                                if (detectSoundTimer <= 0)
+                                {
+                                    tweakOutTimer = tweakOutCooldown;
+                                    detectSoundTimer = detectSoundCooldown;
+                                    if (Random.Range(0f,100f) < detectSoundChance)
+                                    {
+                                        PlayDetectSoundServerRpc();
+                                        detectSoundChance = detectSoundStartingChance;
+                                    }
+                                    else
+                                    {
+                                        detectSoundChance += detectSoundChanceIncrement;
                                     }
                                 }
                             }
@@ -1081,6 +1362,13 @@ public class Scarecrow : EnemyAI
             {
                 Debug.Log("[SCARECROW]: Escaping.");
                 decoySoundTimer = decoySoundCooldown;
+
+                //SETTING SCAN NODE TERMINAL ENTRY INACCESSIBLE
+                if (scanNodeActive)
+                {
+                    SetScanNode(false);
+                }
+
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
             }
 
@@ -1090,8 +1378,7 @@ public class Scarecrow : EnemyAI
 
                 //ESCAPE
                 MoveToRandomPosition(escaping: true);
-                desperate = false;
-                currentBehaviourStateIndex = 1;
+                SwitchToBehaviourState(1);
             }
 
             //IF ANYONE HAS A WEAPON
@@ -1099,7 +1386,7 @@ public class Scarecrow : EnemyAI
             {
                 if (playersInRange[i].currentlyHeldObjectServer != null)
                 {
-                    if (playersInRange[i].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon && !desperate)
+                    if (!desperate && (playersInRange[i].currentlyHeldObjectServer.itemProperties.isDefensiveWeapon || playersInRange[i].currentlyHeldObjectServer.itemProperties.itemName == "Easter egg"))
                     {
                         decoySoundTimer = 0f;
                         desperate = true;
@@ -1107,10 +1394,24 @@ public class Scarecrow : EnemyAI
                         break;
                     }
                 }
+            }
 
-                if (desperate)
+            //IF ONE PLAYER HAS LOS
+            if (playersWithLineOfSight.Count == 1 && !desperate)
+            {
+
+                //CHANCE TO TWEAK OUT
+                if (tweakOutTimer <= 0)
                 {
-                    desperate = false;
+                    tweakOutTimer = tweakOutCooldown;
+                    if (Random.Range(0f,100f) < tweakOutChance)
+                    {
+                        TweakOutServerRpc((int)playersWithLineOfSight[0].playerClientId);
+                    }
+                    else
+                    {
+                        tweakOutChance += tweakOutChanceIncrement;
+                    }
                 }
             }
 
@@ -1121,10 +1422,10 @@ public class Scarecrow : EnemyAI
                 //CHANCE TO PLAY DECOY SOUND
                 if (decoySoundTimer <= 0)
                 {
-                    decoySoundTimer = decoySoundCooldown;
-                    if (Random.Range(0f,100f) < decoySoundChance + 20)
+                    decoySoundTimer = decoySoundCooldown * 0.8f;
+                    if (Random.Range(0f,100f) < decoySoundChance + (desperate ? 30 : 15))
                     {
-                        PlayDecoySoundServerRpc();
+                        PlayDecoySoundServerRpc(desperate);
                         decoySoundChance = decoySoundStartingChance;
                     }
                     else
@@ -1161,7 +1462,7 @@ public class Scarecrow : EnemyAI
         GiveRandomTiltAndSync((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
-    public void MoveToTargetPlayer()
+    public async void MoveToTargetPlayer()
     {
         int chaseAttempts = 0;
         Vector3 newPosition = GetRandomNavMeshPositionNearPlayer(targetPlayer);
@@ -1174,8 +1475,12 @@ public class Scarecrow : EnemyAI
             }
             else
             {
+                MoveToRandomPosition(escaping: true);
+
+                await Task.Yield();
+
                 Debug.Log($"[SCARECROW]: Failed to find valid position near player after {chaseAttempts} tries, restarting move cooldown.");
-                moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown);
+                moveTimer = Random.Range(minMoveCooldown, maxMoveCooldown) * 0.5f;
                 return;
             }
         }
@@ -1193,12 +1498,6 @@ public class Scarecrow : EnemyAI
         bool inViewOfPlayer = false;
         for (int i = 0; i < players.Length; i++)
         {
-            //PREVENT FROM MOVING WHILE IN VIEW OF PLAYER
-            // if (CheckLineOfSightForScarecrow(players[i]))
-            // {
-            //     Debug.Log($"[SCARECROW]: Current position in view of {players[i].playerUsername}, did not move.");
-            //     return false;
-            // }
 
             //PREVENT FROM MOVING TO NEW POSITION IN VIEW OF PLAYER
             if (lineOfSightTriggers.Length > 0)
@@ -1207,7 +1506,7 @@ public class Scarecrow : EnemyAI
                 {
                     if (players[i].HasLineOfSightToPosition(newPosition + lineOfSightTriggers[j].localPosition, range: 100))
                     {
-                        Debug.Log($"[SCARECROW]: LOS trigger visible to {players[i].playerUsername} in new position, did not move.");
+                        Debug.Log($"[SCARECROW]: LOS trigger visible to {players[i].playerUsername} in new position.");
                         inViewOfPlayer = true;
                         break;
                     }
@@ -1215,8 +1514,9 @@ public class Scarecrow : EnemyAI
             }
 
             //PREVENT FROM MOVING NEAR PLAYERS WHEN ESCAPING
-            if (escaping && Vector3.Distance(newPosition, players[i].transform.position) < 10f)
+            if (escaping && Vector3.Distance(newPosition, players[i].transform.position) < escapeRange)
             {
+                Debug.Log($"[SCARECROW]: Position too close to players while escaping, Did not move.");
                 return false;
             }
         }
@@ -1227,6 +1527,7 @@ public class Scarecrow : EnemyAI
             {
                 if (c > 50f)
                 {
+                    Debug.Log($"[SCARECROW]: Did not move.");
                     return false;
                 }
             }
@@ -1277,18 +1578,49 @@ public class Scarecrow : EnemyAI
             }
         }
 
-        GameObject[] spawnDenialPoints = GameObject.FindGameObjectsWithTag("SpawnDenialPoint");
         c = Random.Range(0f,100f);
         for (int i = 0; i < spawnDenialPoints.Length; i++)
         {
             if (Vector3.Distance(newPosition, spawnDenialPoints[i].transform.position) < 30)
             {
+                Debug.Log($"[SCARECROW]: New position too close to spawn denial point.");
                 if (c < 80f)
                 {
-                    Debug.Log("[SCARECROW]: New position too close to spawn denial point, did not move.");
+                    Debug.Log("[SCARECROW]: Did not move.");
                     return false;
                 }
             }
+        }
+
+        Collider[] bodyCollisions = Physics.OverlapCapsule(newPosition + Vector3.up * 1f, newPosition + Vector3.up * 2.5f, 0.1f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
+        if (bodyCollisions.Length > 0)
+        {
+            Debug.Log("[SCARECROW]: New position obscures body, did not move.");
+            return false;
+        }
+
+        // This is for when he is chasing and ends up somewhere unwanted like half inside the wall of a building or half inside the floor of a building or on the roof of a building because an inaccessible automatically baked navmesh island was chosen for the new position
+        if (!escaping && targetPlayer != null)
+        {
+            bool pathValid = NavMesh.CalculatePath(newPosition, targetPlayer.transform.position, agent.areaMask, path1);
+            if (!pathValid)
+            {
+                Debug.Log("[SCARECROW]: Path from position to player invalid, did not move.");
+                CreateDebugNode(newPosition, "INVALID newPosition", 1);
+                return false;
+            }
+            if (pathValid && path1.status == NavMeshPathStatus.PathPartial)
+            {
+                Debug.Log("[SCARECROW]: Path from position to player partial, did not move.");
+                CreateDebugNode(newPosition, "PARTIAL newPosition", 0);
+                return false;
+            }
+        }
+
+        if (attackerPlayer != null && Vector3.Distance(newPosition, attackerPlayer.transform.position) < escapeRange)
+        {
+            Debug.Log($"[SCARECROW]: Position too close to previous attacker, Did not move.");
+            return false;
         }
 
         return true;
@@ -1324,12 +1656,9 @@ public class Scarecrow : EnemyAI
         SetInvisibleServerRpc(true);
         invisible = true;
         agent.Warp(position);
-        Debug.Log("Scarecrow moved.");
-        // currentBehaviourStateIndex = 0;
+        Debug.Log("[SCARECROW]: Moved.");
         yield return new WaitForSeconds(time);
         changePositionCoroutine = null;
-        // SetInvisibleServerRpc(false);
-
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -1343,7 +1672,7 @@ public class Scarecrow : EnemyAI
     {
         if (enabled == true)
         {
-            Debug.Log("Scarecrow set invisible.");
+            Debug.Log("[SCARECROW]: Set invisible.");
             invisible = true;
             EnableEnemyMesh(false);
             enemyCollider.enabled = false;
@@ -1351,7 +1680,7 @@ public class Scarecrow : EnemyAI
         }
         else
         {
-            Debug.Log("Scarecrow set visible.");
+            Debug.Log("[SCARECROW]: Set visible.");
             invisible = false;
             EnableEnemyMesh(true);
             enemyCollider.enabled = true;
@@ -1359,7 +1688,7 @@ public class Scarecrow : EnemyAI
         }
     }
 
-    public Vector3 GetRandomNavMeshPositionNearAINode(float radius = 20f)
+    public Vector3 GetRandomNavMeshPositionNearAINode(float radius = 16f)
     {
         int nodeSelected = Random.Range(0, nodes.Count);
         Vector3 nodePosition = nodes[nodeSelected].transform.position;
@@ -1367,13 +1696,17 @@ public class Scarecrow : EnemyAI
         return PositionAwayFromWall(newPosition);
     }
 
-    public Vector3 GetRandomNavMeshPositionNearPlayer(PlayerControllerB player, float radius = 10f)
+    public Vector3 GetRandomNavMeshPositionNearPlayer(PlayerControllerB player, float radius = 8f)
     {
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
+        {
+            radius *= 2.5f;
+        }
         Vector3 newPosition = RoundManager.Instance.GetRandomNavMeshPositionInRadius(player.transform.position, radius);
         return PositionAwayFromWall(newPosition);
     }
 
-    public Vector3 PositionAwayFromWall(Vector3 pos, float maxDistance = 1.5f, int resolution = 6)
+    public Vector3 PositionAwayFromWall(Vector3 pos, float maxDistance = 3f, int resolution = 6)
     {
         Vector3 newPosition = pos;
         Transform tempTransform = base.transform;
@@ -1403,7 +1736,7 @@ public class Scarecrow : EnemyAI
 
             //ENSURE NEW POSITION IS ON GROUND
             Vector3 checkFromPosition = newPosition + base.transform.up * 2f;
-            if (Physics.Raycast(pos, checkFromPosition, out var hitInfo, 4f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(checkFromPosition, Vector3.down, out var hitInfo, 4f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
             {
                 newPosition = hitInfo.point;
             }
@@ -1435,7 +1768,8 @@ public class Scarecrow : EnemyAI
 
         AudioClip clip = scareSounds[scareSound];
         scareAudio.PlayOneShot(clip);
-        StartCoroutine(FacePositionForTime(player.transform.position, clip.length));
+        WalkieTalkie.TransmitOneShotAudio(scareAudio, clip);
+        StartCoroutine(FaceTransformForTime(player.transform, clip.length/2));
         RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 1, 0, false, -1);
         scarePrimed = false;
         creatureAnimator.SetTrigger("ScarePlayer");
@@ -1444,14 +1778,12 @@ public class Scarecrow : EnemyAI
 		{
             player.insanityLevel += player.maxInsanityLevel * 0.2f;
             player.JumpToFearLevel(0.5f);
+            spottedLocally = true;
         }
 
-        if (decoyAudioPlaying)
-        {
-            decoyAudio.Stop();
-        }
+        StopInterruptibleAudio();
 
-        Debug.Log($"Scarecrow scared player {player.playerUsername}.");
+        Debug.Log($"[SCARECROW]: Scarecrow scared player {player.playerUsername}.");
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -1471,9 +1803,10 @@ public class Scarecrow : EnemyAI
     {
         PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[playerId];
 
-        Debug.Log("Scarecrow tweaked out!");
+        Debug.Log("[SCARECROW]: Scarecrow tweaked out!");
         AudioClip clip = tweakOutSounds[tweakSound];
         tweakOutAudio.PlayOneShot(clip);
+        WalkieTalkie.TransmitOneShotAudio(tweakOutAudio, clip);
         creatureAnimator.SetTrigger("TweakOut");
 
         if (GameNetworkManager.Instance.localPlayerController == player)
@@ -1492,46 +1825,51 @@ public class Scarecrow : EnemyAI
 
     public IEnumerator FacePositionLerp(Vector3 lookPosition, float length)
     {
-        Transform tempTransform = base.transform;
-        tempTransform.LookAt(lookPosition);
+        RoundManager.Instance.tempTransform.position = base.transform.position;
+        RoundManager.Instance.tempTransform.LookAt(lookPosition);
 
         float timeElapsed = 0f;
         float duration = length;
 
-        float rotation;
         float startRotation = base.transform.eulerAngles.y;
-        float newRotation = tempTransform.eulerAngles.y;
+        float rotation = startRotation;
+        float newRotation = RoundManager.Instance.tempTransform.eulerAngles.y;
 
         while (timeElapsed < duration)
         {
-            rotation = Mathf.LerpAngle(startRotation, newRotation, timeElapsed / duration);
             timeElapsed += Time.deltaTime;
+
+            rotation = Mathf.LerpAngle(rotation, newRotation, timeElapsed / duration);
+            base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
+
+            yield return null;
         }
 
-        rotation = newRotation;
-        base.transform.eulerAngles = new Vector3(0f, rotation, 0f);
-
-        yield return null;
+        base.transform.eulerAngles = new Vector3(0f, newRotation, 0f);
     }
 
-    public IEnumerator FacePositionForTime(Vector3 lookPosition, float length)
+    public IEnumerator FaceTransformForTime(Transform transform, float length)
     {
-        Transform tempTransform = base.transform;
+        yield return StartCoroutine(FacePositionLerp(transform.position, 0.15f));
+
+        RoundManager.Instance.tempTransform.position = base.transform.position;
 
         float timeElapsed = 0f;
         float duration = length;
 
         while (timeElapsed < duration)
         {
-            tempTransform.LookAt(lookPosition);
-            base.transform.eulerAngles = new Vector3(0f, Mathf.LerpAngle(base.transform.eulerAngles.y, tempTransform.eulerAngles.y, Time.deltaTime), 0f);
             timeElapsed += Time.deltaTime;
-        }
 
-        yield return null;
+            RoundManager.Instance.tempTransform.LookAt(transform.position);
+            base.transform.rotation = Quaternion.Lerp(base.transform.rotation, RoundManager.Instance.tempTransform.rotation, 12f * Time.deltaTime);
+            base.transform.eulerAngles = new Vector3(0f, base.transform.eulerAngles.y, 0f);
+
+            yield return null;
+        }
     }
 
-    [ServerRpc]
+    [ServerRpc(RequireOwnership = false)]
     public void PlayDetectSoundServerRpc()
     {
         int detectSound = Random.Range(0, detectSounds.Length);
@@ -1541,14 +1879,16 @@ public class Scarecrow : EnemyAI
     [ClientRpc]
     public void PlayDetectSoundClientRpc(int detectSound)
     {
+        RoundManager.Instance.PlayAudibleNoise(transform.position, noiseRange, 0.5f, 0, false, -1);
         detectAudio.PlayOneShot(detectSounds[detectSound]);
+        WalkieTalkie.TransmitOneShotAudio(detectAudio, detectSounds[detectSound]);
     }
 
-    [ServerRpc]
-    public void PlayDecoySoundServerRpc()
+    [ServerRpc(RequireOwnership = false)]
+    public void PlayDecoySoundServerRpc(bool desperateRpc = false)
     {
         int decoySound = Random.Range(0, decoySounds.Length);
-        if (desperate)
+        if (desperateRpc)
         {
             decoySound = Random.Range(0, decoySoundsDesperate.Length);
         }
@@ -1564,24 +1904,28 @@ public class Scarecrow : EnemyAI
         Vector3 decoyPosition = meanVector + direction * 10f;
         decoyPosition = RoundManager.Instance.GetRandomPositionInRadius(decoyPosition, 0f, 8f);
 
-        PlayDecoySoundClientRpc(decoySound, decoyPosition);
+        PlayDecoySoundClientRpc(decoySound, decoyPosition, desperateRpc);
     }
 
     [ClientRpc]
-    public void PlayDecoySoundClientRpc(int decoySound, Vector3 soundPosition)
+    public void PlayDecoySoundClientRpc(int decoySound, Vector3 soundPosition, bool desperateRpc = false)
     {
         decoyAudio.transform.position = soundPosition;
+        desperate = desperateRpc;
 
         if (desperate)
         {
+            decoyAudio.volume = 0.93f;
             decoyAudio.clip = decoySoundsDesperate[decoySound];
         }
         else
         {
+            decoyAudio.volume = 0.96f;
             decoyAudio.clip = decoySounds[decoySound];
         }
 
         decoyAudio.Play();
+        WalkieTalkie.TransmitOneShotAudio(decoyAudio, decoyAudio.clip);
         KeepDecoyPosition();
     }
 
@@ -1611,17 +1955,31 @@ public class Scarecrow : EnemyAI
         {
             return;
         }
+        StopInterruptibleAudio();
         creatureAnimator.SetTrigger("TakeDamage");
+        enemyHP -= force;
         if (playerWhoHit != null)
         {
-            targetPlayer = playerWhoHit;
-            Debug.Log($"Target player set to {targetPlayer.playerUsername}.");
+            RememberAttackerServerRpc((int)playerWhoHit.playerClientId);
         }
-        enemyHP -= force;
         if (enemyHP <= 0 && !isEnemyDead)
         {
             creatureAnimator.SetTrigger("Die");
+            isEnemyDead = true;
+            SwitchToBehaviourState(0);
         }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RememberAttackerServerRpc(int playerId)
+    {
+        RememberAttackerClientRpc(playerId);
+    }
+
+    [ClientRpc]
+    public void RememberAttackerClientRpc(int playerId)
+    {
+        attackerPlayer = StartOfRound.Instance.allPlayerScripts[playerId];
     }
 
     public override void HitFromExplosion(float distance)
@@ -1633,7 +1991,10 @@ public class Scarecrow : EnemyAI
         }
         else
         {
+            StopInterruptibleAudio();
             creatureAnimator.SetTrigger("Explode");
+            isEnemyDead = true;
+            SwitchToBehaviourState(0);
         }
     }
 
@@ -1661,15 +2022,10 @@ public class Scarecrow : EnemyAI
 
     public override void KillEnemy(bool destroy = false)
     {
-        Debug.Log("Called KillEnemy!");
+        Debug.Log("[SCARECROW]: Called KillEnemy!");
+        StopInterruptibleAudio();
         IncreaseEnemySpawnRate();
         enemyCollider.enabled = false;
-
-        if (decoyAudioPlaying)
-        {
-            decoyAudio.Stop();
-        }
-
         base.KillEnemy(destroy);
     }
 
@@ -1681,10 +2037,10 @@ public class Scarecrow : EnemyAI
         }
     }
 
-    [ServerRpc]
+    [ServerRpc(RequireOwnership = false)]
     public void DropItemServerRpc(bool zapped = false)
     {
-        Debug.Log("Called DropItemServerRpc!");
+        Debug.Log("[SCARECROW]: Called DropItemServerRpc!");
         GameObject prefab;
         if (zapped)
         {
@@ -1715,13 +2071,14 @@ public class Scarecrow : EnemyAI
             {
                 aObject.SetScrapValue(value);
                 aObject.itemAnimator.SetFloat("rot", rot);
+                RoundManager.Instance.totalScrapValueInLevel += aObject.scrapValue;
             }
         }
         else if (gObject != null)
         {
-            gObject.SetScrapValue(5);
+            gObject.SetScrapValue(RemapInt(value, startValue, endValue, startValue*0.45f, endValue*1.85f));
+            RoundManager.Instance.totalScrapValueInLevel += gObject.scrapValue;
         }
-
         DropItemStupidly(dropObject);
     }
 
@@ -1735,14 +2092,17 @@ public class Scarecrow : EnemyAI
 
     private void IncreaseEnemySpawnRate()
     {
-        Debug.Log($"Original minimum outside enemies to spawn: {RoundManager.Instance.minOutsideEnemiesToSpawn}");
-        Debug.Log($"Original max outside enemy power: {RoundManager.Instance.currentMaxOutsidePower}");
+        Debug.Log($"[SCARECROW]: Original minimum outside enemies to spawn: {RoundManager.Instance.minOutsideEnemiesToSpawn}");
+        Debug.Log($"[SCARECROW]: Original max outside enemy power: {RoundManager.Instance.currentMaxOutsidePower}");
         RoundManager.Instance.minOutsideEnemiesToSpawn += enemySpawnIncrease;
         RoundManager.Instance.currentMaxOutsidePower += enemyPowerIncrease;
-        Debug.Log($"Increased minimum outside enemies to spawn: {RoundManager.Instance.minOutsideEnemiesToSpawn}");
-        Debug.Log($"Increased max outside enemy power: {RoundManager.Instance.currentMaxOutsidePower}");
+        Debug.Log($"[SCARECROW]: Increased minimum outside enemies to spawn: {RoundManager.Instance.minOutsideEnemiesToSpawn}");
+        Debug.Log($"[SCARECROW]: Increased max outside enemy power: {RoundManager.Instance.currentMaxOutsidePower}");
 
-        PlayWarningSoundServerRpc();
+        if (IsServer)
+        {
+            PlayWarningSoundServerRpc();
+        }
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -1807,12 +2167,7 @@ public class Scarecrow : EnemyAI
         Vector3 originalPosition = GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.localPosition;
 
         bool particlesEnabled = false;
-        bool particlesAllowed = false;
         Vector3 originalParticlePosition = screenShakeParticles.transform.position;
-        if (GameNetworkManager.Instance.localPlayerController.isInsideFactory)
-        {
-            particlesAllowed = true;
-        }
 
         //LERP LAYER WEIGHT ON
         while (timeElapsed < duration)
@@ -1829,14 +2184,21 @@ public class Scarecrow : EnemyAI
                 layerWeight = Mathf.Lerp(1f, 0f, (timeElapsed-(duration/2f)) / (duration/2f));
             }
 
-            if (particlesAllowed)
+            screenShakeParticles.transform.position = GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.position;
+
+            if (GameNetworkManager.Instance.localPlayerController.isInsideFactory)
             {
                 if (timeElapsed > duration*0.2 && !particlesEnabled)
                 {
                     screenShakeParticles.SetActive(true);
+                    screenShakeParticles.GetComponent<ParticleSystem>().Play();
                     particlesEnabled = true;
                 }
-                screenShakeParticles.transform.position = GameNetworkManager.Instance.localPlayerController.gameplayCamera.transform.position;
+            }
+            else
+            {
+                screenShakeParticles.SetActive(false);
+                particlesEnabled = false;
             }
 
             creatureAnimator.SetLayerWeight(2, layerWeight);
@@ -1879,9 +2241,301 @@ public class Scarecrow : EnemyAI
         screenShakeVolume.enabled = false;
     }
 
+    [ServerRpc(RequireOwnership = false)]
+    public void StartWaitForMusicServerRpc()
+    {
+        StartWaitForMusicClientRpc();
+    }
+
+    [ClientRpc]
+    public void StartWaitForMusicClientRpc()
+    {
+        spottedLocally = false;
+        spottedTimer = initialSpottedTimer;
+
+        //SHORTEN SPOTTED DISTANCE FOR MUSIC IN OBSCURED VISION
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Foggy || StartOfRound.Instance.currentLevel.PlanetName == "85 Rend" || StartOfRound.Instance.currentLevel.PlanetName == "7 Dine" || StartOfRound.Instance.currentLevel.PlanetName == "8 Titan" || StartOfRound.Instance.currentLevel.PlanetName == "91 Bellow")
+        {
+            spottedDistance = Mathf.RoundToInt(spottedDistance * 0.4f);
+        }
+
+        StartCoroutine(WaitToBeSpotted());
+    }
+
+    public IEnumerator WaitToBeSpotted()
+    {
+        while (!spottedLocally)
+        {
+            if (GameNetworkManager.Instance.localPlayerController.HasLineOfSightToPosition(scareTriggerTransform.position, spottedAngle, spottedDistance) && !spottedLocally && !invisible)
+            {
+                spottedOnce = true;
+                spottedTimer -= Time.deltaTime;
+
+                SoundManager.Instance.musicSource.volume = Mathf.Lerp(SoundManager.Instance.musicSource.volume, 0f, 3f*Time.deltaTime);
+                
+                if (spottedTimer <= 0f)
+                {
+                    spottedLocally = true;
+                    if (PlayMusicLocallyCoroutine != null)
+                    {
+                        StopCoroutine(PlayMusicLocallyCoroutine);
+                        PlayMusicLocallyCoroutine = null;
+                    }
+                    PlayMusicLocallyCoroutine = StartCoroutine(PlaySpottedMusicLocally());
+                }
+            }
+            else if (spottedOnce)
+            {
+                SoundManager.Instance.musicSource.volume = Mathf.Lerp(SoundManager.Instance.musicSource.volume, 0.85f, 3f*Time.deltaTime);
+
+                if (spottedTimer <= initialSpottedTimer)
+                {
+                    spottedTimer += Time.deltaTime;
+                }
+                else
+                {
+                    spottedTimer = initialSpottedTimer;
+                    spottedOnce = false;
+                }
+            }
+
+            yield return null;
+        }
+    }
+
+    public IEnumerator PlaySpottedMusicLocally()
+    {
+        if (useSaveFileForMusic)
+        {
+            if (ES3.Load(saveFileString, "LCGeneralSaveData", defaultValue: false))
+            {
+                Debug.Log("[SCARECROW]: Not playing music: Player has already heard scarecrow music for the first time.");
+                yield break;
+            }
+        }
+
+        float maxMusicVolume;
+        float minDiageticVolume;
+
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Rainy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded || StartOfRound.Instance.currentLevel.PlanetName == "85 Rend" || StartOfRound.Instance.currentLevel.PlanetName == "8 Titan" || StartOfRound.Instance.currentLevel.PlanetName == "91 Bellow")
+        {
+            maxMusicVolume = 1f;
+            minDiageticVolume = -10f;
+        }
+        else
+        {
+            maxMusicVolume = 0.85f;
+            minDiageticVolume = -7f;
+        }
+
+        if (dangerValue < 33)
+        {
+            spottedAudio.clip = spottedLow;
+        }
+        else if (dangerValue < 66)
+        {
+            spottedAudio.clip = spottedMed;
+        }
+        else
+        {
+            spottedAudio.clip = spottedHigh;
+        }
+
+        spottedAudio.Play();
+        SoundManager.Instance.playingOutsideMusic = false;
+        float timeElapsed = 0f;
+        float duration = spottedAudio.clip.length;
+        bool watching = false;
+        IterateJob increaseDiagetic = new("increase diagetic volume", 0f, null, false);
+        IterateJob decreaseDiagetic = new("decrease diagetic volume", 0f, null, false);
+        IterateJob increaseMusic = new("increase music volume", 0f, null, false);
+        IterateJob decreaseMusic = new("decrease music volume", 0f, null, false);
+
+        while (timeElapsed < duration)
+        {
+            timeElapsed += Time.deltaTime;
+
+            if (GameNetworkManager.Instance.localPlayerController.isPlayerDead || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Eclipsed)
+            {
+                goto END;
+            }
+            else if (StartOfRound.Instance.audioListener == null || playersWithLineOfSight.Count > 1)
+            {
+                goto END_EARLY;
+            }
+
+            if (GameNetworkManager.Instance.localPlayerController.HasLineOfSightToPosition(scareTriggerTransform.position, spottedAngle*3.5f, spottedDistance) && !invisible)
+            {
+                if (!watching)
+                {
+                    watching = true;
+                    RestartCoroutine(increaseDiagetic.Coroutine, false);
+                    RestartCoroutine(decreaseMusic.Coroutine, false);
+                    RestartCoroutine(decreaseDiagetic.Coroutine, true, LerpIncrement(decreaseDiagetic, increaseDiagetic.Value, minDiageticVolume, 3.5f, 0.25f));
+                    RestartCoroutine(increaseMusic.Coroutine, true, LerpIncrement(increaseMusic, decreaseMusic.Value, maxMusicVolume, 3f, 0f));
+                }
+                SoundManager.Instance.SetDiageticMasterVolume(decreaseDiagetic.Value);
+                spottedAudio.volume = increaseMusic.Value;
+            }
+            else
+            {
+                if (watching)
+                {
+                    watching = false;
+                    RestartCoroutine(decreaseDiagetic.Coroutine, false);
+                    RestartCoroutine(increaseMusic.Coroutine, false);
+                    RestartCoroutine(increaseDiagetic.Coroutine, true, LerpIncrement(increaseDiagetic, decreaseDiagetic.Value, 0f, 2f, 0.25f));
+                    RestartCoroutine(decreaseMusic.Coroutine, true, LerpIncrement(decreaseMusic, increaseMusic.Value, 0f, 2f, 0f));
+                }
+                SoundManager.Instance.SetDiageticMasterVolume(increaseDiagetic.Value);
+                spottedAudio.volume = decreaseMusic.Value;
+
+                if (timeElapsed < duration*0.5f && decreaseMusic.Done)
+                {
+                    goto END_EARLY;
+                }
+            }
+
+            yield return null;
+        }
+
+        if (useSaveFileForMusic)
+        {
+            ES3.Save(saveFileString, value: true, "LCGeneralSaveData");
+            Debug.Log("[SCARECROW]: Saved: Player has heard scarecrow music for the first time.");
+        }
+
+        END:
+        SoundManager.Instance.SetDiageticMasterVolume(0f);
+        spottedAudio.volume = 0f;
+        PlayMusicLocallyCoroutine = null;
+        yield break;
+
+        END_EARLY:
+        SoundManager.Instance.SetDiageticMasterVolume(0f);
+        spottedAudio.volume = 0f;
+        spottedLocally = false;
+        spottedOnce = false;
+        spottedTimer = initialSpottedTimer;
+        StartCoroutine(WaitToBeSpotted());
+        PlayMusicLocallyCoroutine = null;
+        yield break;
+    }
+
+    //FOR TESTING
+    public void DeleteSpottedMusicSaveData()
+    {
+        if (ES3.KeyExists(saveFileString, "LCGeneralSaveData"))
+        {
+            ES3.DeleteKey(saveFileString, "LCGeneralSaveData");
+            Debug.LogWarning($"[SCARECROW]: Deleted key {saveFileString} in LCGeneralSaveData.");
+        }
+        else
+        {
+            Debug.LogError($"[SCARECROW]: key {saveFileString} in LCGeneralSaveData does not exist.");
+        }
+    }
+
+    public void RestartCoroutine(Coroutine coroutine, bool restart, IEnumerator ienumerator = null)
+    {
+        if (coroutine != null)
+        {
+            StopCoroutine(coroutine);
+            coroutine = null;
+        }
+        if (restart && ienumerator != null)
+        {
+            coroutine = StartCoroutine(ienumerator);
+        }
+    }
+
+    public IEnumerator LerpIncrement(IterateJob iterateJob, float lerpStartValue, float lerpEndValue, float lerpDuration, float lerpIncrement)
+    {
+        float lerpTimeElapsed = 0f;
+        float lerpTimer = 0f;
+        while (lerpTimeElapsed < lerpDuration)
+        {
+            lerpTimeElapsed += Time.deltaTime;
+            lerpTimer += Time.deltaTime;
+            if (lerpTimer > lerpIncrement)
+            {
+                iterateJob.Value = Mathf.Lerp(lerpStartValue, lerpEndValue, lerpTimeElapsed / lerpDuration);
+                lerpTimer = 0f;
+            }
+            yield return null;
+        }
+        iterateJob.Done = true;
+        iterateJob.Coroutine = null;
+    }
+
+	[ServerRpc(RequireOwnership = false)]
+	public void SwitchOwnershipAndSyncStatesServerRpc(int state, ulong newOwner)
+    {
+        Debug.Log($"SwitchOwnershipAndSyncStatesServerRpc called!");
+        if (thisNetworkObject.OwnerClientId != newOwner)
+        {
+            thisNetworkObject.ChangeOwnership(newOwner);
+        }
+        if (StartOfRound.Instance.ClientPlayerList.TryGetValue(newOwner, out var playerId))
+        {
+            targetPlayer = StartOfRound.Instance.allPlayerScripts[playerId];
+            SwitchOwnershipAndSyncStatesClientRpc(playerId, desperate, state);
+        }
+    }
+
+	[ClientRpc]
+	public void SwitchOwnershipAndSyncStatesClientRpc(int playerId, bool desperateRpc, int state)
+    {
+        Debug.Log($"SwitchOwnershipAndSyncStatesClientRpc called!");
+        currentOwnershipOnThisClient = playerId;
+        base.transform.position = serverPosition;
+        SwitchToBehaviourStateOnLocalClient(state);
+        desperate = desperateRpc;
+        targetPlayer = StartOfRound.Instance.allPlayerScripts[playerId];
+    }
+
+    public void StopInterruptibleAudio()
+    {
+        if (decoyAudioPlaying)
+        {
+            Debug.Log("[SCARECROW]: Stopping decoy audio.");
+            decoyAudio.Stop();
+        }
+        if (PlayMusicLocallyCoroutine != null)
+        {
+            Debug.Log("[SCARECROW]: Stopping local music audio.");
+            StopCoroutine(PlayMusicLocallyCoroutine);
+            SoundManager.Instance.SetDiageticMasterVolume(0f);
+            spottedAudio.volume = 0f;
+        }
+    }
+
+    public void CreateDebugNode(Vector3 position, string name, int type)
+    {
+        if (DebugEnemy)
+        {
+            GameObject debugNode = Instantiate(scanNode.gameObject, position, Quaternion.identity);
+            debugNodes.Add(debugNode);
+            debugNode.GetComponent<ScanNodeProperties>().minRange = 1;
+            debugNode.GetComponent<ScanNodeProperties>().maxRange = 300;
+            debugNode.GetComponent<ScanNodeProperties>().headerText = name + " " + debugNodes.Count.ToString();
+            debugNode.GetComponent<ScanNodeProperties>().subText = $"{position}";
+            debugNode.GetComponent<ScanNodeProperties>().nodeType = type;
+            debugNode.GetComponent<ScanNodeProperties>().creatureScanID = -1;
+            debugNode.GetComponent<ScanNodeProperties>().requiresLineOfSight = false;
+            Debug.LogWarning($"[SCARECROW]: Placed debug node at {position}.");
+        }
+    }
+
     public int RemapInt(float value, float min1, float max1, float min2, float max2)
     {
         float m = (value - min1) / (max1 - min1) * (max2 - min2) + min2;
         return Mathf.RoundToInt(m);
+    }
+
+    public float RemapFloat(float value, float min1, float max1, float min2, float max2)
+    {
+        float m = (value - min1) / (max1 - min1) * (max2 - min2) + min2;
+        return m;
     }
 }
