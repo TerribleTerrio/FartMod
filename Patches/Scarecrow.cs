@@ -37,6 +37,8 @@ public class Scarecrow : EnemyAI
 
     public string[] invalidTerrainTags;
 
+    public float shipSafetyRadius;
+
     private bool invisible;
 
     private Coroutine changePositionCoroutine;
@@ -944,13 +946,13 @@ public class Scarecrow : EnemyAI
                         PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
                         if (targetPlayer == null)
                         {
-                            if (player.isPlayerControlled && !player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone && (player != attackerPlayer))
+                            if (player.isPlayerControlled && !player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone && (player != attackerPlayer) && !player.isInHangarShipRoom)
                             {
                                 targetPlayer = player;
                                 continue;
                             }
                         }
-                        else if (player.isPlayerControlled && !player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone && (player != attackerPlayer))
+                        else if (player.isPlayerControlled && !player.isInsideFactory && !player.isPlayerDead && player.isPlayerAlone && (player != attackerPlayer) && !player.isInHangarShipRoom)
                         {
                             if (Vector3.Distance(player.transform.position, transform.position) < Vector3.Distance(targetPlayer.transform.position, transform.position))
                             {
@@ -1032,7 +1034,7 @@ public class Scarecrow : EnemyAI
             }
 
             //IF TARGET PLAYER IS DEAD OR INACCESSIBLE
-            if (!targetPlayer.isPlayerControlled || targetPlayer.isPlayerDead || targetPlayer.isInsideFactory)
+            if (!targetPlayer.isPlayerControlled || targetPlayer.isPlayerDead || targetPlayer.isInsideFactory || targetPlayer.isInHangarShipRoom && StartOfRound.Instance.hangarDoorsClosed)
             {
                 Debug.Log("[SCARECROW]: Target player dead or inaccessible, escaping.");
                 targetPlayer = null;
@@ -1531,6 +1533,13 @@ public class Scarecrow : EnemyAI
                     return false;
                 }
             }
+        }
+
+        Vector3 shipPosition = new Vector3(0f, 1.5f, -14f);
+        if (Vector3.Distance(shipPosition, newPosition) < shipSafetyRadius)
+        {
+            Debug.Log("[SCARECROW]: Position too close to ship, did not move.");
+            return false;
         }
 
         bool onInvalidTerrain = false;
