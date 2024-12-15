@@ -23,6 +23,10 @@ public class AudioListAnimationEvent : MonoBehaviour
 	public UnityEvent onAnimationEvent3Called;
 
     public UnityEvent TriggerAnimationEvent;
+
+    public float noiseRange = 35f;
+
+    public float noiseLoudness = 0.8f;
   
     private Vector3 lastPosition;
 
@@ -69,7 +73,6 @@ public class AudioListAnimationEvent : MonoBehaviour
         audioSource.clip = audioClips[clipNumber];
         audioSource.loop = true;
         audioSource.Play();
-        WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
 	}
 
 	public void PlayListAudioLoopAndFar(int clipNumber)
@@ -80,8 +83,6 @@ public class AudioListAnimationEvent : MonoBehaviour
         audioSourceFar.loop = true;
         audioSource.Play();
         audioSourceFar.Play();
-        WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
-        WalkieTalkie.TransmitOneShotAudio(audioSourceFar, audioClipsFar[clipNumber]);
 	}
 
 	public void PlayListAudioNoLoop(int clipNumber)
@@ -115,7 +116,6 @@ public class AudioListAnimationEvent : MonoBehaviour
         audioSource.clip = audioClips[clipNumber];
         audioSource.loop = true;
         audioSource.Play();
-        WalkieTalkie.TransmitOneShotAudio(audioSource, audioClips[clipNumber]);
         StartCoroutine(MakeAudibleNoiseLoop(2f, true));
 	}
 
@@ -130,8 +130,7 @@ public class AudioListAnimationEvent : MonoBehaviour
 
 	public void PlayListAudioRandom()
 	{
-        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
-        int num = seedchance.Next(0, randomAudioClips.Length);
+        int num = UnityEngine.Random.Range(0, randomAudioClips.Length);
         if (!(randomAudioClips[num] == null))
 		{
             audioSource.PlayOneShot(randomAudioClips[num]);
@@ -141,10 +140,10 @@ public class AudioListAnimationEvent : MonoBehaviour
 
 	public void PlayListAudioRandomChance(int chance)
 	{
-        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
-        int num = seedchance.Next(0, randomAudioClips.Length);
+        int num = UnityEngine.Random.Range(0, randomAudioClips.Length);
         if (!(randomAudioClips[num] == null))
 		{
+            seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
             if (seedchance.Next(0, 100) < chance)
             {
                 audioSource.PlayOneShot(randomAudioClips[num]);
@@ -195,7 +194,7 @@ public class AudioListAnimationEvent : MonoBehaviour
             }
             bool isInsideClosedShip = StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(audioSource.gameObject.transform.position) && StartOfRound.Instance.hangarDoorsClosed;
             lastPosition = audioSource.gameObject.transform.position;
-            RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, 35f, 0.85f, timesPlayedInOneSpot, isInsideClosedShip);
+            RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInsideClosedShip);
         }
         else
         {
@@ -215,6 +214,6 @@ public class AudioListAnimationEvent : MonoBehaviour
         }
         bool isInsideClosedShip = StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(audioSource.gameObject.transform.position) && StartOfRound.Instance.hangarDoorsClosed;
         lastPosition = audioSource.gameObject.transform.position;
-        RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, 35f, 0.85f, timesPlayedInOneSpot, isInsideClosedShip);
+        RoundManager.Instance.PlayAudibleNoise(audioSource.gameObject.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInsideClosedShip);
     }
 }

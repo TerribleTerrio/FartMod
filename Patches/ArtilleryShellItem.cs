@@ -390,7 +390,7 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 			}
 		}
 		
-        return true;
+        return false;
 	}
 
 	public void OnTouch(Collider other)

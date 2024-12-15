@@ -37,6 +37,8 @@ public class Blowtorch : AnimatedItem
     [Header("Blowtorch Settings")]
     public int damage;
 
+    public float tankTime = 145f;
+
     public GameObject rangeStart;
 
     public GameObject rangeEnd;
@@ -96,9 +98,9 @@ public class Blowtorch : AnimatedItem
 
     private bool tankEmpty;
 
-    public override void Start()
+    public override void Update()
     {
-        base.Start();
+        base.Update();
         if (previousPlayerHeldBy == null || !base.IsOwner)
         {
             return;
@@ -137,7 +139,7 @@ public class Blowtorch : AnimatedItem
 		}
         if (isBurning && isHeld)
 		{
-            torchTank = Mathf.Max(torchTank - Time.deltaTime / 180f, 0f);
+            torchTank = Mathf.Max(torchTank - Time.deltaTime / tankTime, 0f);
             if (torchTank <= 0f)
             {
                 tankEmpty = true;
@@ -379,7 +381,6 @@ public class Blowtorch : AnimatedItem
             if (colliders[i].gameObject.layer == 3)
             {
                 PlayerControllerB playerControllerB = colliders[i].gameObject.GetComponent<PlayerControllerB>();
-                Debug.Log($"Blowtorch detected a player.");
                 if (playerControllerB != null && playerControllerB != playerHeldBy)
                 {
                     Vector3 bodyVelocity = Vector3.Normalize(playerControllerB.gameplayCamera.transform.position - base.transform.position) * 80f / Vector3.Distance(playerControllerB.gameplayCamera.transform.position, base.transform.position);
@@ -400,7 +401,6 @@ public class Blowtorch : AnimatedItem
             else if (colliders[i].gameObject.layer == 19)
             {
                 EnemyAICollisionDetect enemy = colliders[i].gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
-                Debug.Log($"Blowtorch detected an enemy.");
                 if (enemy != null && enemy.mainScript.IsOwner)
                 {
                     enemy.mainScript.HitEnemyOnLocalClient(damage, transform.forward, playerHeldBy, playHitSFX: true);
@@ -487,7 +487,7 @@ public class Blowtorch : AnimatedItem
 
     private Collider[] checkColliders()
     {
-        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.2f, 1076363336, QueryTriggerInteraction.Collide);
+        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.3f, 1076363336, QueryTriggerInteraction.Collide);
         return colliders;
     }
 

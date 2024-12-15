@@ -206,6 +206,6 @@ public class Toaster : AnimatedItem, IHittable
             RoundManager.PlayRandomClip(popSource, hitSFX, randomize: true, 1f, -1);
         }
 
-        return true;
+        return false;
 	}
 }

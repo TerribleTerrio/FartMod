@@ -132,7 +132,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
 	{
         GoPsychoAndSync();
-        return true;
+        return false;
     }
 
     public void GoPsychoAndSync()

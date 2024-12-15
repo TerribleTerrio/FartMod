@@ -38,7 +38,7 @@ public class Rake : GrabbableObject, ITouchable
 
     public GameObject itemCollider;
 
-    private Animator animator;
+    public Animator animator;
 
     [Space(10f)]
     [Header("Audio")]
@@ -70,9 +70,10 @@ public class Rake : GrabbableObject, ITouchable
 
     private int rakeMask = 1084754248;
 
+    private bool dropAnimationComplete;
+
     public override void Start()
     {
-        animator = animContainer.gameObject.GetComponent<Animator>();
         collidersTouching = new List<Collider>();
         base.Start();
     }
@@ -80,27 +81,65 @@ public class Rake : GrabbableObject, ITouchable
     public override void Update()
     {
         base.Update();
-
-        if (IsOwner)
+        if (cooldownTimer >= 0f)
         {
-            if (cooldownTimer > 0)
-            {
-                onCooldown = true;
-                cooldownTimer--;
-            }
-            else
-            {
-                onCooldown = false;
-            }
+            cooldownTimer -= Time.deltaTime;
         }
+
+        if (animator.GetCurrentAnimatorStateInfo(0).IsName("sit") && cooldownTimer <= 0f)
+        {
+            onCooldown = false;
+        }
+        else
+        {
+            onCooldown = true;
+        }
+
+        if (base.transform.localPosition != targetFloorPosition)
+        {
+            dropAnimationComplete = false;
+        }
+        else
+        {
+            dropAnimationComplete = true;
+        }
+    }
+
+    public override void OnHitGround()
+    {
+        StartCoroutine(SetDropRotation());
+    }
+
+    private IEnumerator SetDropRotation()
+    {
+        yield return new WaitUntil(() => dropAnimationComplete);
+        var sendingRotation = base.transform.rotation;
+        SetDropRotationServerRpc(sendingRotation);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetDropRotationServerRpc(Quaternion getRotation)
+    {
+        SetDropRotationClientRpc(getRotation);
+    }
+
+    [ClientRpc]
+    public void SetDropRotationClientRpc(Quaternion getRotation)
+    {
+        base.transform.rotation = getRotation;
     }
 
     public void OnTouch(Collider other)
     {
         previousColliderCount = collidersTouching.Count();
         GameObject otherObject = other.gameObject;
-
+        
         if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+        {
+            return;
+        }
+
+        if (Physics.Linecast(base.transform.position + Vector3.up * 0.5f, otherObject.transform.position, 1073742080, QueryTriggerInteraction.Ignore))
         {
             return;
         }
@@ -110,7 +149,7 @@ public class Rake : GrabbableObject, ITouchable
         {
             collidersTouching.Add(other);
 
-            if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
+            if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround && !otherObject.GetComponent<PlayerControllerB>().isCrouching)
             {
                 FlipAndSync();
                 return;
@@ -203,101 +242,102 @@ public class Rake : GrabbableObject, ITouchable
 
     public void Flip()
     {
-        //FLIP RAKE UP
-        animator.Play("flip");
-
-        //PLAY AUDIBLE NOISE
-        if (Vector3.Distance(lastPositionAtFlip, base.transform.position) > 2f)
-        {
-            timesPlayingInOneSpot = 0;
-        }
-        timesPlayingInOneSpot = timesPlayingInOneSpot + 5;
-        lastPositionAtFlip = base.transform.position;
-        RoundManager.Instance.PlayAudibleNoise(base.transform.position, 10f, 1f, timesPlayingInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-
         //CHECK FOR COLLIDERS IN RANGE
         Collider[] colliders = Physics.OverlapSphere(base.transform.position, damageRange, 2621448, QueryTriggerInteraction.Collide);
         List<EnemyAI> hitEnemies = new List<EnemyAI>();
         for (int i =0; i < colliders.Length; i++)
         {
-            //CHECK THAT COLLIDERS ARE NOT BEHIND WALLS
-            RaycastHit hitInfo;
-            if (physicsForce > 0f && !Physics.Linecast(base.transform.position, colliders[i].transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
+            //FLIP RAKE UP
+            animator.SetTrigger("flip");
+
+            //PLAY AUDIBLE NOISE
+            if (Vector3.Distance(lastPositionAtFlip, base.transform.position) > 2f)
             {
-                GameObject otherObject = colliders[i].gameObject;
+                timesPlayingInOneSpot = 0;
+            }
+            timesPlayingInOneSpot = timesPlayingInOneSpot + 5;
+            lastPositionAtFlip = base.transform.position;
+            RoundManager.Instance.PlayAudibleNoise(base.transform.position, 10f, 1f, timesPlayingInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 
-                //FOR PLAYERS
-                if (otherObject.layer == 3 && colliders[i].gameObject.GetComponent<PlayerControllerB>() != null)
+            GameObject otherObject = colliders[i].gameObject;
+
+            //FOR PLAYERS
+            if (otherObject.layer == 3 && colliders[i].gameObject.GetComponent<PlayerControllerB>() != null)
+            {
+                PlayerControllerB player = colliders[i].gameObject.GetComponent<PlayerControllerB>();
+
+                if (player.isCrouching)
                 {
-                    PlayerControllerB player = colliders[i].gameObject.GetComponent<PlayerControllerB>();
+                    continue;
+                }
 
-                    if (player.isCrouching)
+                //DAMAGE ALL CLOSE PLAYERS
+                Vector3 bodyVelocity = Vector3.Normalize(player.transform.position - base.transform.position) * 80f / Vector3.Distance(player.transform.position, base.transform.position);
+                player.DamagePlayer(damageDealtPlayer, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning, 0, fallDamage:false, bodyVelocity);
+
+                //PUSH ALL CLOSE PLAYERS
+                float dist = Vector3.Distance(player.transform.position, base.transform.position);
+                Vector3 vector = Vector3.Normalize(player.transform.position - base.transform.position) * physicsForce + -player.walkForce * 2f + Vector3.up * 2.5f;
+                if (vector.magnitude > 2f)
+                {
+                    if (vector.magnitude > 10f)
                     {
-                        continue;
+                        player.CancelSpecialTriggerAnimations();
                     }
-
-                    //DAMAGE ALL CLOSE PLAYERS
-                    Vector3 bodyVelocity = Vector3.Normalize(player.transform.position - base.transform.position) * 80f / Vector3.Distance(player.transform.position, base.transform.position);
-                    player.DamagePlayer(damageDealtPlayer, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning, 0, fallDamage:false, bodyVelocity);
-
-                    //PUSH ALL CLOSE PLAYERS
-                    float dist = Vector3.Distance(player.transform.position, base.transform.position);
-                    Vector3 vector = Vector3.Normalize(player.transform.position - base.transform.position) * physicsForce + -player.walkForce * 2f + Vector3.up * 2.5f;
-                    if (vector.magnitude > 2f)
+                    if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
                     {
-                        if (vector.magnitude > 10f)
-                        {
-                            player.CancelSpecialTriggerAnimations();
-                        }
-                        if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
-                        {
-                            player.externalForceAutoFade += vector;
-                        }
-                    }
-
-                    //CAMERA SHAKE
-                    // HUDManager.Instance.ShakeCamera(ScreenShakeType.Small);
-
-                    //DROP HELD ITEM OF ALL CLOSE PLAYERS
-                    if (player.isHoldingObject)
-                    {
-                        player.DiscardHeldObject();
+                        player.externalForceAutoFade += vector;
                     }
                 }
 
-                //FOR ALL NEARBY ENEMIES
-                if (otherObject.layer == 19)
+                //CAMERA SHAKE
+                if ((int)player.playerClientId == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
                 {
-                    //DAMAGE ALL CLOSE ENEMIES
-                    EnemyAICollisionDetect enemy = colliders[i].gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
-                    if (enemy != null && enemy.mainScript.IsOwner && !hitEnemies.Contains(enemy.mainScript))
+                    if (dist < damageRange)
                     {
-                        if (enemy.mainScript.enemyType.enemyName == "Crawler")
-                        {
-                            CrawlerAI crawler = enemy.mainScript as CrawlerAI;
-                            if (crawler.hasEnteredChaseMode)
-                            {
-                                hitEnemies.Add(enemy.mainScript);
-                                enemy.mainScript.HitEnemyOnLocalClient(damageDealtEnemy, playerWhoHit: lastHeld, playHitSFX: true, hitID: 1);
-                            }
-                        }
-                        else if (enemy.mainScript.enemyType.enemyName == "Bunker Spider")
-                        {
-                            SandSpiderAI spider = enemy.mainScript as SandSpiderAI;
-                            if (spider.movingTowardsTargetPlayer)
-                            {
-                                hitEnemies.Add(enemy.mainScript);
-                                enemy.mainScript.HitEnemyOnLocalClient(damageDealtEnemy, playerWhoHit: lastHeld, playHitSFX: true, hitID: 1);
-                            }
-                        }
-                        else if (enemy.mainScript.enemyType.enemyName == "Flowerman")
-                        {
-                        }
-                        else
+                        HUDManager.Instance.ShakeCamera(ScreenShakeType.Big);
+                    }
+                }
+
+                //DROP HELD ITEM OF ALL CLOSE PLAYERS
+                if (player.isHoldingObject)
+                {
+                    player.DiscardHeldObject();
+                }
+            }
+
+            //FOR ALL NEARBY ENEMIES
+            if (otherObject.layer == 19)
+            {
+                //DAMAGE ALL CLOSE ENEMIES
+                EnemyAICollisionDetect enemy = colliders[i].gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
+                if (enemy != null && enemy.mainScript.IsOwner && !hitEnemies.Contains(enemy.mainScript))
+                {
+                    if (enemy.mainScript.enemyType.enemyName == "Crawler")
+                    {
+                        CrawlerAI crawler = enemy.mainScript as CrawlerAI;
+                        if (crawler.hasEnteredChaseMode)
                         {
                             hitEnemies.Add(enemy.mainScript);
                             enemy.mainScript.HitEnemyOnLocalClient(damageDealtEnemy, playerWhoHit: lastHeld, playHitSFX: true, hitID: 1);
                         }
+                    }
+                    else if (enemy.mainScript.enemyType.enemyName == "Bunker Spider")
+                    {
+                        SandSpiderAI spider = enemy.mainScript as SandSpiderAI;
+                        if (spider.movingTowardsTargetPlayer)
+                        {
+                            hitEnemies.Add(enemy.mainScript);
+                            enemy.mainScript.HitEnemyOnLocalClient(damageDealtEnemy, playerWhoHit: lastHeld, playHitSFX: true, hitID: 1);
+                        }
+                    }
+                    else if (enemy.mainScript.enemyType.enemyName == "Flowerman")
+                    {
+                    }
+                    else
+                    {
+                        hitEnemies.Add(enemy.mainScript);
+                        enemy.mainScript.HitEnemyOnLocalClient(damageDealtEnemy, playerWhoHit: lastHeld, playHitSFX: true, hitID: 1);
                     }
                 }
             }
@@ -327,14 +367,12 @@ public class Rake : GrabbableObject, ITouchable
 
     public void Fall()
     {
-        animator.Play("fall");
-        cooldownTimer = cooldownTime;
+        animator.SetTrigger("fall");
     }
 
     public override void GrabItem()
     {
         SetRakeSitServerRpc();
-        onCooldown = false;
         base.GrabItem();
         lastHeld = playerHeldBy;
         collidersTouching.Clear();
@@ -350,6 +388,31 @@ public class Rake : GrabbableObject, ITouchable
     public void SetRakeSitClientRpc()
     {
         animator.Play("sit");
+        cooldownTimer = cooldownTime;
+    }
+
+
+    public override void DiscardItem()
+    {
+        base.DiscardItem();
+        if (playerHeldBy != null)
+        {
+            playerHeldBy.activatingItem = false;
+        }
+        SetRakeSitServerRpc();
+    }
+
+    public override void DiscardItemFromEnemy()
+    {
+        base.DiscardItemFromEnemy();
+        SetRakeSitServerRpc();
+    }
+
+    public override void GrabItemFromEnemy(EnemyAI enemy)
+    {
+        base.GrabItemFromEnemy(enemy);
+        SetRakeSitServerRpc();
+        collidersTouching.Clear();
     }
 
     public override void ItemActivate(bool used, bool buttonDown = true)
@@ -406,28 +469,6 @@ public class Rake : GrabbableObject, ITouchable
             rakeAudio.pitch = 1;
             rakeAudio.PlayOneShot(reelUp);
         }
-    }
-
-    public override void DiscardItem()
-    {
-        base.DiscardItem();
-        if (playerHeldBy != null)
-        {
-            playerHeldBy.activatingItem = false;
-        }
-        cooldownTimer = cooldownTime;
-    }
-
-    [ServerRpc(RequireOwnership = false)]
-    public void SetDropRotationServerRpc()
-    {
-
-    }
-
-    [ClientRpc]
-    public void SetDropRotationClientRpc(Vector3 dropRotation)
-    {
-        
     }
 
     public void SwingRake(bool cancel = false)

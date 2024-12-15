@@ -10,6 +10,8 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
 
     public Collider interactCollider;
 
+    public Collider playerCollider;
+
     public InteractTrigger interactTrigger;
 
     public int ripState;
@@ -35,6 +37,8 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
         bumpState = 0;
         isBroken = false;
         hitMaskOnce = false;
+        interactCollider.enabled = true;
+        playerCollider.enabled = true;
     }
 
     public void PunchDefault()
@@ -83,6 +87,7 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
                 punchingBagAnimator.SetTrigger("break");
                 isBroken = true;
                 interactCollider.enabled = false;
+                playerCollider.enabled = false;
                 return;
             }
             ripState = 4;
@@ -120,7 +125,7 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
     
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
-        if (playerWhoHit.currentlyHeldObjectServer.itemProperties.itemName == "Kitchen knife")
+        if (playerWhoHit.currentlyHeldObjectServer.itemProperties.itemName == "Kitchen knife" || playerWhoHit.currentlyHeldObjectServer.itemProperties.itemName == "Rake")
         {
             PunchAndSync(true, "Kitchen knife");
             return false;

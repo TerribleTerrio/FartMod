@@ -265,7 +265,7 @@ public class Compass : AnimatedItem, IHittable
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
         ChangeOffsetServerRpc();
-        return true;
+        return false;
 	}
 
     public float Remap(float value, float min1, float max1, float min2, float max2)

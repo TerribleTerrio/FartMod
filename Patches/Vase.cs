@@ -683,7 +683,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         {
             ExplodeAndSync();
         }
-        return true;
+        return false;
 	}
 
 }
