@@ -8,6 +8,13 @@ using System.Linq;
 
 public class BowlingBall : GrabbableObject
 {
+    [Space(15f)]
+    [Header("Bowling Ball Settings")]
+    public float damageHeight;
+
+    public int fallDamage;
+
+    private bool collidedWhileFalling;
 
 	public int shovelHitForce = 1;
 
@@ -55,6 +62,88 @@ public class BowlingBall : GrabbableObject
     private AnimatorStateInfo currentStateInfo;
 
     private float currentAnimationTime;
+
+    private void CollideWhileFalling(Collider other)
+    {
+        if (!isHeld && !isHeldByEnemy && !hasHitGround && !collidedWhileFalling)
+        {
+            float fallHeight = startFallingPosition.y - transform.position.y;
+            if (fallHeight < damageHeight)
+            {
+                return;
+            }
+
+            //FOR PLAYERS
+            if (other.gameObject.layer == 3)
+            {
+                PlayerControllerB hitPlayer = other.gameObject.GetComponent<PlayerControllerB>();
+                if (hitPlayer != null)
+                {
+                    hitPlayer.DamagePlayer(fallDamage, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning);
+                    collidedWhileFalling = true;
+                    return;
+                }
+            }
+
+            //FOR ENEMIES
+            if (other.gameObject.layer == 19)
+            {
+                EnemyAICollisionDetect hitEnemy = other.gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
+                if (hitEnemy != null && hitEnemy.mainScript.IsOwner)
+                {
+                    hitEnemy.mainScript.HitEnemyOnLocalClient(fallDamage, transform.forward, playerHeldBy, playHitSFX: true);
+                    collidedWhileFalling = true;
+                    return;
+                }
+            }
+
+            //FOR ITEMS
+            if (other.gameObject.GetComponentInParent<Vase>() != null)
+            {
+                other.gameObject.GetComponentInParent<Vase>().ExplodeAndSync();
+                return;
+            }
+
+            if (other.gameObject.GetComponentInParent<ArtilleryShellItem>() != null)
+            {
+                other.gameObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
+                collidedWhileFalling = true;
+                return;
+            }
+
+            if (other.gameObject.GetComponentInParent<HydraulicStabilizer>() != null)
+            {
+                other.gameObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
+                collidedWhileFalling = true;
+            }
+
+            if (other.gameObject.GetComponentInParent<Toaster>() != null)
+            {
+                other.gameObject.GetComponentInParent<Toaster>().Eject();
+                other.gameObject.GetComponentInParent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            }
+
+            //FOR HAZARDS
+            if (other.gameObject.GetComponentInParent<Landmine>() != null)
+            {
+                Landmine landmine = other.gameObject.GetComponentInParent<Landmine>();
+                landmine.SetOffMineAnimation();
+                landmine.sendingExplosionRPC = true;
+                landmine.ExplodeMineServerRpc();
+            }
+
+            if (other.gameObject.GetComponentInParent<Turret>() != null)
+            {
+                Turret turret = other.gameObject.GetComponentInParent<Turret>();
+                if (turret.turretMode == TurretMode.Berserk || turret.turretMode == TurretMode.Firing)
+                {
+                    return;
+                }
+                turret.SwitchTurretMode(3);
+                turret.EnterBerserkModeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            }
+        }
+    }
 
     public override void Update()
     {
