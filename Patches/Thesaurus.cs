@@ -93,12 +93,12 @@ public class Thesaurus : AnimatedItem
     {
         base.Start();
         ChangePages(currentPageIndex);
-        DelaySetup();
+        StartCoroutine(DelaySetup());
     }
 
-    public async void DelaySetup()
+    public IEnumerator DelaySetup()
     {
-        await Task.Delay(1000);
+        yield return new WaitForSeconds(1);
         Debug.Log("Thesaurus doing first-time setup!");
         textCamera.enabled = false;
         for (int i = 0; i < displayPages.Length; i++)
@@ -117,7 +117,7 @@ public class Thesaurus : AnimatedItem
 
     public void ChangeSizeAndSync(bool grow = false)
     {
-        ChangeSize(grow);
+        StartCoroutine(ChangeSize(grow));
         ChangeSizeServerRpc(grow);
     }
 
@@ -132,11 +132,11 @@ public class Thesaurus : AnimatedItem
     {
         if (!base.IsOwner)
         {
-            ChangeSize(grow);
+            StartCoroutine(ChangeSize(grow));
         }
     }
 
-    public async void ChangeSize(bool grow = false)
+    public IEnumerator ChangeSize(bool grow = false)
     {
         Vector3 growsize = new Vector3(120, 120, 120);
         Vector3 shrinksize = new Vector3(100, 100, 100);
@@ -144,23 +144,23 @@ public class Thesaurus : AnimatedItem
         float duration = 0.3f;
         if (grow)
         {
-            await Task.Delay(0);
+            yield return null;
             while (timespent < duration)
             {
                 itemAnimator.gameObject.transform.localScale = Vector3.Lerp(itemAnimator.gameObject.transform.localScale, growsize, timespent / duration);
                 timespent += Time.deltaTime;
-                await Task.Yield();
+                yield return null;
             }
             itemAnimator.gameObject.transform.localScale = growsize;
         }
         else
         {
-            await Task.Delay(100);
+            yield return new WaitForSeconds(0.1f);
             while (timespent < duration)
             {
                 itemAnimator.gameObject.transform.localScale = Vector3.Lerp(itemAnimator.gameObject.transform.localScale, shrinksize, timespent / duration);
                 timespent += Time.deltaTime;
-                await Task.Yield();
+                yield return null;
             }
             itemAnimator.gameObject.transform.localScale = shrinksize;
         }

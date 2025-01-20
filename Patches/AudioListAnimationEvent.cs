@@ -24,6 +24,8 @@ public class AudioListAnimationEvent : MonoBehaviour
 
     public UnityEvent TriggerAnimationEvent;
 
+    private int timesChanced = 0;
+
     public float noiseRange = 35f;
 
     public float noiseLoudness = 0.8f;
@@ -33,8 +35,6 @@ public class AudioListAnimationEvent : MonoBehaviour
     private int timesPlayedInOneSpot;
 
     private float makeNoiseInterval;
-
-    private bool makingAudibleNoise;
 
     private System.Random seedchance;
 
@@ -55,7 +55,8 @@ public class AudioListAnimationEvent : MonoBehaviour
 
   	public void TriggerAnimationEventChance(int chance)
 	{
-        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed);
+        seedchance = new System.Random(StartOfRound.Instance.randomMapSeed + timesChanced);
+        timesChanced++;
         if (seedchance.Next(0, 100) < chance)
             {
                 TriggerAnimationEvent.Invoke();

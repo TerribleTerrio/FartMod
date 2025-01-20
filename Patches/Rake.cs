@@ -126,7 +126,7 @@ public class Rake : GrabbableObject, ITouchable
     [ClientRpc]
     public void SetDropRotationClientRpc(Quaternion getRotation)
     {
-        base.transform.rotation = getRotation;
+        base.transform.localEulerAngles = getRotation.eulerAngles;
     }
 
     public void OnTouch(Collider other)

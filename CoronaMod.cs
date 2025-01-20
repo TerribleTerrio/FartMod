@@ -14,13 +14,19 @@ using LethalLib.Extras;
 public class CoronaMod : BaseUnityPlugin
 {
     private const string modGUID = "CoronaTerrio.CoronaMod";
+
     private const string modName = "CoronaMod";
-    private const string modVersion = "1.2.0";
+
+    private const string modVersion = "1.0.0";
 
     public static CoronaMod Instance { get; private set; } = null!;
+
     private readonly Harmony harmony = new Harmony(modGUID);
+
     internal ManualLogSource nls;
+
     public static AssetBundle networkbundle;
+
     public GameObject networkPrefab;
 
     public static AssetBundle unlockablebundle;
@@ -33,7 +39,6 @@ public class CoronaMod : BaseUnityPlugin
 
     public TerminalNode fridgeBuyConfirm;
 
-
     public UnlockableItemDef punchingBagUnlockable;
 
     public GameObject punchingBagPrefab;
@@ -41,6 +46,16 @@ public class CoronaMod : BaseUnityPlugin
     public TerminalNode punchingBagBuyNode;
 
     public TerminalNode punchingBagBuyConfirm;
+
+    public static AssetBundle crowBundle;
+
+    public GameObject MouthDogGhostPrefab;
+
+    public GameObject ForestGiantGhostPrefab;
+
+    public GameObject RadMechGhostPrefab;
+
+    public GameObject MaskedPlayerEnemyGhostPrefab;
 
     private static void NetcodePatcher()
     {
@@ -76,7 +91,7 @@ public class CoronaMod : BaseUnityPlugin
         networkPrefab = networkBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/Scripts/NetworkHandler.prefab");
         networkPrefab.AddComponent<NetworkHandler>();
 
-        //IMPORT UNLOCKABLE OBJECTS
+        //REGISTER UNLOCKABLES
         string unlockableDir = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "unlockablebundle");        
         AssetBundle unlockableBundle = AssetBundle.LoadFromFile(unlockableDir);
  
@@ -93,6 +108,19 @@ public class CoronaMod : BaseUnityPlugin
         punchingBagBuyConfirm = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBagBuyConfirm.asset");
         Unlockables.RegisterUnlockable(punchingBagUnlockable, StoreType.Decor, punchingBagBuyNode, punchingBagBuyConfirm, null, 75);
         LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(punchingBagPrefab);
+
+        //REGISTER GHOSTS
+        string crowDir = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "crowbundle");        
+        AssetBundle crowBundle = AssetBundle.LoadFromFile(crowDir);
+
+        MouthDogGhostPrefab = crowBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/ScarecrowHallucinations/MouthDogGhost.prefab");
+        ForestGiantGhostPrefab = crowBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/ScarecrowHallucinations/ForestGiantGhost.prefab");
+        RadMechGhostPrefab = crowBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/ScarecrowHallucinations/RadMechGhost.prefab");
+        MaskedPlayerEnemyGhostPrefab = crowBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/ScarecrowHallucinations/MaskedPlayerEnemyGhost.prefab");
+        LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(MouthDogGhostPrefab);
+        LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(ForestGiantGhostPrefab);
+        LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(RadMechGhostPrefab);
+        LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(MaskedPlayerEnemyGhostPrefab);
 
         harmony.PatchAll();
 

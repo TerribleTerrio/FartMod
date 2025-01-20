@@ -21,6 +21,33 @@ namespace CoronaMod.Patches
                 NetworkManager.Singleton.AddNetworkPrefab(CoronaMod.Instance.networkPrefab);
                 Debug.Log("Network prefab added to network manager!");
             }
+
+            [HarmonyPostfix]
+            [HarmonyPatch("ResetSavedGameValues")]
+            static void ResetScarecrowSaveFileParams(ref GameNetworkManager __instance)
+            {
+                if (!__instance.isHostingGame)
+                {
+                    return;
+                }
+                if (ES3.KeyExists(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveSlotSaveFileName))
+                {
+                    ES3.DeleteKey(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveSlotSaveFileName);
+                    Debug.Log($"[SCARECROW]: Reset times threatened in current save file! ({Scarecrow.currentSaveSlotSaveFileName})");
+                }
+            }
+
+            [HarmonyPostfix]
+            [HarmonyPatch("SaveGameValues")]
+            static void SaveScarecrowSaveFileParams(ref GameNetworkManager __instance)
+            {
+                if (!StartOfRound.Instance.inShipPhase || StartOfRound.Instance.isChallengeFile)
+                {
+                    return;
+                }
+                ES3.Save(Scarecrow.threatenedSaveFileKey, Scarecrow.timesThreatenedInSaveFile, Scarecrow.currentSaveSlotSaveFileName);
+                Debug.Log($"[SCARECROW]: Saved times threatened to current save file! ({Scarecrow.currentSaveSlotSaveFileName})");
+            }
         }
 
         [HarmonyPatch(typeof(StartOfRound))]
