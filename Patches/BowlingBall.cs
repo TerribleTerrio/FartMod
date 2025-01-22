@@ -14,9 +14,11 @@ public class BowlingBall : GrabbableObject
 
     public int fallDamage;
 
-    private bool collidedWhileFalling;
+    private List<Collider> CollidersHitByFallingBowlingBall = new List<Collider>();
 
-	public int shovelHitForce = 1;
+    private Vector3 dropPosition;
+
+	public int bowlingBallHitForce = 1;
 
 	public bool reelingUp;
 
@@ -24,9 +26,9 @@ public class BowlingBall : GrabbableObject
 
 	private Coroutine reelingUpCoroutine;
 
-	private RaycastHit[] objectsHitByShovel;
+	private RaycastHit[] objectsHitByBowlingBall;
 
-	private List<RaycastHit> objectsHitByShovelList = new List<RaycastHit>();
+	private List<RaycastHit> objectsHitByBowlingBallList = new List<RaycastHit>();
 
 	public AudioClip reelUp;
 
@@ -34,9 +36,9 @@ public class BowlingBall : GrabbableObject
 
 	public AudioClip[] hitSFX;
 
-	public AudioSource shovelAudio;
+	public AudioSource bowlingBallAudio;
 
-	private int shovelMask = 1084754248;
+	private int bowlingBallMask = 1084754248;
 
     [HideInInspector]
     public RuntimeAnimatorController playerDefaultAnimatorController;
@@ -63,88 +65,6 @@ public class BowlingBall : GrabbableObject
 
     private float currentAnimationTime;
 
-    private void CollideWhileFalling(Collider other)
-    {
-        if (!isHeld && !isHeldByEnemy && !hasHitGround && !collidedWhileFalling)
-        {
-            float fallHeight = startFallingPosition.y - transform.position.y;
-            if (fallHeight < damageHeight)
-            {
-                return;
-            }
-
-            //FOR PLAYERS
-            if (other.gameObject.layer == 3)
-            {
-                PlayerControllerB hitPlayer = other.gameObject.GetComponent<PlayerControllerB>();
-                if (hitPlayer != null)
-                {
-                    hitPlayer.DamagePlayer(fallDamage, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning);
-                    collidedWhileFalling = true;
-                    return;
-                }
-            }
-
-            //FOR ENEMIES
-            if (other.gameObject.layer == 19)
-            {
-                EnemyAICollisionDetect hitEnemy = other.gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
-                if (hitEnemy != null && hitEnemy.mainScript.IsOwner)
-                {
-                    hitEnemy.mainScript.HitEnemyOnLocalClient(fallDamage, transform.forward, playerHeldBy, playHitSFX: true);
-                    collidedWhileFalling = true;
-                    return;
-                }
-            }
-
-            //FOR ITEMS
-            if (other.gameObject.GetComponentInParent<Vase>() != null)
-            {
-                other.gameObject.GetComponentInParent<Vase>().ExplodeAndSync();
-                return;
-            }
-
-            if (other.gameObject.GetComponentInParent<ArtilleryShellItem>() != null)
-            {
-                other.gameObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
-                collidedWhileFalling = true;
-                return;
-            }
-
-            if (other.gameObject.GetComponentInParent<HydraulicStabilizer>() != null)
-            {
-                other.gameObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
-                collidedWhileFalling = true;
-            }
-
-            if (other.gameObject.GetComponentInParent<Toaster>() != null)
-            {
-                other.gameObject.GetComponentInParent<Toaster>().Eject();
-                other.gameObject.GetComponentInParent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-            }
-
-            //FOR HAZARDS
-            if (other.gameObject.GetComponentInParent<Landmine>() != null)
-            {
-                Landmine landmine = other.gameObject.GetComponentInParent<Landmine>();
-                landmine.SetOffMineAnimation();
-                landmine.sendingExplosionRPC = true;
-                landmine.ExplodeMineServerRpc();
-            }
-
-            if (other.gameObject.GetComponentInParent<Turret>() != null)
-            {
-                Turret turret = other.gameObject.GetComponentInParent<Turret>();
-                if (turret.turretMode == TurretMode.Berserk || turret.turretMode == TurretMode.Firing)
-                {
-                    return;
-                }
-                turret.SwitchTurretMode(3);
-                turret.EnterBerserkModeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
-            }
-        }
-    }
-
     public override void Update()
     {
         base.Update();
@@ -167,7 +87,6 @@ public class BowlingBall : GrabbableObject
         previousPlayerHeldBy = playerHeldBy;
         SetAnimator(setOverride: true);
         playerHeldBy.playerBodyAnimator.Play("HoldBowlingBall");
-        playerHeldBy.playerBodyAnimator.SetTrigger("GrabBowlingBall");
     }
 
 	public override void DiscardItem()
@@ -179,7 +98,100 @@ public class BowlingBall : GrabbableObject
 		base.DiscardItem();
         previousPlayerHeldBy.activatingItem = false;
         SetAnimator(setOverride: false);
+        dropPosition = base.transform.position;
+        CollidersHitByFallingBowlingBall.Clear();
+        StartCoroutine(DropBowlingBall());
 	}
+
+    private IEnumerator DropBowlingBall()
+    {
+        while (!isHeld && !isHeldByEnemy && !hasHitGround)
+        {
+            yield return null;
+            RaycastHit[] results = Physics.SphereCastAll(base.transform.position, 0.1f, Vector3.down, 0.1f);
+            for (int i = 0; i < results.Count(); i++)
+            {
+                if (CollidersHitByFallingBowlingBall.Contains(results[i].collider))
+                {
+                    continue;
+                }
+                else
+                {
+                    CollideWhileFalling(results[i].collider);
+                }
+            }
+        }
+    }
+
+    private void CollideWhileFalling(Collider other)
+    {
+        if (CollidersHitByFallingBowlingBall.Contains(other))
+        {
+            return;
+        }
+        else
+        {
+            CollidersHitByFallingBowlingBall.Add(other);
+        }
+        float fallHeight = Vector3.Distance(dropPosition, base.transform.position);
+        if (fallHeight < damageHeight)
+        {
+            return;
+        }
+
+        //FOR PLAYERS
+        if (other.gameObject.layer == 3)
+        {
+            if (other.gameObject.TryGetComponent<IHittable>(out var hittable))
+            {
+                hittable.Hit(bowlingBallHitForce * 2, Vector3.down * 3f, previousPlayerHeldBy, playHitSFX: true, 1);
+                return;
+            }
+        }
+
+        //FOR ENEMIES
+        if (other.gameObject.layer == 19)
+        {
+            EnemyAICollisionDetect hitEnemy = other.gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
+            if (hitEnemy != null && hitEnemy.mainScript.IsOwner)
+            {
+                hitEnemy.mainScript.HitEnemyOnLocalClient(bowlingBallHitForce, transform.forward, playerHeldBy, playHitSFX: true);
+            }
+        }
+
+        //FOR ITEMS
+        if (other.gameObject.layer == 6)
+        {
+            other.gameObject.GetComponent<Vase>()?.ExplodeAndSync();
+            other.gameObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
+            other.gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
+            other.gameObject.GetComponent<Toaster>()?.EjectAndSync();
+        }
+
+        //FOR HAZARDS
+        if (other.gameObject.GetComponentInParent<Landmine>() != null)
+        {
+            Landmine landmine = other.gameObject.GetComponentInParent<Landmine>();
+            landmine.SetOffMineAnimation();
+            landmine.sendingExplosionRPC = true;
+            landmine.ExplodeMineServerRpc();
+        }
+
+        if (other.gameObject.GetComponentInParent<Turret>() != null)
+        {
+            Turret turret = other.gameObject.GetComponentInParent<Turret>();
+            if (!(turret.turretMode == TurretMode.Berserk || turret.turretMode == TurretMode.Firing))
+            {
+                turret.SwitchTurretMode(3);
+                turret.EnterBerserkModeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            }
+        }
+    }
+
+    public override void OnHitGround()
+    {
+        base.OnHitGround();
+    }
 
 	public override void ItemActivate(bool used, bool buttonDown = true)
 	{
@@ -196,24 +208,24 @@ public class BowlingBall : GrabbableObject
 			{
 				StopCoroutine(reelingUpCoroutine);
 			}
-			reelingUpCoroutine = StartCoroutine(ReelUpShovel());
+			reelingUpCoroutine = StartCoroutine(ReelUpBowlingBall());
 		}
 	}
 
-	private IEnumerator ReelUpShovel()
+	private IEnumerator ReelUpBowlingBall()
 	{
 		playerHeldBy.activatingItem = true;
 		playerHeldBy.playerBodyAnimator.ResetTrigger("BowlingBallHit");
 		playerHeldBy.playerBodyAnimator.SetBool("BowlingBallReelingUp", value: true);
-		shovelAudio.PlayOneShot(reelUp);
+		bowlingBallAudio.PlayOneShot(reelUp);
 		ReelUpSFXServerRpc();
-		yield return new WaitForSeconds(0.85f);
+        yield return new WaitForSeconds(0.93f);
 		yield return new WaitUntil(() => !isHoldingButton || !isHeld);
-		SwingShovel(!isHeld);
+		SwingBowlingBall(!isHeld);
 		yield return new WaitForSeconds(0.13f);
 		yield return new WaitForEndOfFrame();
-		HitShovel(!isHeld);
-		yield return new WaitForSeconds(0.7f);
+		HitBowlingBall(!isHeld);
+		yield return new WaitForSeconds(0.5f);
 		reelingUp = false;
 		reelingUpCoroutine = null;
 	}
@@ -229,25 +241,41 @@ public class BowlingBall : GrabbableObject
     {   
         if (!base.IsOwner)
         {
-            shovelAudio.PlayOneShot(reelUp);
+            bowlingBallAudio.PlayOneShot(reelUp);
         }
     }
 
-    public void SwingShovel(bool cancel = false)
+    public void SwingBowlingBall(bool cancel = false)
 	{
 		previousPlayerHeldBy.playerBodyAnimator.SetBool("BowlingBallReelingUp", value: false);
 		if (!cancel)
 		{
-			shovelAudio.PlayOneShot(swing);
+			bowlingBallAudio.PlayOneShot(swing);
+            SwingBowlingBallSFXServerRpc();
 			previousPlayerHeldBy.UpdateSpecialAnimationValue(specialAnimation: true, (short)previousPlayerHeldBy.transform.localEulerAngles.y, 0.4f);
 		}
 	}
 
-	public void HitShovel(bool cancel = false)
+	[ServerRpc]
+	public void SwingBowlingBallSFXServerRpc()
+    {
+        SwingBowlingBallSFXClientRpc();
+    }
+
+	[ClientRpc]
+	public void SwingBowlingBallSFXClientRpc()
+    {   
+        if (!base.IsOwner)
+        {
+            bowlingBallAudio.PlayOneShot(swing);
+        }
+    }
+
+	public void HitBowlingBall(bool cancel = false)
 	{
 		if (previousPlayerHeldBy == null)
 		{
-			Debug.LogError("Previousplayerheldby is null on this client when HitShovel is called.");
+			Debug.LogError("Previousplayerheldby is null on this client when HitBowlingBall is called.");
 			return;
 		}
 		previousPlayerHeldBy.activatingItem = false;
@@ -257,19 +285,19 @@ public class BowlingBall : GrabbableObject
 		int num = -1;
 		if (!cancel)
 		{
-			objectsHitByShovel = Physics.SphereCastAll(previousPlayerHeldBy.gameplayCamera.transform.position + previousPlayerHeldBy.gameplayCamera.transform.right * -0.35f, 0.8f, previousPlayerHeldBy.gameplayCamera.transform.forward, 1.5f, shovelMask, QueryTriggerInteraction.Collide);
-			objectsHitByShovelList = objectsHitByShovel.OrderBy((RaycastHit x) => x.distance).ToList();
+			objectsHitByBowlingBall = Physics.SphereCastAll(previousPlayerHeldBy.gameplayCamera.transform.position + previousPlayerHeldBy.gameplayCamera.transform.right * -0.35f, 0.8f, previousPlayerHeldBy.gameplayCamera.transform.forward, 1.5f, bowlingBallMask, QueryTriggerInteraction.Collide);
+			objectsHitByBowlingBallList = objectsHitByBowlingBall.OrderBy((RaycastHit x) => x.distance).ToList();
 			List<EnemyAI> list = new List<EnemyAI>();
-			for (int i = 0; i < objectsHitByShovelList.Count; i++)
+			for (int i = 0; i < objectsHitByBowlingBallList.Count; i++)
 			{
-				if (objectsHitByShovelList[i].transform.gameObject.layer == 8 || objectsHitByShovelList[i].transform.gameObject.layer == 11)
+				if (objectsHitByBowlingBallList[i].transform.gameObject.layer == 8 || objectsHitByBowlingBallList[i].transform.gameObject.layer == 11)
 				{
-					if (objectsHitByShovelList[i].collider.isTrigger)
+					if (objectsHitByBowlingBallList[i].collider.isTrigger)
 					{
 						continue;
 					}
 					flag = true;
-					string text = objectsHitByShovelList[i].collider.gameObject.tag;
+					string text = objectsHitByBowlingBallList[i].collider.gameObject.tag;
 					for (int j = 0; j < StartOfRound.Instance.footstepSurfaces.Length; j++)
 					{
 						if (StartOfRound.Instance.footstepSurfaces[j].surfaceTag == text)
@@ -281,35 +309,37 @@ public class BowlingBall : GrabbableObject
 				}
 				else
 				{
-					if (!objectsHitByShovelList[i].transform.TryGetComponent<IHittable>(out var component) || objectsHitByShovelList[i].transform == previousPlayerHeldBy.transform || (!(objectsHitByShovelList[i].point == Vector3.zero) && Physics.Linecast(previousPlayerHeldBy.gameplayCamera.transform.position, objectsHitByShovelList[i].point, out var _, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore)))
+					if (!objectsHitByBowlingBallList[i].transform.TryGetComponent<IHittable>(out var component) || objectsHitByBowlingBallList[i].transform == previousPlayerHeldBy.transform || (!(objectsHitByBowlingBallList[i].point == Vector3.zero) && Physics.Linecast(previousPlayerHeldBy.gameplayCamera.transform.position, objectsHitByBowlingBallList[i].point, out var _, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore)))
 					{
 						continue;
 					}
 					flag = true;
+                    int finalDmg = bowlingBallHitForce;
 					Vector3 forward = previousPlayerHeldBy.gameplayCamera.transform.forward;
 					try
 					{
-						EnemyAICollisionDetect component2 = objectsHitByShovelList[i].transform.GetComponent<EnemyAICollisionDetect>();
+						EnemyAICollisionDetect component2 = objectsHitByBowlingBallList[i].transform.GetComponent<EnemyAICollisionDetect>();
 						if (component2 != null)
 						{
-							if (!(component2.mainScript == null) && !list.Contains(component2.mainScript))
+							if (component2.mainScript != null && !list.Contains(component2.mainScript))
 							{
-								goto IL_02ff;
+								goto HIT;
 							}
 							continue;
 						}
-						if (!(objectsHitByShovelList[i].transform.GetComponent<PlayerControllerB>() != null))
+						if (objectsHitByBowlingBallList[i].transform.GetComponent<PlayerControllerB>() != null)
 						{
-							goto IL_02ff;
+                            finalDmg *= 2;
+							goto HIT;
 						}
 						if (!flag3)
 						{
 							flag3 = true;
-							goto IL_02ff;
+							goto HIT;
 						}
-						goto end_IL_0288;
-						IL_02ff:
-						bool flag4 = component.Hit(shovelHitForce, forward, previousPlayerHeldBy, playHitSFX: true, 1);
+						goto QUIT;
+						HIT:
+						bool flag4 = component.Hit(finalDmg, forward * 2, previousPlayerHeldBy, playHitSFX: true, 1);
 						if (flag4 && component2 != null)
 						{
 							list.Add(component2.mainScript);
@@ -318,51 +348,51 @@ public class BowlingBall : GrabbableObject
 						{
 							flag2 = flag4;
 						}
-						end_IL_0288:;
+						QUIT:;
 					}
 					catch (Exception arg)
 					{
-						Debug.Log($"Exception caught when hitting object with shovel from player #{previousPlayerHeldBy.playerClientId}: {arg}");
+						Debug.Log($"Exception caught when hitting object with bowling ball from player #{previousPlayerHeldBy.playerClientId}: {arg}");
 					}
 				}
 			}
 		}
 		if (flag)
 		{
-			RoundManager.PlayRandomClip(shovelAudio, hitSFX);
+			RoundManager.PlayRandomClip(bowlingBallAudio, hitSFX);
 			UnityEngine.Object.FindObjectOfType<RoundManager>().PlayAudibleNoise(base.transform.position, 17f, 0.8f);
 			if (!flag2 && num != -1)
 			{
-				shovelAudio.PlayOneShot(StartOfRound.Instance.footstepSurfaces[num].hitSurfaceSFX);
-				WalkieTalkie.TransmitOneShotAudio(shovelAudio, StartOfRound.Instance.footstepSurfaces[num].hitSurfaceSFX);
+				bowlingBallAudio.PlayOneShot(StartOfRound.Instance.footstepSurfaces[num].hitSurfaceSFX);
+				WalkieTalkie.TransmitOneShotAudio(bowlingBallAudio, StartOfRound.Instance.footstepSurfaces[num].hitSurfaceSFX);
 			}
 			playerHeldBy.playerBodyAnimator.SetTrigger("BowlingBallHit");
-			HitShovelServerRpc(num);
+			HitBowlingBallServerRpc(num);
 		}
 	}
 
 	[ServerRpc]
-	public void HitShovelServerRpc(int hitSurfaceID)
+	public void HitBowlingBallServerRpc(int hitSurfaceID)
     {
-        HitShovelClientRpc(hitSurfaceID);
+        HitBowlingBallClientRpc(hitSurfaceID);
     }
 	[ClientRpc]
-	public void HitShovelClientRpc(int hitSurfaceID)
+	public void HitBowlingBallClientRpc(int hitSurfaceID)
     {
         if (!base.IsOwner)
         {
-			RoundManager.PlayRandomClip(shovelAudio, hitSFX);
+			RoundManager.PlayRandomClip(bowlingBallAudio, hitSFX);
 			if (hitSurfaceID != -1)
 			{
-				HitSurfaceWithShovel(hitSurfaceID);
+				HitSurfaceWithBowlingBall(hitSurfaceID);
 			}
 		}
     }
 
-	private void HitSurfaceWithShovel(int hitSurfaceID)
+	private void HitSurfaceWithBowlingBall(int hitSurfaceID)
 	{
-		shovelAudio.PlayOneShot(StartOfRound.Instance.footstepSurfaces[hitSurfaceID].hitSurfaceSFX);
-		WalkieTalkie.TransmitOneShotAudio(shovelAudio, StartOfRound.Instance.footstepSurfaces[hitSurfaceID].hitSurfaceSFX);
+		bowlingBallAudio.PlayOneShot(StartOfRound.Instance.footstepSurfaces[hitSurfaceID].hitSurfaceSFX);
+		WalkieTalkie.TransmitOneShotAudio(bowlingBallAudio, StartOfRound.Instance.footstepSurfaces[hitSurfaceID].hitSurfaceSFX);
 	}
 
     // --- CHANGE ANIMATOR - RIPPED FROM HAND MIRROR! ---

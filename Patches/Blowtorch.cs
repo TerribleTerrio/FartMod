@@ -429,7 +429,7 @@ public class Blowtorch : AnimatedItem
             {
                 Debug.Log($"Blowtorch detected Hydraulic.");
                 Spark();
-                colliders[i].gameObject.GetComponentInParent<HydraulicStabilizer>().GoPsycho();
+                colliders[i].gameObject.GetComponentInParent<HydraulicStabilizer>().GoPsychoAndSync();
             }
 
             else if (colliders[i].gameObject.GetComponentInParent<Vase>() != null)
@@ -443,8 +443,7 @@ public class Blowtorch : AnimatedItem
             {
                 Debug.Log($"Blowtorch detected Toaster.");
                 Spark();
-                colliders[i].gameObject.GetComponentInParent<Toaster>().Eject();
-                colliders[i].gameObject.GetComponentInParent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                colliders[i].gameObject.GetComponentInParent<Toaster>().EjectAndSync();
             }
 
             //FOR HAZARDS

@@ -190,8 +190,7 @@ namespace CoronaMod.Patches
 
                 if (otherObject.GetComponent<Toaster>() != null)
                 {
-                    otherObject.GetComponent<Toaster>().Eject();
-                    otherObject.GetComponent<Toaster>().EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+                    otherObject.GetComponent<Toaster>().EjectAndSync();
                 }
 
                 if (otherObject.GetComponent<ArtilleryShellItem>() != null)
@@ -206,7 +205,7 @@ namespace CoronaMod.Patches
                 
                 if (otherObject.GetComponent<HydraulicStabilizer>() != null)
                 {
-                    otherObject.GetComponent<HydraulicStabilizer>().GoPsycho();
+                    otherObject.GetComponent<HydraulicStabilizer>().GoPsychoAndSync();
                 }
 
                 if (otherObject.GetComponent<PlayerControllerB>() != null)

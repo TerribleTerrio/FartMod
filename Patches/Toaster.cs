@@ -77,12 +77,17 @@ public class Toaster : AnimatedItem, IHittable
 
         if (inserted)
         {
-            Eject();
-            EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            EjectAndSync();
         }
     }
 
-    [ServerRpc]
+    public void EjectAndSync()
+    {
+        Eject();
+        EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
     public void EjectServerRpc(int clientWhoSentRpc)
     {
         EjectClientRpc(clientWhoSentRpc);
@@ -108,7 +113,7 @@ public class Toaster : AnimatedItem, IHittable
 
         if (base.playerHeldBy != null)
         {
-            base.playerHeldBy.DamagePlayer(playerDamage);
+            base.playerHeldBy.DamagePlayer(playerDamage, callRPC: true, force: Vector3.up * 3f);
         }
 
         playersInPopRange.Clear();
@@ -169,7 +174,7 @@ public class Toaster : AnimatedItem, IHittable
 
             if (damagePlayersOnPop && Vector3.Distance(player.transform.position, base.transform.position) <= damageRange && base.playerHeldBy != player)
             {
-                player.DamagePlayer(playerDamage);
+                player.DamagePlayer(playerDamage, callRPC: true, force: Vector3.up * 3f);
             }
         }
     }

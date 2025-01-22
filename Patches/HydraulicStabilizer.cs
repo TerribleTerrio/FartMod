@@ -135,24 +135,24 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
         return false;
     }
 
-    public void GoPsychoAndSync()
+    public void GoPsychoAndSync(bool zap = false)
     {
-        GoPsycho();
-        GoPsychoServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+        GoPsycho(zap);
+        GoPsychoServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, zap);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void GoPsychoServerRpc(int clientWhoSentRpc)
+    public void GoPsychoServerRpc(int clientWhoSentRpc, bool zap = false)
     {
-        GoPsychoClientRpc(clientWhoSentRpc);
+        GoPsychoClientRpc(clientWhoSentRpc, zap);
     }
 
     [ClientRpc]
-    public void GoPsychoClientRpc(int clientWhoSentRpc)
+    public void GoPsychoClientRpc(int clientWhoSentRpc, bool zap = false)
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            GoPsycho();
+            GoPsycho(zap);
         }
     }
 
@@ -211,9 +211,9 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
 	}
 
-	public void ShockWithGun(PlayerControllerB playerControllerB)
+	public void ShockWithGun(PlayerControllerB shockingPlayer)
 	{
-		GoPsycho(zap: true);
+		GoPsychoAndSync(zap: true);
 	}
 
 	public void OnAnimationEvent()

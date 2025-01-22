@@ -112,7 +112,7 @@ public class Thesaurus : AnimatedItem
             currentPageIndex = 2 * Mathf.RoundToInt(randomstart / 2);
         }
         ChangePages(currentPageIndex);
-        ChangeSize(true);
+        ChangeSizeAndSync(true);
     }
 
     public void ChangeSizeAndSync(bool grow = false)
@@ -216,7 +216,7 @@ public class Thesaurus : AnimatedItem
         inFlipPageAnimation = false;
         CancelLookCloser();
         SetAnimator(setOverride: false);
-        ChangeSize(true);
+        ChangeSizeAndSync(true);
         lineOfSightBlocker.GetComponent<Collider>().enabled = false;
 	}
 
