@@ -111,7 +111,7 @@ public class Thesaurus : AnimatedItem
         {
             currentPageIndex = 2 * Mathf.RoundToInt(randomstart / 2);
         }
-        ChangePages(currentPageIndex);
+        ChangePages(currentPageIndex, sync: true);
         ChangeSizeAndSync(true);
     }
 
@@ -318,28 +318,28 @@ public class Thesaurus : AnimatedItem
         ChangePages(currentPageIndex);
     }
 
-    public void ChangePagesAndSync()
+    public void ChangePagesAndSync(bool sync = false)
     {
-        ChangePages(currentPageIndex);
-        ChangePagesServerRpc(currentPageIndex);
+        ChangePages(currentPageIndex, sync);
+        ChangePagesServerRpc(currentPageIndex, sync);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void ChangePagesServerRpc(int serverindex = 0)
+    public void ChangePagesServerRpc(int serverindex = 0, bool sync = false)
     {
-        ChangePagesClientRpc(serverindex);
+        ChangePagesClientRpc(serverindex, sync);
     }
 
      [ClientRpc]
-    public void ChangePagesClientRpc(int serverindex = 0)
+    public void ChangePagesClientRpc(int serverindex = 0, bool sync = false)
     {
         if (!base.IsOwner)
         {
-            ChangePages(serverindex);
+            ChangePages(serverindex, sync);
         }
     }
 
-    public void ChangePages(int index = 0)
+    public void ChangePages(int index = 0, bool sync = false)
     {
         for (int i = 0; i < displayPages.Length; i++)
         {
@@ -351,7 +351,10 @@ public class Thesaurus : AnimatedItem
             fakeNumber += 255;
             displayPagination[i].text = fakeNumber.ToString();
         }
-        RenderPages();
+        if (base.IsOwner || sync)
+        {
+            RenderPages();
+        }
     }
 
     public void RenderPages()
