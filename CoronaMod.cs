@@ -1,13 +1,33 @@
 using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
-namespace CoronaMod;
 using System.IO;
 using System.Reflection;
-using Unity.Netcode;
 using UnityEngine;
 using LethalLib.Modules;
 using LethalLib.Extras;
+namespace CoronaMod;
+
+public static class Masks
+{
+    public const int DefaultRoomCollidersRailingVehicle = 1342179585;
+
+    public const int PropsRoomInteractableObjectVehicle = 1073742656;
+
+    public const int PropsRoomVehicle = 1073742144;
+
+    public const int PlayerPropsEnemiesMapHazards = 2621512;
+
+    public const int PlayerPropsEnemiesMapHazardsVehicle = 1076363336;
+
+    public const int PlayerEnemies = 524296;
+
+    public const int PlayerEnemiesMapHazards = 2621448;
+
+    public const int RoomVehicle = 1073742080;
+
+    public const int WeaponMask = 1084754248; //Same as shovel: Player, Props, Room, Colliders, Enemies, MapHazards, EnemiesNotRendered, Vehicle
+}
 
 [BepInPlugin(modGUID, modName, modVersion)]
 [BepInDependency(LethalLib.Plugin.ModGUID, BepInDependency.DependencyFlags.HardDependency)] 

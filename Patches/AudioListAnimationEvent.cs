@@ -1,8 +1,5 @@
 using UnityEngine;
 using UnityEngine.Events;
-using System;
-using System.Collections;
-using System.Linq;
 
 public class AudioListAnimationEvent : MonoBehaviour
 {

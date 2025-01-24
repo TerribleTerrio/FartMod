@@ -1,8 +1,6 @@
 using GameNetcodeStuff;
-using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
@@ -486,7 +484,7 @@ public class Blowtorch : AnimatedItem
 
     private Collider[] checkColliders()
     {
-        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.3f, 1076363336, QueryTriggerInteraction.Collide);
+        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.3f, CoronaMod.Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Collide);
         return colliders;
     }
 

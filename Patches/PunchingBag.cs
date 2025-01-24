@@ -1,6 +1,4 @@
 using GameNetcodeStuff;
-using System.Collections;
-using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -147,7 +145,7 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
         }
 
         RaycastHit hitInfo;
-        if (Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+        if (Physics.Linecast(transform.position, other.transform.position, out hitInfo, CoronaMod.Masks.RoomVehicle, QueryTriggerInteraction.Ignore))
         {
             return;
         }
@@ -169,7 +167,7 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
             
             if (!isBroken)
             {
-                if (!Physics.Linecast(base.transform.position, player.transform.position, 256, QueryTriggerInteraction.Ignore))
+                if (!Physics.Linecast(base.transform.position, player.transform.position, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                 {
                     float dist = Vector3.Distance(player.transform.position, base.transform.position);
                     Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;

@@ -2,7 +2,6 @@ using GameNetcodeStuff;
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.ProBuilder.MeshOperations;
 
 public class Basket : AnimatedItem
 {
@@ -265,7 +264,7 @@ public class Basket : AnimatedItem
                 return;
             }
 
-            if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
+            if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, CoronaMod.Masks.PropsRoomVehicle, QueryTriggerInteraction.Collide))
             {
                 GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
                 if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)

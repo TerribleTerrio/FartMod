@@ -68,8 +68,6 @@ public class Rake : GrabbableObject, ITouchable
 
     private PlayerControllerB previousPlayerHeldBy;
 
-    private int rakeMask = 1084754248;
-
     private bool dropAnimationComplete;
 
     public override void Start()
@@ -495,7 +493,7 @@ public class Rake : GrabbableObject, ITouchable
         if (!cancel)
         {
             previousPlayerHeldBy.twoHanded = false;
-            objectsHitByRake = Physics.SphereCastAll(previousPlayerHeldBy.gameplayCamera.transform.position + previousPlayerHeldBy.gameplayCamera.transform.right * -0.35f, 0.8f, previousPlayerHeldBy.gameplayCamera.transform.forward, 1.5f, rakeMask, QueryTriggerInteraction.Collide);
+            objectsHitByRake = Physics.SphereCastAll(previousPlayerHeldBy.gameplayCamera.transform.position + previousPlayerHeldBy.gameplayCamera.transform.right * -0.35f, 0.8f, previousPlayerHeldBy.gameplayCamera.transform.forward, 1.5f, CoronaMod.Masks.WeaponMask, QueryTriggerInteraction.Collide);
             objectsHitByRakeList = objectsHitByRake.OrderBy((RaycastHit x) => x.distance).ToList();
             List<EnemyAI> list = new List<EnemyAI>();
 
@@ -533,21 +531,21 @@ public class Rake : GrabbableObject, ITouchable
                         {
                             if (!(component2.mainScript == null) && !list.Contains(component2.mainScript))
                             {
-                                goto IL_02ff;
+                                goto HIT;
                             }
                             continue;
                         }
                         if (!(objectsHitByRakeList[i].transform.GetComponent<PlayerControllerB>() != null))
                         {
-                            goto IL_02ff;
+                            goto HIT;
                         }
                         if (!flag3)
                         {
                             flag3 = true;
-                            goto IL_02ff;
+                            goto HIT;
                         }
-                        goto end_IL_0288;
-                        IL_02ff:
+                        goto QUIT;
+                        HIT:
                         bool flag4 = component.Hit(rakeHitForce, forward, previousPlayerHeldBy, playHitSFX: true, 1);
                         if (flag4 && component2 != null)
                         {
@@ -557,7 +555,7 @@ public class Rake : GrabbableObject, ITouchable
                         {
                             flag2 = flag4;
                         }
-                        end_IL_0288:;
+                        QUIT:;
                     }
                     catch (Exception arg)
                     {

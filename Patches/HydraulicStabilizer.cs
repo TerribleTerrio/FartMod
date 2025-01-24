@@ -3,7 +3,6 @@ using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.UIElements.UIR;
 
 public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, ZappableObject
 {
@@ -82,7 +81,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
     public void PushNearbyPlayers()
     {
-        Collider[] colliders = Physics.OverlapSphere(transform.position, physicsForceRange, 1076363336, QueryTriggerInteraction.Collide);
+        Collider[] colliders = Physics.OverlapSphere(transform.position, physicsForceRange, CoronaMod.Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Collide);
         RaycastHit hitInfo;
 
         for (int i = 0; i < colliders.Length; i++)

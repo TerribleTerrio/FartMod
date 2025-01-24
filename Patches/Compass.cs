@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using GameNetcodeStuff;
 using Unity.Netcode;
@@ -71,7 +70,7 @@ public class Compass : AnimatedItem, IHittable
     public void LoadDetectedItemsServerRpc()
     {
         detectedItems.Clear();
-        Collider[] colliders = Physics.OverlapSphere(transform.position, detectRange, 1073742656, QueryTriggerInteraction.Collide);
+        Collider[] colliders = Physics.OverlapSphere(transform.position, detectRange, CoronaMod.Masks.PropsRoomInteractableObjectVehicle, QueryTriggerInteraction.Collide);
 
         for (int i = 0; i < colliders.Length; i++)
         {

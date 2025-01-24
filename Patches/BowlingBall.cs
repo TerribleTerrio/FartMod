@@ -38,8 +38,6 @@ public class BowlingBall : GrabbableObject
 
 	public AudioSource bowlingBallAudio;
 
-	private int bowlingBallMask = 1084754248;
-
     [HideInInspector]
     public RuntimeAnimatorController playerDefaultAnimatorController;
 
@@ -108,7 +106,7 @@ public class BowlingBall : GrabbableObject
         while (!isHeld && !isHeldByEnemy && !hasHitGround)
         {
             yield return null;
-            RaycastHit[] results = Physics.SphereCastAll(base.transform.position, 0.1f, Vector3.down, 0.1f);
+            RaycastHit[] results = Physics.SphereCastAll(base.transform.position, 0.1f, Vector3.down, 0.1f, CoronaMod.Masks.PlayerPropsEnemiesMapHazards);
             for (int i = 0; i < results.Count(); i++)
             {
                 if (CollidersHitByFallingBowlingBall.Contains(results[i].collider))
@@ -285,7 +283,7 @@ public class BowlingBall : GrabbableObject
 		int num = -1;
 		if (!cancel)
 		{
-			objectsHitByBowlingBall = Physics.SphereCastAll(previousPlayerHeldBy.gameplayCamera.transform.position + previousPlayerHeldBy.gameplayCamera.transform.right * -0.35f, 0.8f, previousPlayerHeldBy.gameplayCamera.transform.forward, 1.5f, bowlingBallMask, QueryTriggerInteraction.Collide);
+			objectsHitByBowlingBall = Physics.SphereCastAll(previousPlayerHeldBy.gameplayCamera.transform.position + previousPlayerHeldBy.gameplayCamera.transform.right * -0.35f, 0.8f, previousPlayerHeldBy.gameplayCamera.transform.forward, 1.5f, CoronaMod.Masks.WeaponMask, QueryTriggerInteraction.Collide);
 			objectsHitByBowlingBallList = objectsHitByBowlingBall.OrderBy((RaycastHit x) => x.distance).ToList();
 			List<EnemyAI> list = new List<EnemyAI>();
 			for (int i = 0; i < objectsHitByBowlingBallList.Count; i++)

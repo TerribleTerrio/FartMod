@@ -2,7 +2,6 @@ using System.Collections;
 using GameNetcodeStuff;
 using UnityEngine;
 using Unity.Netcode;
-using UnityEngine.ProBuilder.MeshOperations;
 
 public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableObject
 {
@@ -244,41 +243,44 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	{
 		yield return new WaitForSeconds(delay);
 		ExplodeAndSync();
-		// base.gameObject.GetComponent<NetworkObject>().Despawn();
 	}
 
 	public void ExplodeAndSync()
 	{
-		if (!explodeInOrbit)
-		{
-			if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
-			{
-				return;
-			}
-		}
-		if (!hasBeenSeen)
-		{
-			return;
-		}
-		ExplodeServerRpc();
+		Explode();
+		ExplodeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
 	}
 
 	[ServerRpc(RequireOwnership = false)]
-	public void ExplodeServerRpc()
+	public void ExplodeServerRpc(int clientWhoSentRpc)
 	{
-		ExplodeClientRpc();
+		ExplodeClientRpc(clientWhoSentRpc);
+		StartCoroutine(DespawnAfterFrame());
+	}
+
+	public IEnumerator DespawnAfterFrame()
+	{
+		yield return new WaitForEndOfFrame();
+        if (base.gameObject.GetComponent<NetworkObject>().IsSpawned)
+        {
+			Debug.Log("[ARTILLERY SHELL]: Despawning!");
+            base.gameObject.GetComponent<NetworkObject>().Despawn();
+        }
 	}
 
 	[ClientRpc]
-	public void ExplodeClientRpc()
+	public void ExplodeClientRpc(int clientWhoSentRpc)
 	{
-		Explode();
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            Explode();
+        }
 	}
 
 	public void Explode()
 	{
 		//CHECK IF SHELL CAN EXPLODE
-		if (exploded)
+		if (exploded || !hasBeenSeen)
 		{
 			return;
 		}
@@ -289,42 +291,57 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 				return;
 			}
 		}
+        if (heldByPlayerOnServer)
+        {
+			Debug.Log("[ARTILLERY SHELL]: Discarding held object from player!");
+            playerHeldBy.DiscardHeldObject();
+        }
+        else if (isHeldByEnemy)
+        {
+			Debug.Log("[ARTILLERY SHELL]: Discarding held object from enemy!");
+            base.DiscardItemFromEnemy();
+        }
 
 		//SET FLAGS
 		exploded = true;
 
+		//SPAWN EXPLOSION EFFECT (DETECTS OBJECTS EFFECTED BY EXPLOSIONS)
+		Landmine.SpawnExplosion(this.gameObject.transform.position + Vector3.up, true, killRange, damageRange, nonLethalDamage, physicsForce, explosionPrefab, true);
+
 		//CHECK FOR COLLIDERS IN RANGE
-		Collider[] colliders = Physics.OverlapSphere(this.gameObject.transform.position, pushRange, 3, QueryTriggerInteraction.Collide);
+		Collider[] colliders = Physics.OverlapSphere(this.gameObject.transform.position, pushRange, CoronaMod.Masks.PlayerEnemies, QueryTriggerInteraction.Collide);
 		for (int i = 0; i < colliders.Length; i++)
 		{
 			//CHECK THAT COLLIDERS ARE NOT BEHIND WALLS
-			RaycastHit hitInfo;
-			if (physicsForce > 0f && !Physics.Linecast(base.transform.position, colliders[i].transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
+			if (!Physics.Linecast(base.transform.position, colliders[i].transform.position, out var _, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
 			{
 				GameObject otherObject = colliders[i].gameObject;
+				float dist = Vector3.Distance(otherObject.transform.position, base.transform.position);
 
 				//FOR PLAYERS
 				if (otherObject.GetComponent<PlayerControllerB>() != null)
 				{
-					PlayerControllerB playerControllerB = otherObject.GetComponent<PlayerControllerB>();
+					PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
 
 					//APPLY PHYSICS FORCE BASED ON DISTANCE OF PLAYER FROM EXPLOSION
-					float dist = Vector3.Distance(playerControllerB.transform.position, base.transform.position);
-					Vector3 vector = Vector3.Normalize(playerControllerB.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
-					if (vector.magnitude > 2f)
+					if (physicsForce > 0f && dist > killRange && dist < pushRange)
 					{
-						if (vector.magnitude > 10f)
+						Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+						if (vector.magnitude > 2f)
 						{
-							playerControllerB.CancelSpecialTriggerAnimations();
-						}
-						if (!playerControllerB.inVehicleAnimation || (playerControllerB.externalForceAutoFade + vector).magnitude > 50f)
-						{
-								playerControllerB.externalForceAutoFade += vector;
+							if (vector.magnitude > 10f)
+							{
+								player.CancelSpecialTriggerAnimations();
+							}
+							if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
+							{
+									player.externalForceAutoFade += vector;
+							}
 						}
 					}
 
 					//CAMERA SHAKE
-					if ((int)playerControllerB.playerClientId == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+					if ((int)player.playerClientId == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
 					{
 						if (dist < pushRange/4)
 						{
@@ -340,24 +357,17 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 						}
 					}
 				}
-			}
-		}
 
-		//SPAWN EXPLOSION EFFECT (DETECTS OBJECTS EFFECTED BY EXPLOSIONS)
-		Landmine.SpawnExplosion(this.gameObject.transform.position + Vector3.up, true, killRange, damageRange, nonLethalDamage, physicsForce, explosionPrefab, true);
-		
-		// DROP THE SHELL
-		if (heldByPlayerOnServer)
-		{
-			playerHeldBy.DiscardHeldObject();
-		}
-        else if (isHeldByEnemy)
-        {
-            DiscardItemFromEnemy();
-        }
-		if (IsServer)
-		{
-			gameObject.GetComponent<NetworkObject>().Despawn();
+				//FOR ENEMIES
+				if (otherObject.TryGetComponent<EnemyAICollisionDetect>(out var enemy) && enemy.TryGetComponent<IHittable>(out var hittable))
+				{
+					if (enemy.mainScript != null && enemy.mainScript.IsOwner)
+					{
+						hittable.Hit(6, Vector3.Normalize(base.transform.position - enemy.transform.position));
+						enemy.mainScript.HitFromExplosion(dist);
+					}
+				}
+			}
 		}
 	}
 

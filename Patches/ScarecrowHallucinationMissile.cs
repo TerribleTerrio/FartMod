@@ -1,5 +1,3 @@
-using System;
-using GameNetcodeStuff;
 using UnityEngine;
 
 public class ScarecrowHallucinationMissile : MonoBehaviour

@@ -17,6 +17,8 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     private bool hasBeenSeen;
 
+    private bool shattered;
+
     [Space(10f)]
     [Header("Break When...")]
     public bool breakOnHit = true;
@@ -210,8 +212,18 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     public void ShatterServerRpc(int clientWhoSentRpc, bool explode = false)
     {
         ShatterClientRpc(clientWhoSentRpc, explode);
-        base.gameObject.GetComponent<NetworkObject>().Despawn();
+		StartCoroutine(DespawnAfterFrame());
     }
+
+	public IEnumerator DespawnAfterFrame()
+	{
+		yield return new WaitForEndOfFrame();
+        if (base.gameObject.GetComponent<NetworkObject>().IsSpawned)
+        {
+            Debug.Log("[VASE]: Despawning!");
+            base.gameObject.GetComponent<NetworkObject>().Despawn();
+        }
+	}
 
     [ClientRpc]
     public void ShatterClientRpc(int clientWhoSentRpc, bool explode = false)
@@ -225,12 +237,23 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     public void Shatter(bool explode = false)
     {
         Debug.Log("[VASE]: Vase shattered!");
-
-        //SET FLAGS
-        if (playerHeldBy != null)
+        if (shattered)
         {
+            return;
+        }
+        if (heldByPlayerOnServer)
+        {
+            Debug.Log("[VASE]: Discarding held object from player!");
             playerHeldBy.DiscardHeldObject();
         }
+        else if (isHeldByEnemy)
+        {
+            Debug.Log("[VASE]: Discarding held object from enemy!");
+            base.DiscardItemFromEnemy();
+        }
+
+        //SET FLAGS
+        shattered = true;
         grabbable = false;
         grabbableToEnemies = false;
         scrapValue = 0;
@@ -252,7 +275,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
         //SET POSITION FOR SHATTER PREFAB
         Vector3 shatterPosition;
-        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(base.transform.position + itemProperties.verticalOffset * Vector3.up, Vector3.down, out var hitInfo, 800f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
 		{
 			shatterPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
 		}
@@ -271,15 +294,6 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         GameObject brokenVase;
         Vector3 shatterRotation = new Vector3(0, transform.eulerAngles.y, 0);
 
-        if (playerHeldBy)
-        {
-            base.playerHeldBy.DiscardHeldObject();
-        }
-        else if (isHeldByEnemy)
-        {
-            base.DiscardItemFromEnemy();
-        }
-
         brokenVase = UnityEngine.Object.Instantiate(shatterPrefab, shatterPosition, Quaternion.Euler(shatterRotation), RoundManager.Instance.mapPropsContainer.transform);
 
         //PARENT PREFAB PROPERLY
@@ -293,8 +307,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             droppedInElevator = true;
         }
 
-        RaycastHit physicsHit;
-        if (Physics.Raycast(brokenVase.transform.position, -Vector3.up, out physicsHit, 80f, 1342179585, QueryTriggerInteraction.Ignore))
+        if (Physics.Raycast(brokenVase.transform.position, -Vector3.up, out RaycastHit physicsHit, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
         {
             PlayerPhysicsRegion physicsRegion = hitInfo.collider.gameObject.transform.GetComponentInChildren<PlayerPhysicsRegion>();
 

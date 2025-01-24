@@ -1,9 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
-using CoronaMod;
 using GameNetcodeStuff;
 using Unity.Netcode;
-using Unity.Netcode.Samples;
 using UnityEngine;
 
 public class Toaster : AnimatedItem, IHittable
@@ -117,7 +115,7 @@ public class Toaster : AnimatedItem, IHittable
         }
 
         playersInPopRange.Clear();
-        Collider[] colliders = Physics.OverlapSphere(base.transform.position, popRange, 2621448, QueryTriggerInteraction.Collide);
+        Collider[] colliders = Physics.OverlapSphere(base.transform.position, popRange, CoronaMod.Masks.PlayerEnemiesMapHazards, QueryTriggerInteraction.Collide);
 
         for (int i = 0; i < colliders.Length; i++)
         {
@@ -153,8 +151,7 @@ public class Toaster : AnimatedItem, IHittable
 
             if (physicsForceOnPop)
             {
-                RaycastHit hitInfo;
-                if (physicsForce > 0f && !Physics.Linecast(base.transform.position, player.transform.position, out hitInfo, 256, QueryTriggerInteraction.Ignore))
+                if (physicsForce > 0f && !Physics.Linecast(base.transform.position, player.transform.position, out var _, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                 {
                     float dist = Vector3.Distance(player.transform.position, base.transform.position);
                     Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
@@ -202,8 +199,7 @@ public class Toaster : AnimatedItem, IHittable
         if (inserted)
         {
             inserted = false;
-            Eject();
-            EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            EjectAndSync();
         }
         else
         {

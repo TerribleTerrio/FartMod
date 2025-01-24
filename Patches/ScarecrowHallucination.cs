@@ -596,7 +596,7 @@ public class ScarecrowHallucination : NetworkBehaviour, INoiseListener
 		dogHearNoiseCooldown = 0.05f;
 		float num = Vector3.Distance(base.transform.position, noisePosition);
 		float num2 = 10f * noiseLoudness;
-		if (Physics.Linecast(base.transform.position, noisePosition, 256))
+		if (Physics.Linecast(base.transform.position, noisePosition, StartOfRound.Instance.collidersAndRoomMaskAndDefault))
 		{
 			noiseLoudness /= 2f;
 			num2 /= 2f;
