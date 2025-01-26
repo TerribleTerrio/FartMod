@@ -159,6 +159,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public void Wobble(int type)
     {
+        if (!CanWobble())
+        {
+            return;
+        }
+
         timesPlayedInOneSpot++;
         lastPosition = base.transform.position;
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange/2, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
@@ -206,6 +211,13 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     {
         Shatter();
         ShatterServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+
+    public void WobbleAndSync(int type)
+    {
+        Wobble(type);
+        WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, type);
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -341,53 +353,8 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     {
         GameObject otherObject = other.gameObject;
 
-        if (itemAnimator.GetBool("Wobbling"))
+        if (!CanWobble(other))
         {
-            Debug.Log("[VASE]: Wobbling aborted, vase is already wobbling.");
-            return;
-        }
-
-        if (otherObject.layer != 3 && otherObject.layer != 19 && otherObject.layer != 30 && otherObject.layer != 6)
-        {
-            //Debug.Log($"[VASE]: Detected collider object {otherObject} is not of type that interacts with vase.");
-            return;
-        }
-        else if (isHeld || isHeldByEnemy)
-        {
-            Debug.Log("[VASE]: Wobbling aborted, vase is being held.");
-            return;
-        }
-        else if (!grabbable)
-        {
-            Debug.Log("[VASE]: Wobbling aborted, vase is not grabbable.");
-            return;
-        }
-        else if (base.isInShipRoom && !breakInShip)
-        {
-            Debug.Log("[VASE]: Wobbling aborted, break in ship disabled.");
-            return;
-        }
-        else if (!breakInOrbit)
-        {
-            if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
-            {
-                Debug.Log("[VASE]: Wobbling aborted, break in orbit disabled.");
-                return;
-            }
-        }
-        else if (!hasHitGround)
-        {
-            Debug.Log("[VASE]: Wobbling aborted, vase is midair.");
-            return;
-        }
-        else if (itemAnimator.GetBool("Shattered"))
-        {
-            Debug.Log("[VASE]: Wobbling aborted, vase is shattered.");
-            return;
-        }
-        else if (!hasBeenSeen)
-        {
-            Debug.Log("[VASE]: Wobbling aborted, vase has not been seen yet.");
             return;
         }
 
@@ -395,7 +362,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         RaycastHit hitInfo;
         if (Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
         {
-            Debug.Log("[VASE]: [VASE]: Wobbling aborted, wall between vase and collider.");
+            Debug.Log("[VASE]: Wobbling aborted, wall between vase and collider.");
             return;
         }
 
@@ -408,26 +375,22 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             if (safePlaced)
             {
                 Debug.Log("[VASE]: Vase was in safely placed state.");
-                Wobble(0);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+                WobbleAndSync(0);
             }
             else if (player.isSprinting)
             {
                 Debug.Log("[VASE]: Player was sprinting.");
-                Wobble(2);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                WobbleAndSync(2);
             }
             else if (player.isCrouching)
             {
                 Debug.Log("[VASE]: Player was crouching.");
-                Wobble(0);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+                WobbleAndSync(0);
             }
             else
             {
                 Debug.Log("[VASE]: Player was walking.");
-                Wobble(1);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                WobbleAndSync(1);
             }
 
             if (!(isHeld || isHeldByEnemy || !hasHitGround))
@@ -469,8 +432,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 FlowermanAI flowerman = enemy.mainScript as FlowermanAI;
                 if (flowerman.isInAngerMode)
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
                 else
                 {
@@ -479,8 +441,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             }
             else if (enemy.mainScript.enemyType.enemyName == "Spring")
             {
-                Wobble(2);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                WobbleAndSync(2);
             }
             else if (enemy.mainScript.enemyType.enemyName == "Blob")
             {
@@ -491,13 +452,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 JesterAI jester = enemy.mainScript as JesterAI;
                 if (jester.creatureAnimator.GetBool("poppedOut"))
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
-                    Wobble(0);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+                    WobbleAndSync(0);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Maneater")
@@ -511,19 +470,16 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                     }
                     else if (caveDweller.babyRunning)
                     {
-                        Wobble(1);
-                        WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                        WobbleAndSync(1);
                     }
                     else
                     {
-                        Wobble(0);
-                        WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+                        WobbleAndSync(0);
                     }
                 }
                 else if (caveDweller.adultContainer.activeSelf)
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
@@ -535,13 +491,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 MaskedPlayerEnemy masked = enemy.mainScript as MaskedPlayerEnemy;
                 if (masked.sprinting)
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Crawler")
@@ -549,13 +503,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 CrawlerAI crawler = enemy.mainScript as CrawlerAI;
                 if (crawler.hasEnteredChaseMode)
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Red Locust Bees")
@@ -575,13 +527,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 }
                 else if (mouthDog.hasEnteredChaseModeFully)
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "ForestGiant")
@@ -589,13 +539,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 ForestGiantAI forestGiant = enemy.mainScript as ForestGiantAI;
                 if (forestGiant.chasingPlayer)
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Manticoil")
@@ -611,13 +559,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 }
                 else if (radMech.isAlerted)
                 {
-                    Wobble(2);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    WobbleAndSync(2);
                 }
                 else
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Docile Locust Bees")
@@ -633,24 +579,20 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                 }
                 else if (flowerSnake.leaping)
                 {
-                    Wobble(1);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                    WobbleAndSync(1);
                 }
                 else
                 {
-                    Wobble(0);
-                    WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+                    WobbleAndSync(0);
                 }
             }
             else if (enemy.mainScript.enemyType.enemyName == "Centipede")
             {
-                Wobble(0);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 0);
+                WobbleAndSync(0);
             }
             else
             {
-                Wobble(1);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 1);
+                WobbleAndSync(1);
             }
         }
 
@@ -660,8 +602,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 			VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
 			if (vehicle.averageVelocity.magnitude < 2)
 			{
-				Wobble(2);
-                WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+				WobbleAndSync(2);
 			}
             else
             {
@@ -688,6 +629,59 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public void OnExit(Collider other)
     {
+    }
+
+    public bool CanWobble(Collider other = null)
+    {
+        if (itemAnimator.GetBool("Wobbling"))
+        {
+            Debug.Log("[VASE]: Wobbling aborted, vase is already wobbling.");
+            return false;
+        }
+        if (other != null && other.gameObject.layer != 3 && other.gameObject.layer != 19 && other.gameObject.layer != 30 && other.gameObject.layer != 6)
+        {
+            //Debug.Log($"[VASE]: Detected collider object {otherObject} is not of type that interacts with vase.");
+            return false;
+        }
+        else if (isHeld || isHeldByEnemy)
+        {
+            Debug.Log("[VASE]: Wobbling aborted, vase is being held.");
+            return false;
+        }
+        else if (!grabbable)
+        {
+            Debug.Log("[VASE]: Wobbling aborted, vase is not grabbable.");
+            return false;
+        }
+        else if (base.isInShipRoom && !breakInShip)
+        {
+            Debug.Log("[VASE]: Wobbling aborted, break in ship disabled.");
+            return false;
+        }
+        else if (!breakInOrbit)
+        {
+            if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+            {
+                Debug.Log("[VASE]: Wobbling aborted, break in orbit disabled.");
+                return false;
+            }
+        }
+        else if (!hasHitGround)
+        {
+            Debug.Log("[VASE]: Wobbling aborted, vase is midair.");
+            return false;
+        }
+        else if (itemAnimator.GetBool("Shattered"))
+        {
+            Debug.Log("[VASE]: Wobbling aborted, vase is shattered.");
+            return false;
+        }
+        else if (!hasBeenSeen)
+        {
+            Debug.Log("[VASE]: Wobbling aborted, vase has not been seen yet.");
+            return false;
+        }
+        return true;
     }
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)

@@ -10,22 +10,32 @@ public class Radiator : GrabbableObject, ITouchable
 {
     [Space(15f)]
     [Header("Radiator Settings")]
+    public Animator itemAnimator;
+    
     public NavMeshAgent agent;
 
     [HideInInspector]
     public NavMeshPath path;
 
-    public float crouchSpeed = 1f;
+    public float crouchSpeed = 0.75f;
 
-    public float walkSpeed = 3f;
+    public float crouchDistance = 1.5f;
 
-    public float sprintSpeed = 5f;
+    public float walkSpeed = 1.2f;
+
+    public float walkDistance = 2.5f;
+
+    public float sprintSpeed = 2.4f;
+
+    public float sprintDistance = 4.5f;
 
     public float updateInterval = 0.25f;
 
-    public float lastSeenDuration = 17f;
+    public float lastSeenDuration = 18f;
 
     private List<PlayerControllerB> playersInside;
+
+    private List<Collider> CollidersHitByRadiator = new List<Collider>();
 
     private Coroutine moveCoroutine;
 
@@ -33,10 +43,18 @@ public class Radiator : GrabbableObject, ITouchable
 
     private float updateTimer;
 
+    private GameObject testPos;
+
     public override void Start()
     {
         path = new NavMeshPath();
         lastActionTime = Time.realtimeSinceStartup;
+        if (moveCoroutine != null)
+        {
+            StopCoroutine(moveCoroutine);
+            moveCoroutine = null;
+        }
+        StopMoving(silent: true, clearMemory: true);
         base.Start();
     }
 
@@ -48,7 +66,7 @@ public class Radiator : GrabbableObject, ITouchable
         }
         else
         {
-            RadiatorUpdate();
+            IntervalUpdate();
             updateTimer = updateInterval;
         }
 		if (currentUseCooldown >= 0f)
@@ -128,46 +146,78 @@ public class Radiator : GrabbableObject, ITouchable
     public override void EquipItem()
     {
         lastActionTime = Time.realtimeSinceStartup;
+        if (moveCoroutine != null)
+        {
+            StopCoroutine(moveCoroutine);
+            moveCoroutine = null;
+        }
+        StopMoving(silent: true, clearMemory: true);
         base.EquipItem();
     }
 
     public override void DiscardItem()
     {
         lastActionTime = Time.realtimeSinceStartup;
+        if (moveCoroutine != null)
+        {
+            StopCoroutine(moveCoroutine);
+            moveCoroutine = null;
+        }
+        StopMoving(silent: true, clearMemory: true);
         base.DiscardItem();
     }
 
     public void OnTouch(Collider other)
     {
-        if (isHeld || isHeldByEnemy || !hasHitGround)
+        if (isHeld || isHeldByEnemy || !hasHitGround || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
         {
             return;
         }
-        if (other.gameObject.layer == 3 || other.gameObject.layer == 19)
+        int chosenSpeed = 1;
+        float chosenDistance = walkDistance;
+        if (other.gameObject.layer == 3 || other.gameObject.layer == 6 || other.gameObject.layer == 19)
         {
-            int chosenSpeed = 1;
-            float chosenDistance = 3.5f;
+            if (other.gameObject.TryGetComponent<GrabbableObject>(out var gObject) && !Physics.Linecast(other.gameObject.transform.position + Vector3.up * 0.5f, base.transform.position + Vector3.up, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+            {
+                if (gObject.TryGetComponent<SoccerBallProp>(out var ball))
+                {
+                    if (ball.hasHitGround || ball.isHeld || ball.isHeldByEnemy)
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        chosenSpeed = 0;
+                        chosenDistance = sprintDistance;
+                        ball.BeginKickBall(base.transform.position + Vector3.up, hitByEnemy: false);
+                    }
+                }
+                else
+                {
+                    return;
+                }
+            }
             if (other.TryGetComponent<PlayerControllerB>(out var player))
             {
+                StopMoving(silent: true, clearMemory: true);
                 if (player.isSprinting)
                 {
                     chosenSpeed = 0;
-                    chosenDistance = 5f;
+                    chosenDistance = sprintDistance;
                 }
                 else if (player.isCrouching)
                 {
                     chosenSpeed = 2;
-                    chosenDistance = 1.5f;
+                    chosenDistance = crouchDistance;
                 }
-                else
-                {
-                    chosenSpeed = 1;
-                    chosenDistance = 3.5f;
-                }
-
                 if (!Physics.Linecast(base.transform.position, player.transform.position, out var _, 256, QueryTriggerInteraction.Ignore))
                 {
-                    float physicsForce = 1.5f;
+                    float physicsForce = chosenSpeed switch
+                    {
+                        0 => 2f,
+                        1 => 1.25f,
+                        _ => 1f
+                    };
                     float dist = Vector3.Distance(player.transform.position, base.transform.position);
                     Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
                     if (vector.magnitude > 2f)
@@ -178,13 +228,14 @@ public class Radiator : GrabbableObject, ITouchable
                         }
                         if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
                         {
-                                player.externalForceAutoFade += vector;
+                            player.externalForceAutoFade += vector;
                         }
                     }
                 }
             }
-            Vector3 direction = Vector3.Normalize(other.transform.position - base.transform.position);
-            MoveTowardsAndSync(direction * chosenDistance, chosenSpeed);
+            Vector3 direction = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
+            Vector3 pos = base.transform.position - (direction * chosenDistance);
+            MoveTowardsAndSync(pos, silent: false, chosenSpeed);
         }
     }
 
@@ -192,13 +243,17 @@ public class Radiator : GrabbableObject, ITouchable
     {
     }
 
-    public void RadiatorUpdate()
+    private void IntervalUpdate()
     {
-        if (isHeld || isHeldByEnemy || !hasHitGround || base.isInShipRoom || !base.isInFactory || !base.IsOwner)
+        if (isHeld || isHeldByEnemy || !hasHitGround || base.isInShipRoom || !base.isInFactory || !base.IsOwner || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
         {
             return;
         }
         playersInside = [.. StartOfRound.Instance.allPlayerScripts.Where(player => player.isInsideFactory)];
+        if (playersInside.Count <= 0)
+        {
+            return;
+        }
         bool losFlag = false;
         bool aloneFlag = false;
         bool movable = false;
@@ -231,56 +286,75 @@ public class Radiator : GrabbableObject, ITouchable
             if (NavMesh.CalculatePath(base.transform.position, ClosestPlayerInside().position, agent.areaMask, path) && path.status != NavMeshPathStatus.PathPartial)
             {
                 Debug.Log("[RADIATOR]: Moving on my own!");
-                MoveTowardsAndSync(path.m_Corners[0]);
+                MoveTowardsAndSync(path.corners[1], silent: true);
+            }
+            else
+            {
+                Debug.Log("[RADIATOR]: I can't move on my own!");
+                lastActionTime = Time.realtimeSinceStartup;
             }
         }
     }
 
-    public void MoveTowardsAndSync(Vector3 position, int speedIndex = -1)
+    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1)
     {
-        MoveTowards(position, speedIndex);
-        MoveTowardsServerRpc(position, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+        MoveTowards(position, silent, speedIndex);
+        MoveTowardsServerRpc(position, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void MoveTowardsServerRpc(Vector3 position, int speedIndex = -1, int clientWhoSentRpc = -1)
+    public void MoveTowardsServerRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1)
     {
-        MoveTowardsClientRpc(position, speedIndex, clientWhoSentRpc);
+        MoveTowardsClientRpc(position, silent, speedIndex, clientWhoSentRpc);
     }
 
     [ClientRpc]
-    public void MoveTowardsClientRpc(Vector3 position, int speedIndex = -1, int clientWhoSentRpc = -1)
+    public void MoveTowardsClientRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1)
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            MoveTowards(position, speedIndex);
+            MoveTowards(position, silent, speedIndex);
         }
     }
 
-    public void MoveTowards(Vector3 position, int speedIndex = -1)
+    public void MoveTowards(Vector3 position, bool silent, int speedIndex = -1)
     {
         if (moveCoroutine != null)
         {
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        moveCoroutine = StartCoroutine(DecelerateTowards(position, speedIndex));
+        moveCoroutine = StartCoroutine(DecelerateTowards(position, silent, speedIndex));
     }
 
-    public IEnumerator DecelerateTowards(Vector3 position, int speedIndex = -1)
+    public IEnumerator DecelerateTowards(Vector3 position, bool silent, int speedIndex = -1)
     {
+        if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+        {
+            yield break;
+        }
+        StopMoving(silent, clearMemory: false);
+        float timeBumped = Time.realtimeSinceStartup;
         lastActionTime = Time.realtimeSinceStartup;
         Vector3 startPosition = base.transform.position;
         Vector3 direction = Vector3.Normalize(position - startPosition);
-        float distance = (startPosition - position).sqrMagnitude;
-		Ray ray = new(transform.position + Vector3.up * 2f, direction);
-		Vector3 pos = (!Physics.Raycast(ray, out RaycastHit rayHit, distance, StartOfRound.Instance.collidersAndRoomMask)) ? ray.GetPoint(distance) : rayHit.point;
-        position = new(pos.x, position.y, pos.z);
-        Debug.Log($"[RADIATOR]: Moving towards {position}! Distance: {(startPosition - position).sqrMagnitude}");
+        float startDistance = Vector3.Distance(startPosition, position);
+		Ray ray = new(base.transform.position + Vector3.up * 0.4f, direction);
+		Vector3 wallPos = (!Physics.Raycast(ray, out RaycastHit rayHit, startDistance, CoronaMod.Masks.RadiatorMask)) ? ray.GetPoint(startDistance) : ray.GetPoint(Vector3.Distance(ray.origin, rayHit.point) - 0.8f);
+        Vector3 vertPos = Physics.Raycast(position, Vector3.down, out var vertHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore) ? vertHitInfo.point + itemProperties.verticalOffset * Vector3.up : position;
+        Vector3 endPosition = new(wallPos.x, vertPos.y, wallPos.z);
+        float finalDistance = (!Physics.Raycast(ray, out _, startDistance, CoronaMod.Masks.RadiatorMask)) ? startDistance : Vector3.Distance(ray.origin, rayHit.point) - 0.8f;
+        if (finalDistance < 1.2f)
+        {
+            yield break;
+        }
+        float startY = base.transform.eulerAngles.y;
+        float endY = Random.Range(-45f, 45f) + startY;
+        Vector3 endEuler = new(base.transform.eulerAngles.x, endY, base.transform.eulerAngles.z);
         float chosenSpeed;
         if (speedIndex == -1)
         {
-            chosenSpeed = (startPosition - position).sqrMagnitude switch
+            chosenSpeed = Vector3.Distance(base.transform.position, endPosition) switch
             {
                 > 8f => sprintSpeed,
                 > 5f => walkSpeed,
@@ -296,19 +370,113 @@ public class Radiator : GrabbableObject, ITouchable
                 _ => crouchSpeed
             };
         }
-        while ((startPosition - position).sqrMagnitude > 0.1f)
+        while (Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)) > 0.1f)
         {
-            base.transform.position = Vector3.Lerp(base.transform.position, position, chosenSpeed * Time.deltaTime);
-            if (Physics.Raycast(base.transform.position, Vector3.down, out var hitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            //CHECK FUTURE POSITION
+            Vector3 futurePosition = base.transform.position;
+            futurePosition = Vector3.Lerp(futurePosition, endPosition, chosenSpeed * Time.deltaTime);
+            Vector3 futureLocalPosition = base.transform.localPosition;
+            if (Physics.Raycast(futurePosition, Vector3.down, out var futureHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
             {
-                targetFloorPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
+                Vector3 futureTargetFloorPosition = futureHitInfo.point + itemProperties.verticalOffset * Vector3.up;
                 if (base.transform.parent != null)
                 {
-                    targetFloorPosition = base.transform.parent.InverseTransformPoint(targetFloorPosition);
+                    futureTargetFloorPosition = base.transform.parent.InverseTransformPoint(futureTargetFloorPosition);
                 }
-                base.transform.position = new(base.transform.position.x, targetFloorPosition.y, base.transform.position.z);
+                if (Vector3.Distance(futureLocalPosition, futureTargetFloorPosition) > 0.5f || Vector3.Angle(Vector3.up, futureHitInfo.normal) > 45f)
+                {
+                    StopMoving(silent: false, clearMemory: true);
+                    yield break;
+                }
             }
             yield return null;
+            //BUMP INTO THINGS
+            if (Time.realtimeSinceStartup - timeBumped > 0.2f)
+            {
+                RaycastHit[] results = Physics.SphereCastAll(base.transform.position + Vector3.up, 0.85f, Vector3.down, 0.85f, CoronaMod.Masks.PropsMapHazards);
+                for (int i = 0; i < results.Count(); i++)
+                {
+                    if (CollidersHitByRadiator.Contains(results[i].collider))
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        BumpInto(results[i].collider);
+                        break;
+                    }
+                }
+            }
+            //MOVE FORWARD
+            base.transform.position = Vector3.Lerp(base.transform.position, endPosition, chosenSpeed * Time.deltaTime);
+            if (Physics.Raycast(base.transform.position, Vector3.down, out var hitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            {
+                Vector3 newTargetFloorPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
+                if (base.transform.parent != null)
+                {
+                    newTargetFloorPosition = base.transform.parent.InverseTransformPoint(newTargetFloorPosition);
+                }
+                targetFloorPosition = newTargetFloorPosition;
+                base.transform.localPosition = targetFloorPosition;
+            }
+            base.transform.rotation = Quaternion.Euler(base.transform.eulerAngles.x, Mathf.LerpAngle(base.transform.eulerAngles.y, endEuler.y, chosenSpeed * Time.deltaTime), base.transform.eulerAngles.z);
+            itemAnimator.SetLayerWeight(1, Mathf.Clamp(Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)), 0f, 1f));
+        }
+        StopMoving(silent: true, clearMemory: true);
+    }
+
+    private void StopMoving(bool silent, bool clearMemory)
+    {
+        if (!silent)
+        {
+            itemAnimator.SetTrigger("Bump");
+        }
+        if (clearMemory)
+        {
+            CollidersHitByRadiator.Clear();
+        }
+        itemAnimator.SetLayerWeight(1, 0f);
+        if (testPos != null)
+        {
+            Destroy(testPos);
+            testPos = null;
+        }
+    }
+
+    private void BumpInto(Collider other)
+    {
+        if (CollidersHitByRadiator.Contains(other))
+        {
+            return;
+        }
+        else
+        {
+            CollidersHitByRadiator.Add(other);
+        }
+        bool bumped = false;
+
+        if (other.gameObject.TryGetComponent<Vase>(out var vase))
+        {
+            bumped = true;
+            vase.WobbleAndSync(1);
+        }
+        else if (other.gameObject.TryGetComponent<Radiator>(out var otherRadiator) && otherRadiator != this)
+        {
+            bumped = true;
+            Vector3 direction = Vector3.Normalize(new Vector3(base.transform.position.x, other.transform.position.y, base.transform.position.z) - other.transform.position);
+            Vector3 pos = other.transform.position - (direction * crouchDistance);
+            otherRadiator.MoveTowardsAndSync(pos, silent: false, 2);
+        }
+        else if (other.gameObject.TryGetComponent<Turret>(out var turret))
+        {
+            bumped = true;
+            turret.GetComponent<IHittable>().Hit(1, Vector3.zero);
+        }
+        if (bumped)
+        {
+            Vector3 direction = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
+            Vector3 pos = base.transform.position - (direction * crouchDistance);
+            MoveTowardsAndSync(pos, silent: false, 1);
         }
     }
 
@@ -316,15 +484,15 @@ public class Radiator : GrabbableObject, ITouchable
     {
 		float maxRange = 200f;
 		int closestPlayer = 0;
-		for (int i = 0; i < playersInside.Count; i++)
-		{
-			float sqrMagnitude = (playersInside[i].transform.position - agent.transform.position).sqrMagnitude;
-			if (sqrMagnitude < maxRange)
-			{
-				maxRange = sqrMagnitude;
-				closestPlayer = i;
-			}
-		}
+        for (int i = 0; i < playersInside.Count; i++)
+        {
+            float sqrMagnitude = (playersInside[i].transform.position - agent.transform.position).sqrMagnitude;
+            if (sqrMagnitude < maxRange)
+            {
+                maxRange = sqrMagnitude;
+                closestPlayer = i;
+            }
+        }
         return playersInside[closestPlayer].transform;
     }
 }

@@ -163,7 +163,7 @@ public class BowlingBall : GrabbableObject
             other.gameObject.GetComponent<Vase>()?.ExplodeAndSync();
             other.gameObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
             other.gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
-            other.gameObject.GetComponent<Toaster>()?.EjectAndSync();
+            other.gameObject.GetComponent<Toaster>()?.GetComponent<IHittable>().Hit(1, Vector3.down);
         }
 
         //FOR HAZARDS

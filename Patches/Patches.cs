@@ -92,8 +92,7 @@ internal class LandminePatch
                 }
                 else if (!otherObject.GetComponent<Vase>().isHeld)
                 {
-                    otherObject.GetComponent<Vase>().Wobble(2);
-                    otherObject.GetComponent<Vase>().WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, 2);
+                    otherObject.GetComponent<Vase>().WobbleAndSync(2);
                 }
             }
             if (otherObject.GetComponent<PlayerControllerB>() != null)
