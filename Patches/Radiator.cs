@@ -6,7 +6,7 @@ using System.Linq;
 using System.Collections.Generic;
 using Unity.Netcode;
 
-public class Radiator : GrabbableObject, ITouchable
+public class Radiator : GrabbableObject, IHittable, ITouchable
 {
     [Space(15f)]
     [Header("Radiator Settings")]
@@ -255,11 +255,10 @@ public class Radiator : GrabbableObject, ITouchable
             return;
         }
         bool losFlag = false;
-        bool aloneFlag = false;
         bool movable = false;
         for (int i = 0; i < playersInside.Count; i++)
         {
-            if (playersInside[i].HasLineOfSightToPosition(base.transform.position + Vector3.up * 0.5f))
+            if (playersInside[i].HasLineOfSightToPosition(base.transform.position + Vector3.up))
             {
                 losFlag = true;
             }
@@ -268,12 +267,7 @@ public class Radiator : GrabbableObject, ITouchable
         {
             lastActionTime = Time.realtimeSinceStartup;
         }
-        else if (Vector3.Distance(ClosestPlayerInside().position, base.transform.position) > 30f)
-        {
-            aloneFlag = true;
-        }
-        float finalDuration = aloneFlag ? lastSeenDuration / 2f : lastSeenDuration;
-        if (NavMesh.SamplePosition(base.transform.position, out var _, 1f, -1) && !losFlag && (Time.realtimeSinceStartup - lastActionTime > finalDuration))
+        if (NavMesh.SamplePosition(base.transform.position, out var hit, 2f, -1) && !losFlag && (Time.realtimeSinceStartup - lastActionTime > lastSeenDuration))
         {
             movable = true;
         }
@@ -283,10 +277,11 @@ public class Radiator : GrabbableObject, ITouchable
         }
         if (movable)
         {
-            if (NavMesh.CalculatePath(base.transform.position, ClosestPlayerInside().position, agent.areaMask, path) && path.status != NavMeshPathStatus.PathPartial)
+            if (NavMesh.CalculatePath(hit.position, ClosestPlayerInside().position, -1, path))
             {
                 Debug.Log("[RADIATOR]: Moving on my own!");
-                MoveTowardsAndSync(path.corners[1], silent: true);
+                MoveTowardsAndSync(path.corners[1], silent: true, roaming: true);
+                path.ClearCorners();
             }
             else
             {
@@ -296,38 +291,38 @@ public class Radiator : GrabbableObject, ITouchable
         }
     }
 
-    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1)
+    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false)
     {
-        MoveTowards(position, silent, speedIndex);
-        MoveTowardsServerRpc(position, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+        MoveTowards(position, silent, speedIndex, roaming);
+        MoveTowardsServerRpc(position, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId, roaming);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void MoveTowardsServerRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1)
+    public void MoveTowardsServerRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false)
     {
-        MoveTowardsClientRpc(position, silent, speedIndex, clientWhoSentRpc);
+        MoveTowardsClientRpc(position, silent, speedIndex, clientWhoSentRpc, roaming);
     }
 
     [ClientRpc]
-    public void MoveTowardsClientRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1)
+    public void MoveTowardsClientRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false)
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            MoveTowards(position, silent, speedIndex);
+            MoveTowards(position, silent, speedIndex, roaming);
         }
     }
 
-    public void MoveTowards(Vector3 position, bool silent, int speedIndex = -1)
+    public void MoveTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false)
     {
         if (moveCoroutine != null)
         {
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        moveCoroutine = StartCoroutine(DecelerateTowards(position, silent, speedIndex));
+        moveCoroutine = StartCoroutine(DecelerateTowards(position, silent, speedIndex, roaming));
     }
 
-    public IEnumerator DecelerateTowards(Vector3 position, bool silent, int speedIndex = -1)
+    public IEnumerator DecelerateTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false)
     {
         if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
         {
@@ -337,39 +332,34 @@ public class Radiator : GrabbableObject, ITouchable
         float timeBumped = Time.realtimeSinceStartup;
         lastActionTime = Time.realtimeSinceStartup;
         Vector3 startPosition = base.transform.position;
+        float chosenSpeed;
+        if (speedIndex == -1 && roaming)
+        {
+            chosenSpeed = Vector3.Distance(base.transform.position, ClosestPlayerInside().position) switch {> 16f => sprintSpeed, > 10f => walkSpeed, _ => crouchSpeed};
+        }
+        else if (speedIndex == -1)
+        {
+            chosenSpeed = Vector3.Distance(base.transform.position, position) switch {> 8f => sprintSpeed, > 4f => walkSpeed, _ => crouchSpeed};
+        }
+        else
+        {
+            chosenSpeed = speedIndex switch {0 => sprintSpeed, 1 => walkSpeed, _ => crouchSpeed};
+        }
         Vector3 direction = Vector3.Normalize(position - startPosition);
-        float startDistance = Vector3.Distance(startPosition, position);
+        float noWallDistance = Mathf.Clamp(Vector3.Distance(startPosition, position), 0f, chosenSpeed);
 		Ray ray = new(base.transform.position + Vector3.up * 0.4f, direction);
-		Vector3 wallPos = (!Physics.Raycast(ray, out RaycastHit rayHit, startDistance, CoronaMod.Masks.RadiatorMask)) ? ray.GetPoint(startDistance) : ray.GetPoint(Vector3.Distance(ray.origin, rayHit.point) - 0.8f);
+		Vector3 wallPos = (!Physics.Raycast(ray, out RaycastHit rayHit, noWallDistance, CoronaMod.Masks.RadiatorMask)) ? ray.GetPoint(noWallDistance) : ray.GetPoint(Vector3.Distance(ray.origin, rayHit.point) - 0.8f);
         Vector3 vertPos = Physics.Raycast(position, Vector3.down, out var vertHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore) ? vertHitInfo.point + itemProperties.verticalOffset * Vector3.up : position;
         Vector3 endPosition = new(wallPos.x, vertPos.y, wallPos.z);
-        float finalDistance = (!Physics.Raycast(ray, out _, startDistance, CoronaMod.Masks.RadiatorMask)) ? startDistance : Vector3.Distance(ray.origin, rayHit.point) - 0.8f;
-        if (finalDistance < 1.2f)
+        float finalDistance = (!Physics.Raycast(ray, out _, noWallDistance, CoronaMod.Masks.RadiatorMask)) ? noWallDistance : Vector3.Distance(ray.origin, rayHit.point) - 0.8f;
+        if (finalDistance < 1.2f && !roaming)
         {
             yield break;
         }
         float startY = base.transform.eulerAngles.y;
         float endY = Random.Range(-45f, 45f) + startY;
         Vector3 endEuler = new(base.transform.eulerAngles.x, endY, base.transform.eulerAngles.z);
-        float chosenSpeed;
-        if (speedIndex == -1)
-        {
-            chosenSpeed = Vector3.Distance(base.transform.position, endPosition) switch
-            {
-                > 8f => sprintSpeed,
-                > 5f => walkSpeed,
-                _ => crouchSpeed,
-            };
-        }
-        else
-        {
-            chosenSpeed = speedIndex switch
-            {
-                0 => sprintSpeed,
-                1 => walkSpeed,
-                _ => crouchSpeed
-            };
-        }
+        Debug.Log($"[RADIATOR]: Moving towards {endPosition}, starting distance: {finalDistance}");
         while (Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)) > 0.1f)
         {
             //CHECK FUTURE POSITION
@@ -494,5 +484,24 @@ public class Radiator : GrabbableObject, ITouchable
             }
         }
         return playersInside[closestPlayer].transform;
+    }
+
+    bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
+    {
+        if (!isHeld || !isHeldByEnemy || hasHitGround || !StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted > 2f)
+        {
+            if (playerWhoHit != null)
+            {
+                Vector3 direction = Vector3.Normalize(new Vector3(playerWhoHit.transform.position.x, base.transform.position.y, playerWhoHit.transform.position.z) - base.transform.position);
+                Vector3 pos = base.transform.position - (direction * crouchDistance);
+                MoveTowardsAndSync(pos, silent: false, 1);
+            }
+            else
+            {
+                Vector3 pos = base.transform.position - (hitDirection * crouchDistance);
+                MoveTowardsAndSync(pos, silent: false, 1);
+            }
+        }
+        return false;
     }
 }
