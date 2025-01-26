@@ -26,6 +26,8 @@ public static class Masks
 
     public const int RoomVehicle = 1073742080;
 
+    public const int RoomCollidersRailing = 268437760;
+
     public const int WeaponMask = 1084754248; //Same as shovel: Player, Props, Room, Colliders, Enemies, MapHazards, EnemiesNotRendered, Vehicle
 }
 

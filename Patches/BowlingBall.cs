@@ -142,7 +142,7 @@ public class BowlingBall : GrabbableObject
         {
             if (other.gameObject.TryGetComponent<IHittable>(out var hittable))
             {
-                hittable.Hit(bowlingBallHitForce * 2, Vector3.down * 3f, previousPlayerHeldBy, playHitSFX: true, 1);
+                hittable.Hit((fallHeight > damageHeight * 2) ? 10 : bowlingBallHitForce * 2, (fallHeight > damageHeight * 2) ? Vector3.down * 6f : Vector3.down * 3f, previousPlayerHeldBy, playHitSFX: true, 1);
                 return;
             }
         }

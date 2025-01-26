@@ -372,7 +372,7 @@ public class Blowtorch : AnimatedItem
             return;
         }
         //CHECK FOR COLLIDERS
-        Collider[] colliders = checkColliders();
+        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.3f, CoronaMod.Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Collide);
         for (int i = 0; i < colliders.Length; i++)
         {
             //FOR PLAYERS
@@ -396,12 +396,11 @@ public class Blowtorch : AnimatedItem
             }
 
             //FOR ENEMIES
-            else if (colliders[i].gameObject.layer == 19)
+            if (colliders[i].gameObject.TryGetComponent<EnemyAICollisionDetect>(out var enemy) && enemy.TryGetComponent<IHittable>(out var hittable))
             {
-                EnemyAICollisionDetect enemy = colliders[i].gameObject.GetComponentInChildren<EnemyAICollisionDetect>();
-                if (enemy != null && enemy.mainScript.IsOwner)
+                if (enemy.mainScript != null)
                 {
-                    enemy.mainScript.HitEnemyOnLocalClient(damage, transform.forward, playerHeldBy, playHitSFX: true);
+                    hittable.Hit(damage, transform.forward, playerHeldBy, playHitSFX: true, 1);
                     Debug.Log($"Blowtorch damaged an enemy.");
                     Spark();
                 }
@@ -413,7 +412,6 @@ public class Blowtorch : AnimatedItem
                 Debug.Log($"Blowtorch detected Artillery Shell.");
                 Spark();
                 colliders[i].gameObject.GetComponentInParent<ArtilleryShellItem>().ArmShellAndSync();
-                continue;
             }
 
             else if (colliders[i].gameObject.GetComponentInParent<PunchingBag>() != null)
@@ -441,7 +439,7 @@ public class Blowtorch : AnimatedItem
             {
                 Debug.Log($"Blowtorch detected Toaster.");
                 Spark();
-                colliders[i].gameObject.GetComponentInParent<Toaster>().EjectAndSync();
+                colliders[i].gameObject.GetComponentInParent<Toaster>().GetComponent<IHittable>().Hit(damage, transform.forward, playerHeldBy, playHitSFX: true, 1);
             }
 
             //FOR HAZARDS
@@ -480,12 +478,6 @@ public class Blowtorch : AnimatedItem
         lastPosition = base.transform.position;
 
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-    }
-
-    private Collider[] checkColliders()
-    {
-        Collider[] colliders = Physics.OverlapCapsule(rangeStart.transform.position, rangeEnd.transform.position, 0.3f, CoronaMod.Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Collide);
-        return colliders;
     }
 
     // --- CHANGE ANIMATOR - RIPPED FROM HAND MIRROR! ---
