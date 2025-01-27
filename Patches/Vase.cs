@@ -220,6 +220,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         WobbleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, type);
     }
 
+    public void SetGrabbable(bool setto)
+    {
+        grabbable = setto;
+    }
+
     [ServerRpc(RequireOwnership = false)]
     public void ShatterServerRpc(int clientWhoSentRpc, bool explode = false)
     {

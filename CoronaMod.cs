@@ -28,7 +28,9 @@ public static class Masks
 
     public const int RoomVehicle = 1073742080;
 
-    public const int RoomCollidersRailing = 268437760;
+    public const int SprayPaintMask = 605030721; //Default, Props, Room, PlayerRagdoll, PlaceableShipObjects, DecalStickableSurface
+
+    public const int BlowtorchMask = 1712327489; //Default, Props, Room, InteractableObject, PlayerRagdoll, Terrain, PlaceableShipObjects, DecalStickableSurface, Vehicle
 
     public const int RadiatorMask = 1593838337; //Default, Room, InteractableObject, Colliders, Terrain, PlaceableShipObjects, PlacementBlocker, Railing, Vehicle
 

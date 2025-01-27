@@ -74,8 +74,6 @@ public class Blowtorch : AnimatedItem
 
 	private RaycastHit sprayHit;
 
-    private int sprayPaintMask = 605030721;
-
 	private Vector3 previousSprayPosition;
 
     private bool isBurning;
@@ -164,7 +162,7 @@ public class Blowtorch : AnimatedItem
             }
             
             Ray ray = new Ray(particles.transform.position, particles.transform.forward);
-            if (!Physics.Raycast(ray, out sprayHit, burnRange, sprayPaintMask, QueryTriggerInteraction.Collide))
+            if (!Physics.Raycast(ray, out sprayHit, burnRange, CoronaMod.Masks.BlowtorchMask, QueryTriggerInteraction.Collide))
             {
                 BurnAudio.volume = 0f;
             }
@@ -176,7 +174,7 @@ public class Blowtorch : AnimatedItem
             if (sparkInterval <= 0f)
             {
                 sparkInterval = UnityEngine.Random.Range(0.2f, 0.7f);
-                if (isBurning && Physics.Raycast(ray, out sprayHit, burnRange, sprayPaintMask, QueryTriggerInteraction.Collide))
+                if (isBurning && Physics.Raycast(ray, out sprayHit, burnRange, CoronaMod.Masks.BlowtorchMask, QueryTriggerInteraction.Collide))
                 {
                     // I wanted to do this but I'm not sure, I'll just leave it here
                     // && sprayHit.collider.gameObject.tag != "Gravel" && sprayHit.collider.gameObject.tag != "Snow" && sprayHit.collider.gameObject.tag != "Grass"
@@ -608,7 +606,7 @@ public class Blowtorch : AnimatedItem
 			RoundManager.Instance.mapPropsContainer = GameObject.FindGameObjectWithTag("MapPropsContainer");
 		}
 		Ray ray = new Ray(sprayPos, sprayRot);
-		if (!Physics.Raycast(ray, out sprayHit, burnRange, sprayPaintMask, QueryTriggerInteraction.Collide))
+		if (!Physics.Raycast(ray, out sprayHit, burnRange, CoronaMod.Masks.BlowtorchMask, QueryTriggerInteraction.Collide))
 		{
 			ToggleBurnDecalOnHolder(enable: true);
 			return false;
