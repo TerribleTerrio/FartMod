@@ -12,6 +12,18 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
     [Header("Radiator Settings")]
     public Animator itemAnimator;
     
+    public AudioSource bumpSource;
+
+    public AudioSource wheelSource;
+
+    public AudioClip[] lightBumpClips;
+
+    public AudioClip[] heavyBumpClips;
+
+    public AudioClip[] lightWheelClips;
+
+    public AudioClip[] heavyWheelClips;
+
     public NavMeshAgent agent;
 
     [HideInInspector]
@@ -39,17 +51,23 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
 
     private Coroutine moveCoroutine;
 
+    private Coroutine fallOverCoroutine;
+
     private float lastActionTime;
 
     private float updateTimer;
 
-    private GameObject testPos;
+    private GameObject debugPos;
 
     private bool haunted;
 
     private float moveTimer;
 
-    private float moveCooldown = 0.25f;
+    private float moveCooldown = 0.3f;
+
+    private float wallRadius = 1f;
+
+    private float rayHeightMultiplier = 0.4f;
 
     public override void Start()
     {
@@ -60,8 +78,26 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        ResetMovement(silent: true, clearMemory: true);
+        if (fallOverCoroutine != null)
+        {
+            StopCoroutine(fallOverCoroutine);
+            fallOverCoroutine = null;
+        }
+        ResetAnimations(silent: true, clearMemory: true);
         base.Start();
+        if (!base.IsOwner || isHeld)
+        {
+            return;
+        }
+        if (NavMesh.SamplePosition(base.transform.position, out NavMeshHit hit, 4f, -1))
+        {
+            base.transform.position = hit.position;
+            if (NavMesh.CalculatePath(hit.position, RoundManager.Instance.GetClosestNode(base.transform.position, outside: base.transform.position.y > -80f).position, -1, path))
+            {
+                RoamMovement(hit.position, RoundManager.Instance.GetClosestNode(base.transform.position, outside: base.transform.position.y > -80f).position);
+                lastActionTime = Time.realtimeSinceStartup;
+            }
+        }
     }
 
     public override void Update()
@@ -161,7 +197,12 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        ResetMovement(silent: true, clearMemory: true);
+        if (fallOverCoroutine != null)
+        {
+            StopCoroutine(fallOverCoroutine);
+            fallOverCoroutine = null;
+        }
+        ResetAnimations(silent: true, clearMemory: true);
         base.EquipItem();
     }
 
@@ -173,7 +214,12 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        ResetMovement(silent: true, clearMemory: true);
+        if (fallOverCoroutine != null)
+        {
+            StopCoroutine(fallOverCoroutine);
+            fallOverCoroutine = null;
+        }
+        ResetAnimations(silent: true, clearMemory: true);
         base.GrabItemFromEnemy(enemy);
     }
 
@@ -185,32 +231,50 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        ResetMovement(silent: true, clearMemory: true);
+        if (fallOverCoroutine != null)
+        {
+            StopCoroutine(fallOverCoroutine);
+            fallOverCoroutine = null;
+        }
+        ResetAnimations(silent: true, clearMemory: true);
         base.DiscardItem();
     }
 
     public void OnTouch(Collider other)
     {
-        if (isHeld || isHeldByEnemy || !hasHitGround || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f || base.transform.parent.GetComponentInChildren<PlayerPhysicsRegion>() != null)
+        if (isHeld || isHeldByEnemy || !hasHitGround || moveTimer > 0f || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f || base.transform.parent?.GetComponentInChildren<PlayerPhysicsRegion>() != null)
+        {
+            return;
+        }
+        if (other.gameObject.layer != 3 && other.gameObject.layer != 6 && other.gameObject.layer != 19)
         {
             return;
         }
         int chosenSpeed = 1;
-        float chosenDistance = walkDistance;
-        if (other.gameObject.layer == 3 || other.gameObject.layer == 6 || other.gameObject.layer == 19)
+        if (other.gameObject.layer == 19)
         {
-            if (other.TryGetComponent<EnemyAICollisionDetect>(out var enemy))
+            if (!other.TryGetComponent<EnemyAICollisionDetect>(out var enemy))
             {
-                if (enemy.mainScript.TryGetComponent<HoarderBugAI>(out _))
-                {
-                    return;
-                }
+                return;
+            }
+            else
+            {
                 if (enemy.mainScript.TryGetComponent<BaboonBirdAI>(out _))
                 {
                     return;
                 }
+                if (enemy.mainScript.TryGetComponent<MouthDogAI>(out var dog))
+                {
+                    if (dog.inLunge || dog.hasEnteredChaseModeFully)
+                    {
+                        chosenSpeed = 0;
+                    }
+                }
             }
-            if (other.TryGetComponent<GrabbableObject>(out var gObject) && !Physics.Linecast(other.gameObject.transform.position + Vector3.up * 0.5f, base.transform.position + Vector3.up, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+        }
+        if (other.gameObject.layer == 6)
+        {
+            if (other.TryGetComponent<GrabbableObject>(out var gObject) && !Physics.Linecast(other.gameObject.transform.position + Vector3.up * 0.5f, base.transform.position + Vector3.up, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
             {
                 if (gObject.TryGetComponent<SoccerBallProp>(out var ball))
                 {
@@ -221,7 +285,6 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                     else
                     {
                         chosenSpeed = 0;
-                        chosenDistance = sprintDistance;
                         ball.BeginKickBall(base.transform.position + Vector3.up, hitByEnemy: false);
                     }
                 }
@@ -230,33 +293,34 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                     return;
                 }
             }
-            if (other.TryGetComponent<PlayerControllerB>(out var player))
+        }
+        else if (other.gameObject.layer == 3)
+        {
+            if (!other.TryGetComponent<PlayerControllerB>(out var player))
+            {
+                return;
+            }
+            else
             {
                 if (player.isJumping || player.isFallingFromJump || player.isFallingNoJump)
                 {
                     return;
                 }
-                ResetMovement(silent: true, clearMemory: true);
+                ResetAnimations(silent: true, clearMemory: true);
                 if (player.isSprinting)
                 {
                     chosenSpeed = 0;
-                    chosenDistance = sprintDistance;
-                }
-                else if (player.isCrouching)
-                {
-                    chosenSpeed = 2;
-                    chosenDistance = crouchDistance;
                 }
                 if (!Physics.Linecast(base.transform.position, player.transform.position, out var _, 256, QueryTriggerInteraction.Ignore))
                 {
                     float physicsForce = chosenSpeed switch
                     {
-                        0 => 2f,
-                        1 => 1.3f,
-                        _ => 1.2f
+                        0 => 1f,
+                        _ => 0.7f
                     };
-                    float dist = Vector3.Distance(player.transform.position, base.transform.position);
+                    float dist = Mathf.Clamp(Vector3.Distance(player.transform.position, base.transform.position), 0.3f, 0.6f);
                     Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+                    vector = new(vector.x, 0, vector.z);
                     if (vector.magnitude > 2f)
                     {
                         if (vector.magnitude > 10f)
@@ -269,11 +333,18 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                         }
                     }
                 }
+                if (player.isCrouching)
+                {
+                    ResetAnimations(silent: false, clearMemory: true);
+                    // FallOverAndSync(Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position));
+                    return;
+                }
             }
-            Vector3 direction = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
-            Vector3 pos = base.transform.position - (direction * chosenDistance);
-            MoveTowardsAndSync(pos, silent: false, chosenSpeed);
         }
+        float chosenDistance = chosenSpeed switch {0 => sprintDistance, 1 => walkDistance, _ => crouchDistance};
+        Vector3 direction = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
+        Vector3 pos = base.transform.position - (direction * chosenDistance);
+        MoveTowardsAndSync(pos, silent: false, chosenSpeed);
     }
 
     public void OnExit(Collider other)
@@ -282,7 +353,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
 
     private void IntervalUpdate()
     {
-        if (isHeld || isHeldByEnemy || !hasHitGround || base.isInShipRoom || !base.isInFactory || !base.IsOwner || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f || base.transform.parent.GetComponentInChildren<PlayerPhysicsRegion>() != null)
+        if (isHeld || isHeldByEnemy || !hasHitGround || base.isInShipRoom || !base.isInFactory || !base.IsOwner || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f || base.transform.parent?.GetComponentInChildren<PlayerPhysicsRegion>() != null)
         {
             return;
         }
@@ -305,7 +376,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         bool movable = false;
         for (int i = 0; i < playersInside.Count; i++)
         {
-            if (playersInside[i].HasLineOfSightToPosition(base.transform.position + Vector3.up) && !haunted)
+            if (playersInside[i].HasLineOfSightToPosition(base.transform.position + Vector3.up * rayHeightMultiplier) && !haunted)
             {
                 losFlag = true;
             }
@@ -326,22 +397,21 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         {
             if (NavMesh.CalculatePath(hit.position, ClosestPlayerInside().position, -1, path))
             {
-                Debug.Log("[RADIATOR]: Moving on my own!");
-                RoamMovement(hit.position);
+                RoamMovement(hit.position, ClosestPlayerInside().position);
                 lastActionTime = Time.realtimeSinceStartup;
             }
             else
             {
-                Debug.Log("[RADIATOR]: I can't move on my own!");
                 lastActionTime = Time.realtimeSinceStartup;
             }
         }
     }
 
-    public void RoamMovement(Vector3 pathStart)
+    public void RoamMovement(Vector3 pathStart, Vector3 pathEnd)
     {
-        if (NavMesh.CalculatePath(pathStart, ClosestPlayerInside().position, -1, path))
+        if (NavMesh.CalculatePath(pathStart, pathEnd, -1, path))
         {
+            Vector3 currentPosition = base.transform.position;
             float maxRange = 200f;
             int corner = 0;
             for (int i = 0; i < path.corners.Length; i++)
@@ -350,18 +420,17 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                 if (sqrMagnitude < maxRange)
                 {
                     maxRange = sqrMagnitude;
-                    corner = i + 1;
+                    corner = (i + 1 > path.corners.Length) ? i : i + 1;
                 }
             }
             Vector3 newPosition = path.corners[corner];
-            Vector3 currentPosition = base.transform.position;
-            float maxWallDistance = 1.3f;
+            float maxWallDistance = wallRadius * 0.85f;
             float wallDistance = maxWallDistance;
             float yRotation = -1;
             for (int i = 0; i < 360; i += 360/6)
             {
-                RoundManager.Instance.tempTransform.eulerAngles = new Vector3(0f, i, 0f);
-                if (Physics.Raycast(currentPosition + Vector3.up * 2f, RoundManager.Instance.tempTransform.forward, out var hitInfo, maxWallDistance, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+                RoundManager.Instance.tempTransform.eulerAngles = new Vector3(base.transform.eulerAngles.x, i, base.transform.eulerAngles.z);
+                if (Physics.Raycast(currentPosition + Vector3.up * rayHeightMultiplier, RoundManager.Instance.tempTransform.forward, out var hitInfo, maxWallDistance, CoronaMod.Masks.RadiatorMask, QueryTriggerInteraction.Ignore))
                 {
                     if (hitInfo.distance < wallDistance)
                     {
@@ -372,12 +441,12 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             }
             if (yRotation != -1)
             {
-                RoundManager.Instance.tempTransform.eulerAngles = new Vector3(0f, yRotation, 0f);
+                RoundManager.Instance.tempTransform.eulerAngles = new Vector3(base.transform.eulerAngles.x, yRotation, base.transform.eulerAngles.z);
                 currentPosition = path.corners[corner] - RoundManager.Instance.tempTransform.forward * (maxWallDistance - wallDistance);
-                Vector3 checkFromPosition = currentPosition + Vector3.up * 2f;
-                if (Physics.Raycast(checkFromPosition, Vector3.down, out var hitInfo, 8f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+                Vector3 checkFromPosition = currentPosition + Vector3.up * rayHeightMultiplier;
+                if (Physics.Raycast(checkFromPosition, Vector3.down, out var hitInfo, 8f, CoronaMod.Masks.RadiatorMask, QueryTriggerInteraction.Ignore))
                 {
-                    newPosition = RoundManager.Instance.GetNavMeshPosition(hitInfo.point);
+                    newPosition = hitInfo.point;
                 }
                 else
                 {
@@ -388,44 +457,46 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         }
     }
 
-    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false)
+    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0)
     {
-        MoveTowards(position, silent, speedIndex, roaming);
-        MoveTowardsServerRpc(position, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId, roaming);
+        MoveTowards(position, silent, speedIndex, roaming, timesBounced);
+        MoveTowardsServerRpc(position, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId, roaming, timesBounced);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void MoveTowardsServerRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false)
+    public void MoveTowardsServerRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false, int timesBounced = 0)
     {
-        MoveTowardsClientRpc(position, silent, speedIndex, clientWhoSentRpc, roaming);
+        MoveTowardsClientRpc(position, silent, speedIndex, clientWhoSentRpc, roaming, timesBounced);
     }
 
     [ClientRpc]
-    public void MoveTowardsClientRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false)
+    public void MoveTowardsClientRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false, int timesBounced = 0)
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            MoveTowards(position, silent, speedIndex, roaming);
+            MoveTowards(position, silent, speedIndex, roaming, timesBounced);
         }
     }
 
-    public void MoveTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false)
+    public void MoveTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0)
     {
         if (moveCoroutine != null)
         {
             StopCoroutine(moveCoroutine);
             moveCoroutine = null;
         }
-        moveCoroutine = StartCoroutine(DecelerateTowards(position, silent, speedIndex, roaming));
+        moveCoroutine = StartCoroutine(DecelerateTowards(position, silent, speedIndex, roaming, timesBounced));
     }
 
-    public IEnumerator DecelerateTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false)
+    public IEnumerator DecelerateTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0)
     {
-        if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f || moveTimer > 0f)
+        if (!grabbable || isHeld || isHeldByEnemy || moveTimer > 0f || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
         {
+            ResetAnimations(silent: true, clearMemory: true);
             yield break;
         }
-        ResetMovement(silent, clearMemory: false);
+        bool heavy = speedIndex switch {0 => true, _ => false};
+        ResetAnimations(silent, clearMemory: false, heavy: heavy);
         moveTimer = moveCooldown;
         lastActionTime = Time.realtimeSinceStartup;
         float timeBumped = Time.realtimeSinceStartup;
@@ -447,68 +518,82 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             chosenSpeed = speedIndex switch {0 => sprintSpeed, 1 => walkSpeed, _ => crouchSpeed};
             chosenDistance = speedIndex switch {0 => sprintDistance, 1 => walkDistance, _ => crouchDistance};
         }
+        chosenDistance = timesBounced switch {0 => chosenDistance, 1 => chosenDistance / 2, 2 => chosenDistance / 3, _ => 0f};
         Vector3 direction = Vector3.Normalize(position - startPosition);
         float noWallDistance = Mathf.Clamp(Vector3.Distance(startPosition, position), 0f, chosenDistance);
-        Debug.Log($"[RADIATOR]: Starting move!");
-		Ray ray = new(base.transform.position + Vector3.up * 0.4f, direction);
-		Vector3 wallPos = (!Physics.Raycast(ray, out RaycastHit rayHit, noWallDistance, CoronaMod.Masks.RadiatorMask)) ? ray.GetPoint(noWallDistance) : ray.GetPoint(Vector3.Distance(ray.origin, rayHit.point) - 0.8f);
-        Vector3 vertPos = Physics.Raycast(position, Vector3.down, out var vertHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore) ? vertHitInfo.point + itemProperties.verticalOffset * Vector3.up : position;
+        Debug.Log($"[RADIATOR]: Starting move! Times bounced: {timesBounced}");
+		Ray ray = new(base.transform.position + Vector3.up * rayHeightMultiplier, direction);
+		Vector3 wallPos = (!Physics.Raycast(ray, out RaycastHit wallHitInfo, noWallDistance, CoronaMod.Masks.RadiatorMask)) ? ray.GetPoint(noWallDistance) : ray.GetPoint(Vector3.Distance(ray.origin, wallHitInfo.point));
+        Vector3 vertPos = Physics.Raycast(position + Vector3.up * rayHeightMultiplier, Vector3.down, out RaycastHit vertHitInfo, 10f, CoronaMod.Masks.RadiatorMask, QueryTriggerInteraction.Ignore) ? vertHitInfo.point + itemProperties.verticalOffset * Vector3.up : position + itemProperties.verticalOffset * Vector3.up;
         Vector3 endPosition = new(wallPos.x, vertPos.y, wallPos.z);
-        float finalDistance = (!Physics.Raycast(ray, out _, noWallDistance, CoronaMod.Masks.RadiatorMask)) ? noWallDistance : Vector3.Distance(ray.origin, rayHit.point) - 0.8f;
-        if (finalDistance < 1f && !roaming)
+        if (Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)) < 0.25f)
         {
-            Debug.Log($"[RADIATOR]: Too close to a wall to begin with, can't move!");
+            Debug.Log($"[RADIATOR]: Insignificant movement, ignored! Distance: {Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z))}");
             yield break;
         }
         float startY = base.transform.eulerAngles.y;
-        float endY = Random.Range(-65f, 65f) + startY;
+        float endY = Random.Range(-45f, 45f) + startY;
         Vector3 endEuler = new(base.transform.eulerAngles.x, endY, base.transform.eulerAngles.z);
-        while (Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)) > 0.1f)
+        wheelSource.clip = heavy ? heavyWheelClips[Random.Range(0, heavyWheelClips.Length)] : lightWheelClips[Random.Range(0, lightWheelClips.Length)];
+        wheelSource.pitch = Random.Range(0.9f, 1.15f);
+        wheelSource.Play();
+        while (Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)) > 0.05f)
         {
             //CHECK FUTURE POSITION FOR CLIFFS OR WALLS
             Vector3 futurePosition = base.transform.position;
             futurePosition = Vector3.Lerp(futurePosition, endPosition, chosenSpeed * Time.deltaTime);
             Vector3 futureLocalPosition = base.transform.localPosition;
-            if (Physics.Raycast(futurePosition, Vector3.down, out var futureHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(futurePosition + Vector3.up * rayHeightMultiplier, Vector3.down, out RaycastHit futureHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
             {
                 Vector3 futureTargetFloorPosition = futureHitInfo.point + itemProperties.verticalOffset * Vector3.up;
                 if (base.transform.parent != null)
                 {
                     futureTargetFloorPosition = base.transform.parent.InverseTransformPoint(futureTargetFloorPosition);
                 }
-                if (Vector3.Distance(futureLocalPosition, futureTargetFloorPosition) > 0.5f || Vector3.Angle(Vector3.up, futureHitInfo.normal) > 45f)
+                if (Vector3.Distance(futurePosition, futureHitInfo.point) > 0.5f || Vector3.Distance(futureLocalPosition, futureTargetFloorPosition) > 0.5f || Vector3.Angle(base.transform.up, futureHitInfo.normal) > 45f)
                 {
-                    Debug.Log($"[RADIATOR]: Elevation change, can't move!");
-                    ResetMovement(silent: false, clearMemory: true);
+                    Debug.Log($"[RADIATOR]: Elevation change at future position, can't move! Distance 1: {Vector3.Distance(futurePosition, futureHitInfo.point)}, Distance 2: {Vector3.Distance(futureLocalPosition, futureTargetFloorPosition)}, Angle: {Vector3.Angle(base.transform.up, futureHitInfo.normal)}");
+                    ResetAnimations(silent: false, clearMemory: true);
+                    // FallOverAndSync(direction);
                     yield break;
                 }
             }
+            else
+            {
+                Debug.Log($"[RADIATOR]: Couldn't find a floor at future position, can't move!");
+                ResetAnimations(silent: false, clearMemory: true);
+                yield break;
+            }
             if (!roaming)
             {
-                float maxWallDistance = 0.8f;
+                float maxWallDistance = wallRadius * 0.65f;
                 float wallDistance = maxWallDistance;
-                float yRotation = -1;
-                for (int i = 0; i < 360; i += 360/6)
+                Vector3 wallNormal = Vector3.zero;
+                for (int i = 0; i < 360; i += 360 / 6)
                 {
-                    RoundManager.Instance.tempTransform.eulerAngles = new Vector3(0f, i, 0f);
-                    if (Physics.Raycast(futurePosition + Vector3.up * 2f, RoundManager.Instance.tempTransform.forward, out var collideInfo, maxWallDistance, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
+                    RoundManager.Instance.tempTransform.eulerAngles = new Vector3(base.transform.eulerAngles.x, i, base.transform.eulerAngles.z);
+                    if (Physics.Raycast(futurePosition + Vector3.up * rayHeightMultiplier, RoundManager.Instance.tempTransform.forward, out RaycastHit collideInfo, maxWallDistance, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
                     {
                         if (collideInfo.distance < wallDistance)
                         {
                             wallDistance = collideInfo.distance;
-                            yRotation = i;
+                            wallNormal = collideInfo.normal;
                         }
                     }
                 }
-                if (yRotation != -1)
+                if (wallNormal != Vector3.zero && Vector3.Angle(base.transform.up, wallNormal) > 50f)
                 {
-                    Debug.Log($"[RADIATOR]: Hit a wall, can't move!");
-                    ResetMovement(silent: true, clearMemory: true);
+                    Vector3 newDirection = Vector3.Reflect(new(direction.x, 0f, direction.z), new(wallNormal.x, 0f, wallNormal.z));
+                    Vector3 newPos = base.transform.position + (newDirection * chosenDistance);
+                    moveTimer = 0f;
+                    MoveTowardsAndSync(newPos, silent: false, speedIndex: speedIndex, timesBounced: timesBounced + 1);
                     yield break;
                 }
             }
+
             yield return null;
-            //BUMP INTO THINGS
+
+            //BUMP INTO INTERACTIVE OBJECTS
             if (Time.realtimeSinceStartup - timeBumped > moveCooldown)
             {
                 RaycastHit[] results = Physics.SphereCastAll(base.transform.position + Vector3.up, 0.75f, Vector3.down, 0.75f, CoronaMod.Masks.PropsMapHazards);
@@ -525,9 +610,11 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                     }
                 }
             }
+
             //MOVE FORWARD
             base.transform.position = Vector3.Lerp(base.transform.position, endPosition, chosenSpeed * Time.deltaTime);
-            if (Physics.Raycast(base.transform.position, Vector3.down, out var hitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            base.transform.position = new(base.transform.position.x, futureHitInfo.point.y + itemProperties.verticalOffset, base.transform.position.z);
+            if (Physics.Raycast(base.transform.position, Vector3.down, out RaycastHit hitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
             {
                 Vector3 newTargetFloorPosition = hitInfo.point + itemProperties.verticalOffset * Vector3.up;
                 if (base.transform.parent != null)
@@ -537,28 +624,37 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                 targetFloorPosition = newTargetFloorPosition;
                 base.transform.localPosition = targetFloorPosition;
             }
-            base.transform.rotation = Quaternion.Euler(base.transform.eulerAngles.x, Mathf.LerpAngle(base.transform.eulerAngles.y, endEuler.y, chosenSpeed * Time.deltaTime), base.transform.eulerAngles.z);
+            Physics.Raycast(base.transform.position + base.transform.forward * 0.4f, Vector3.down, out RaycastHit frontHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore);
+            Physics.Raycast(base.transform.position - base.transform.forward * 0.4f, Vector3.down, out RaycastHit backHitInfo, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore);
+            Vector3 avgUp = frontHitInfo.normal + backHitInfo.normal;
+            base.transform.rotation = Quaternion.Euler(base.transform.eulerAngles.x, Mathf.LerpAngle(base.transform.eulerAngles.y, endEuler.y, chosenSpeed * Time.deltaTime * 0.5f), base.transform.eulerAngles.z);
+            base.transform.rotation = Quaternion.Slerp(base.transform.rotation, Quaternion.FromToRotation(Vector3.up, avgUp), chosenSpeed * Time.deltaTime * 2f);
             itemAnimator.SetLayerWeight(1, Mathf.Clamp(Vector3.Distance(base.transform.position, new(endPosition.x, base.transform.position.y, endPosition.z)), 0f, 1f));
         }
         Debug.Log($"[RADIATOR]: Movement finished!");
-        ResetMovement(silent: true, clearMemory: true);
+        ResetAnimations(silent: true, clearMemory: true);
     }
 
-    private void ResetMovement(bool silent, bool clearMemory)
+    private void ResetAnimations(bool silent, bool clearMemory, bool heavy = false)
     {
         if (!silent)
         {
             itemAnimator.SetTrigger("Bump");
+            bumpSource.clip = heavy ? heavyBumpClips[Random.Range(0, heavyBumpClips.Length)] : lightBumpClips[Random.Range(0, lightBumpClips.Length)];
+            bumpSource.pitch = Random.Range(0.9f, 1.15f);
+            bumpSource.Play();
+            RoundManager.Instance.PlayAudibleNoise(base.transform.position);
         }
         if (clearMemory)
         {
             CollidersHitByRadiator.Clear();
         }
+        wheelSource.Stop();
         itemAnimator.SetLayerWeight(1, 0f);
-        if (testPos != null)
+        if (debugPos != null)
         {
-            Destroy(testPos);
-            testPos = null;
+            Destroy(debugPos);
+            debugPos = null;
         }
     }
 
@@ -576,7 +672,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         if (other.gameObject.TryGetComponent<Vase>(out var vase))
         {
             bumped = true;
-            vase.WobbleAndSync(speedIndex switch {0 => 2, 1 => 1, _ => 0});
+            vase.WobbleAndSync(speedIndex switch {0 => 1, _ => 0});
         }
         else if (other.gameObject.TryGetComponent<Radiator>(out var otherRadiator) && otherRadiator != this)
         {
@@ -621,13 +717,13 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             if (playerWhoHit != null)
             {
                 Vector3 direction = Vector3.Normalize(new Vector3(playerWhoHit.transform.position.x, base.transform.position.y, playerWhoHit.transform.position.z) - base.transform.position);
-                Vector3 pos = base.transform.position - (direction * walkDistance);
-                MoveTowardsAndSync(pos, silent: false, 1);
+                Vector3 pos = base.transform.position - (direction * sprintDistance);
+                MoveTowardsAndSync(pos, silent: false, 0);
             }
             else
             {
-                Vector3 pos = base.transform.position - (hitDirection * walkDistance);
-                MoveTowardsAndSync(pos, silent: false, 1);
+                Vector3 pos = base.transform.position - (hitDirection * sprintDistance);
+                MoveTowardsAndSync(pos, silent: false, 0);
             }
         }
         return false;
