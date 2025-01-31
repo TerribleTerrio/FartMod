@@ -137,7 +137,7 @@ public class Rake : GrabbableObject, ITouchable
             return;
         }
 
-        if (Physics.Linecast(base.transform.position + Vector3.up * 0.5f, otherObject.transform.position, 1073742080, QueryTriggerInteraction.Ignore))
+        if (Physics.Linecast(base.transform.position + Vector3.up * 0.5f, otherObject.transform.position + Vector3.up * 0.5f, CoronaMod.Masks.RoomVehicle, QueryTriggerInteraction.Ignore))
         {
             return;
         }

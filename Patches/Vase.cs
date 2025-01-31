@@ -464,6 +464,10 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                     WobbleAndSync(0);
                 }
             }
+            else if (enemy.mainScript.enemyType.enemyName == "Girl")
+            {
+                WobbleAndSync(0);
+            }
             else if (enemy.mainScript.enemyType.enemyName == "Maneater")
             {
                 CaveDwellerAI caveDweller = enemy.mainScript as CaveDwellerAI;
