@@ -95,6 +95,7 @@ internal class LandminePatch
                     otherObject.GetComponent<Vase>().WobbleAndSync(2);
                 }
             }
+            otherObject.GetComponent<Radiator>()?.FallOverAndSync(-(new Vector3(explosionPosition.x, 0f, explosionPosition.z) - new Vector3(otherObject.transform.position.x, 0f, otherObject.transform.position.z)).normalized);
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
@@ -140,6 +141,46 @@ internal class SpikeRoofTrapPatch
                     player.currentlyHeldObjectServer.gameObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
                     player.currentlyHeldObjectServer.gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
                     player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>()?.ExplodeAndSync();
+                }
+            }
+        }
+    }
+}
+
+[HarmonyPatch(typeof(Turret))]
+internal class TurretPatch
+{
+    static float lastInterval;
+
+    [HarmonyPatch("Update")]
+    [HarmonyPrefix]
+    static void InteractUpdate(Turret __instance)
+    {
+        if (Time.realtimeSinceStartup - lastInterval > 0.2f)
+        {
+            lastInterval = Time.realtimeSinceStartup;
+            if (__instance.turretMode == TurretMode.Firing || __instance.turretMode == TurretMode.Berserk)
+            {
+                Ray propRay = new Ray(__instance.aimPoint.position - Vector3.up * 0.25f, __instance.aimPoint.forward);
+                if (Physics.Raycast(propRay, out RaycastHit propHit, 30f, Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Ignore))
+                {
+                    GameObject otherObject = propHit.collider.gameObject;
+                    otherObject.GetComponent<Toaster>()?.GetComponent<IHittable>().Hit(1, Vector3.zero);
+                    otherObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
+                    otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
+                    otherObject.GetComponent<Vase>()?.ExplodeAndSync();
+                    otherObject.GetComponent<Radiator>()?.FallOverAndSync(__instance.aimPoint.forward);
+                    if (otherObject.GetComponent<PlayerControllerB>() != null)
+                    {
+                        PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
+                        if (player.isHoldingObject)
+                        {
+                            player.currentlyHeldObjectServer.gameObject.GetComponent<Toaster>()?.GetComponent<IHittable>().Hit(1, Vector3.zero);
+                            player.currentlyHeldObjectServer.gameObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
+                            player.currentlyHeldObjectServer.gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
+                            player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>()?.ExplodeAndSync();
+                        }
+                    }
                 }
             }
         }
