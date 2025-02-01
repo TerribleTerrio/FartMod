@@ -1,15 +1,18 @@
 using System;
 using System.Reflection;
+using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
 
-public class TriggerScript : MonoBehaviour
+public class TriggerScript : MonoBehaviour, IHittable
 {
     public NetworkBehaviour objectScript;
 
     public String callOnTriggerEnter;
 
     public String callOnTriggerExit;
+
+    public String callOnHit;
 
     private MethodInfo onEnter;
 
@@ -18,6 +21,10 @@ public class TriggerScript : MonoBehaviour
     private MethodInfo onExit;
 
     private ParameterInfo[] onExitParameters;
+
+    private MethodInfo onHit;
+
+    private ParameterInfo[] onHitParameters;
 
     public void Start()
     {
@@ -28,6 +35,9 @@ public class TriggerScript : MonoBehaviour
 
         onExit = itemType.GetMethod(callOnTriggerExit);
         onExitParameters = onExit.GetParameters();
+
+        onHit = itemType.GetMethod(callOnHit);
+        onHitParameters = onHit.GetParameters();
     }
     
     public void OnTriggerEnter(Collider other)
@@ -56,5 +66,11 @@ public class TriggerScript : MonoBehaviour
             parametersArray[0] = other;
             onExit.Invoke(objectScript, parametersArray);
         }
+    }
+
+    bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
+    {
+        onHit.Invoke(objectScript, null);
+        return false;
     }
 }

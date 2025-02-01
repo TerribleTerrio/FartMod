@@ -84,6 +84,7 @@ internal class LandminePatch
             otherObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Explosion");
+            otherObject.GetComponent<Balloon>()?.Pop();
             if (otherObject.GetComponent<Vase>() != null)
             {
                 if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
@@ -165,6 +166,7 @@ internal class ShotgunPatch
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Shotgun");
             otherObject.GetComponent<Vase>()?.ExplodeAndSync();
+            otherObject.GetComponent<Balloon>()?.Pop();
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
@@ -254,6 +256,23 @@ internal class TerminalPatch
                 __instance.enemyFiles[i].displayText = "Scarecrow\n\nWe led so firmly into the deep below Earth, where we saw thousands of candles burning in rows, some large, others small.\n\nSee now, these are the lights of lives. One must go out before a new one is lighted. The little belong to the old and young, to the prime belong the large, and to you belonged the most bright and pleasant, which filled the room with warmth.\n\nIt was extinguished and you fell to the ground. Your body was exhumed and adorned and revered, all clime had come to know what was your worth, and then all the more lights were burning even brighter in your place.";
                 __instance.enemyFiles[i].loadImageSlowly = true;
                 __instance.enemyFiles[i].maxCharactersToType = 35;
+            }
+        }
+    }
+}
+
+[HarmonyPatch(typeof(PlayerControllerB))]
+internal class PlayerControllerBPatch
+{
+    [HarmonyPatch("SwitchToItemSlot")]
+    [HarmonyPrefix]
+    static void SwitchToItemSlot(PlayerControllerB __instance, int slot, GrabbableObject fillSlotWithItem = null)
+    {
+        if (__instance.currentlyHeldObjectServer != null)
+        {
+            if (__instance.currentlyHeldObjectServer.gameObject.GetComponent<Balloon>() != null)
+            {
+                __instance.DiscardHeldObject();
             }
         }
     }
