@@ -130,6 +130,8 @@ internal class SpikeRoofTrapPatch
             otherObject.GetComponent<ArtilleryShellItem>()?.ExplodeAndSync();
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<Vase>()?.ExplodeAndSync();
+            otherObject.GetComponent<WhoopieCushionItem>()?.Fart();
+            otherObject.GetComponent<Radiator>()?.FallOverAndSync(-(new Vector3(__instance.transform.position.x, 0f, __instance.transform.position.z) - new Vector3(otherObject.transform.position.x, 0f, otherObject.transform.position.z)).normalized);
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
