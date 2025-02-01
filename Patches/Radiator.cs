@@ -5,6 +5,8 @@ using UnityEngine.AI;
 using System.Linq;
 using System.Collections.Generic;
 using Unity.Netcode;
+using System;
+using Random = UnityEngine.Random;
 
 public class Radiator : GrabbableObject, IHittable, ITouchable
 {
@@ -81,8 +83,8 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         {
             haunted = false;
         }
-        ResetStates();
-        ResetAnimations(silent: true, clearMemory: true);
+        ResetStatesAndSync();
+        ResetAnimationsAndSync(silent: true, clearMemory: true);
         base.Start();
     }
 
@@ -178,24 +180,24 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
     public override void EquipItem()
     {
         lastActionTime = Time.realtimeSinceStartup;
-        ResetStates();
-        ResetAnimations(silent: true, clearMemory: true);
+        ResetStatesAndSync();
+        ResetAnimationsAndSync(silent: true, clearMemory: true);
         base.EquipItem();
     }
 
     public override void GrabItemFromEnemy(EnemyAI enemy)
     {
         lastActionTime = Time.realtimeSinceStartup;
-        ResetStates();
-        ResetAnimations(silent: true, clearMemory: true);
+        ResetStatesAndSync();
+        ResetAnimationsAndSync(silent: true, clearMemory: true);
         base.GrabItemFromEnemy(enemy);
     }
 
     public override void DiscardItem()
     {
         lastActionTime = Time.realtimeSinceStartup;
-        ResetStates();
-        ResetAnimations(silent: true, clearMemory: true);
+        ResetStatesAndSync();
+        ResetAnimationsAndSync(silent: true, clearMemory: true);
         base.DiscardItem();
     }
 
@@ -210,6 +212,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             return;
         }
         int chosenSpeed = 1;
+        ulong playerId = 0;
         if (other.gameObject.layer == 19)
         {
             if (!other.TryGetComponent<EnemyAICollisionDetect>(out var enemy))
@@ -259,7 +262,8 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                 {
                     return;
                 }
-                ResetAnimations(silent: true, clearMemory: true);
+                playerId = player.playerClientId;
+                ResetAnimationsAndSync(silent: true, clearMemory: true);
                 if (player.isSprinting)
                 {
                     chosenSpeed = 0;
@@ -288,7 +292,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                 }
                 if (player.isCrouching)
                 {
-                    ResetAnimations(silent: false, clearMemory: true);
+                    ResetAnimationsAndSync(silent: false, clearMemory: true);
                     return;
                 }
             }
@@ -296,7 +300,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         float chosenDistance = chosenSpeed switch {0 => sprintDistance, 1 => walkDistance, _ => crouchDistance};
         Vector3 direction = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
         Vector3 pos = base.transform.position - (direction * chosenDistance);
-        MoveTowardsAndSync(pos, silent: false, chosenSpeed);
+        MoveTowardsAndSync(pos, silent: false, speedIndex: chosenSpeed, clientWhoPushed: playerId);
     }
 
     public void OnExit(Collider other)
@@ -411,28 +415,39 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         }
     }
 
-    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
+    public void MoveTowardsAndSync(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true, ulong clientWhoPushed = 0)
     {
-        MoveTowards(position, silent, speedIndex, roaming, timesBounced, affectRotation);
-        MoveTowardsServerRpc(position, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId, roaming, timesBounced, affectRotation);
+        MoveTowards(position, base.transform.position, base.transform.rotation, silent, speedIndex, roaming, timesBounced, affectRotation);
+        MoveTowardsServerRpc(position, base.transform.position, base.transform.rotation, silent, speedIndex, (int)GameNetworkManager.Instance.localPlayerController.playerClientId, roaming, timesBounced, affectRotation, clientWhoPushed);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void MoveTowardsServerRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
+    public void MoveTowardsServerRpc(Vector3 position, Vector3 ownerPos, Quaternion ownerRot, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true, ulong clientWhoPushed = 0)
     {
-        MoveTowardsClientRpc(position, silent, speedIndex, clientWhoSentRpc, roaming, timesBounced, affectRotation);
+        if (clientWhoPushed != 0 && base.OwnerClientId != clientWhoPushed)
+        {
+            try
+            {
+                base.gameObject.GetComponent<NetworkObject>().ChangeOwnership(clientWhoPushed);
+            }
+            catch (Exception arg)
+            {
+                Debug.Log($"Failed to transfer ownership of radiator to client: {arg}");
+            }
+        }
+        MoveTowardsClientRpc(position, ownerPos, ownerRot, silent, speedIndex, clientWhoSentRpc, roaming, timesBounced, affectRotation);
     }
 
     [ClientRpc]
-    public void MoveTowardsClientRpc(Vector3 position, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
+    public void MoveTowardsClientRpc(Vector3 position, Vector3 ownerPos, Quaternion ownerRot, bool silent, int speedIndex = -1, int clientWhoSentRpc = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            MoveTowards(position, silent, speedIndex, roaming, timesBounced, affectRotation);
+            MoveTowards(position, ownerPos, ownerRot, silent, speedIndex, roaming, timesBounced, affectRotation);
         }
     }
 
-    public void MoveTowards(Vector3 position, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
+    public void MoveTowards(Vector3 position, Vector3 ownerPos, Quaternion ownerRot, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
     {
         if (moveCoroutine != null)
         {
@@ -446,11 +461,11 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
     {
         if ((fallen && affectRotation) || !grabbable || isHeld || isHeldByEnemy || moveTimer > 0f || StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
         {
-            ResetAnimations(silent: true, clearMemory: true);
+            ResetAnimationsAndSync(silent: true, clearMemory: true);
             yield break;
         }
         bool heavy = speedIndex == 0;
-        ResetAnimations(silent, clearMemory: false, heavy: heavy);
+        ResetAnimationsAndSync(silent, clearMemory: false, heavy: heavy);
         moveTimer = moveCooldown;
         lastActionTime = Time.realtimeSinceStartup;
         float timeBumped = Time.realtimeSinceStartup;
@@ -508,20 +523,20 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                     Debug.Log($"{Mathf.Abs(futureLocalPosition.y - futureTargetFloorPosition.y)}, {Mathf.Abs(futurePosition.y - futureHitInfo.point.y)}, {Vector3.Angle(base.transform.up, futureHitInfo.normal)}, {Vector3.Angle(Vector3.up, futureHitInfo.normal)}");
                     if (!fallen)
                     {
-                    ResetAnimations(silent: !roaming, clearMemory: true);
+                    ResetAnimationsAndSync(silent: !roaming, clearMemory: true);
                     FallOverAndSync(direction);
                     yield break;
                     }
                     else
                     {
-                        ResetAnimations(silent: !roaming, clearMemory: true);
+                        ResetAnimationsAndSync(silent: !roaming, clearMemory: true);
                         yield break;
                     }
                 }
             }
             else
             {
-                ResetAnimations(silent: !roaming, clearMemory: true);
+                ResetAnimationsAndSync(silent: !roaming, clearMemory: true);
                 yield break;
             }
             if (!roaming)
@@ -605,7 +620,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             }
             itemAnimator.SetLayerWeight(1, Mathf.Clamp(Vector3.Distance(base.transform.position, new Vector3(endPosition.x, base.transform.position.y, endPosition.z)), 0f, 1f));
         }
-        ResetAnimations(silent: true, clearMemory: true);
+        ResetAnimationsAndSync(silent: true, clearMemory: true);
     }
 
     public void FallOverAndSync(Vector3 direction)
@@ -715,7 +730,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                     StopCoroutine(moveCoroutine);
                     moveCoroutine = null;
                 }
-                ResetAnimations(silent: false, clearMemory: false);
+                ResetAnimationsAndSync(silent: false, clearMemory: false);
                 bool droppedInElevator = false;
                 bool droppedInPhysicsRegion = false;
                 Vector3 hitPoint = dropPos;
@@ -787,6 +802,27 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         }
     }
 
+    private void ResetStatesAndSync()
+    {
+        ResetStates();
+        ResetStatesServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void ResetStatesServerRpc(int clientWhoSentRpc)
+    {
+        ResetStatesClientRpc(clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    private void ResetStatesClientRpc(int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            ResetStates();
+        }
+    }
+
     private void ResetStates()
     {
         if (moveCoroutine != null)
@@ -800,6 +836,27 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             fallOverCoroutine = null;
         }
         fallen = false;
+    }
+
+    private void ResetAnimationsAndSync(bool silent, bool clearMemory, bool heavy = false)
+    {
+        ResetAnimations(silent, clearMemory, heavy);
+        ResetAnimationsServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, silent, clearMemory, heavy);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void ResetAnimationsServerRpc(int clientWhoSentRpc, bool silent, bool clearMemory, bool heavy = false)
+    {
+        ResetAnimationsClientRpc(clientWhoSentRpc, silent, clearMemory, heavy);
+    }
+
+    [ClientRpc]
+    private void ResetAnimationsClientRpc(int clientWhoSentRpc, bool silent, bool clearMemory, bool heavy = false)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            ResetAnimations(silent, clearMemory, heavy);
+        }
     }
 
     private void ResetAnimations(bool silent, bool clearMemory, bool heavy = false)
@@ -902,7 +959,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         {
             moveTimer = 0f;
             Vector3 pos = base.transform.position + (new Vector3(hitDirection.x, 0f, hitDirection.z) * sprintDistance);
-            MoveTowardsAndSync(pos, silent: false, speedIndex: 0);
+            MoveTowardsAndSync(pos, silent: false, speedIndex: 0, clientWhoPushed: playerWhoHit.playerClientId);
         }
         return false;
     }
