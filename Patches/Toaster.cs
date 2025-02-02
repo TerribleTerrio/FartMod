@@ -54,9 +54,13 @@ public class Toaster : AnimatedItem, IHittable
 
     private Coroutine ejectCoroutine;
 
-    private bool underwater;
+    private bool isUnderwater;
 
     private bool zapping;
+
+    private float lastRainZapTime;
+
+    private float rainZapInterval = 1f;
 
     private float lastHauntCheckTime;
 
@@ -99,7 +103,7 @@ public class Toaster : AnimatedItem, IHittable
             {
                 underwaterCollider = playerHeldBy.underwaterCollider;
             }
-            underwater = true;
+            isUnderwater = true;
         }
         else if (isHeld && playerHeldBy != null && playerHeldBy.isUnderwater && playerHeldBy.underwaterCollider != null && !playerHeldBy.underwaterCollider.bounds.Contains(base.transform.position + Vector3.up * 0.5f))
         {
@@ -107,7 +111,7 @@ public class Toaster : AnimatedItem, IHittable
             {
                 underwaterCollider = playerHeldBy.underwaterCollider;
             }
-            underwater = false;
+            isUnderwater = false;
         }
         else if (isHeld && playerHeldBy != null && !playerHeldBy.isUnderwater)
         {
@@ -115,12 +119,21 @@ public class Toaster : AnimatedItem, IHittable
             {
                 underwaterCollider = null;
             }
-            underwater = false;
+            isUnderwater = false;
         }
-        if (inserted && underwater)
+        if (isUnderwater && inserted)
         {
-            EjectAndSync();
             ZapAndSync(1.9f, underwater: true);
+            EjectAndSync();
+        }
+        if ((StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Rainy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded) && Time.realtimeSinceStartup - lastRainZapTime > rainZapInterval)
+        {
+            lastRainZapTime = Time.realtimeSinceStartup;
+            if (inserted && !isInFactory && !isInShipRoom && !Physics.Raycast(base.transform.position, Vector3.up, out _, 100f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            {
+                ZapAndSync(0.5f, underwater: false);
+                EjectAndSync();
+            }
         }
         base.Update();
     }
@@ -146,7 +159,7 @@ public class Toaster : AnimatedItem, IHittable
         }
     }
 
-    public IEnumerator ZapEffect(float length, bool underwater)
+    public IEnumerator ZapEffect(float length, bool submerged)
     {
         if (zapping)
         {
@@ -155,9 +168,9 @@ public class Toaster : AnimatedItem, IHittable
         zapping = true;
         float timeElapsed = 0f;
         float duration = length;
-        float damageInterval = 0.2f;
+        float damageInterval = submerged ? 0.15f : 0.4f;
         float damageTime = 0f;
-        float[] zapIntervals = [0.25f, 0.35f, 0.5f, 0.65f, 0.75f, 0.9f];
+        float[] zapIntervals = submerged ? [0.25f, 0.35f, 0.5f, 0.65f, 0.75f, 0.9f] : [0.2f, 0.4f, 0.6f, 0.8f];
         int zapInterval = 0;
         GameObject zapPrefabInstance = Instantiate(zapPrefab, base.transform.position, Quaternion.identity);
         VisualEffect zapEffect = zapPrefabInstance.GetComponent<VisualEffect>();
@@ -172,10 +185,21 @@ public class Toaster : AnimatedItem, IHittable
         const string zap = "Zap";
         const string compSize = "CompSize";
         const string compDirectionMult = "CompDirectionMult";
-        zapEffect.SetFloat(compSize, underwater ? 1.6f : 0.8f);
-        zapEffect.SetFloat(compDirectionMult, underwater ? 2f : 1f);
-        zapLight.lightDimmer = underwater ? 0.75f : 1f;
-        zapLight.range = underwater ? 7.5f : 2.5f;
+        const string MinBounds = "MinBounds";
+        const string MaxBounds = "MaxBounds";
+        zapEffect.SetFloat(compSize, 1.8f);
+        zapEffect.SetFloat(compDirectionMult, 2.35f);
+        zapLight.lightDimmer = submerged ? 0.7f : 1f;
+        zapLight.range = submerged ? 9f : 1f;
+        if (!submerged)
+        {
+            zapEffect.Stop();
+            zapEffect.SetVector3(MinBounds, new(-18f, -18f, -18f));
+            zapEffect.SetVector3(MaxBounds, new(18f, 18f, 18f));
+            zapEffect.SetFloat(compSize, 1.65f);
+            zapEffect.SetFloat(compDirectionMult, 1.75f);
+            zapEffect.Play();
+        }
         while (timeElapsed < duration)
         {
             if (zapInterval < zapIntervals.Length && timeElapsed > zapIntervals[zapInterval])
@@ -183,51 +207,51 @@ public class Toaster : AnimatedItem, IHittable
                 switch (zapInterval)
                 {
                     case 0:
-                        zapEffect.SetFloat(amount, underwater ? 20f : 10f);
-                        zapEffect.SetFloat(directionMult, underwater ? 1.2f : 0.6f);
-                        zapEffect.SetFloat(lifetime, underwater ? 0.2f : 0.1f);
-                        zapEffect.SetFloat(size, underwater ? 1.4f : 1f);
-                        zapEffect.SetFloat(arcNoiseMult, 0.1f);
+                        zapEffect.SetFloat(amount, 20f);
+                        zapEffect.SetFloat(lifetime, 0.2f);
+                        zapEffect.SetFloat(size, 1.4f);
+                        zapEffect.SetFloat(directionMult, 1.2f);
+                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.1f : 0.4f);
                         break;
 
                     case 1:
-                        zapEffect.SetFloat(amount, underwater ? 32f : 16f);
-                        zapEffect.SetFloat(directionMult, underwater ? 3f : 1f);
-                        zapEffect.SetFloat(lifetime, underwater ? 0.2f : 0.1f);
-                        zapEffect.SetFloat(size, underwater ? 2.4f : 1f);
-                        zapEffect.SetFloat(arcNoiseMult, 0.15f);
+                        zapEffect.SetFloat(amount, 32f);
+                        zapEffect.SetFloat(lifetime, 0.2f);
+                        zapEffect.SetFloat(size, 2.4f);
+                        zapEffect.SetFloat(directionMult, 3f);
+                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.15f : 0.5f);
                         break;
 
                     case 2:
-                        zapEffect.SetFloat(amount, underwater ? 48f : 24f);
-                        zapEffect.SetFloat(directionMult, underwater ? 5f : 1.3f);
-                        zapEffect.SetFloat(lifetime, underwater ? 0.3f : 0.15f);
-                        zapEffect.SetFloat(size, underwater ? 5f : 2f);
-                        zapEffect.SetFloat(arcNoiseMult, 0.45f);
+                        zapEffect.SetFloat(amount, 48f);
+                        zapEffect.SetFloat(lifetime, 0.3f);
+                        zapEffect.SetFloat(size, 5f);
+                        zapEffect.SetFloat(directionMult, 5f);
+                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.45f : 0.6f);
                         break;
 
                     case 3:
-                        zapEffect.SetFloat(amount, underwater ? 32f : 16f);
-                        zapEffect.SetFloat(directionMult, underwater ? 3f : 0.8f);
-                        zapEffect.SetFloat(lifetime, underwater ? 0.2f : 0.1f);
-                        zapEffect.SetFloat(size, underwater ? 3.4f : 1.5f);
-                        zapEffect.SetFloat(arcNoiseMult, 0.25f);
+                        zapEffect.SetFloat(amount, 32f);
+                        zapEffect.SetFloat(lifetime, 0.2f);
+                        zapEffect.SetFloat(size, 3.4f);
+                        zapEffect.SetFloat(directionMult, 3f);
+                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.25f : 0.4f);
                         break;
 
                     case 4:
-                        zapEffect.SetFloat(amount, underwater ? 24f : 12f);
-                        zapEffect.SetFloat(directionMult, underwater ? 3f : 1f);
-                        zapEffect.SetFloat(lifetime, underwater ? 0.2f : 0.1f);
-                        zapEffect.SetFloat(size, underwater ? 2.4f : 0.9f);
-                        zapEffect.SetFloat(arcNoiseMult, 0.15f);
+                        zapEffect.SetFloat(amount, 24f);
+                        zapEffect.SetFloat(lifetime, 0.2f);
+                        zapEffect.SetFloat(size, 2.4f);
+                        zapEffect.SetFloat(directionMult, 3f);
+                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.15f : 0.3f);
                         break;
 
                     case 5:
-                        zapEffect.SetFloat(amount, underwater ? 16f : 8f);
-                        zapEffect.SetFloat(directionMult, underwater ? 2f : 0.45f);
-                        zapEffect.SetFloat(lifetime, underwater ? 0.2f : 0.1f);
-                        zapEffect.SetFloat(size, underwater ? 1.4f : 0.65f);
-                        zapEffect.SetFloat(arcNoiseMult, 0.15f);
+                        zapEffect.SetFloat(amount, 16f);
+                        zapEffect.SetFloat(lifetime, 0.2f);
+                        zapEffect.SetFloat(size, 1.4f);
+                        zapEffect.SetFloat(directionMult, 2f);
+                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.15f : 0.2f);
                         break;
                 }
                 zapParticle.Stop();
@@ -243,10 +267,14 @@ public class Toaster : AnimatedItem, IHittable
                 for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
                 {
                     PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
-                    if (!player.isPlayerDead && underwaterCollider != null && underwaterCollider.bounds.Contains(player.transform.position - Vector3.up * 0.8f) && Vector3.Distance(player.transform.position, base.transform.position) < 20f)
+                    if (submerged && !player.isPlayerDead && underwaterCollider != null && underwaterCollider.bounds.Contains(player.transform.position) && Vector3.Distance(player.transform.position, base.transform.position) < 20f)
                     {
                         StartCoroutine(FloatBodyToSurface(StartOfRound.Instance.allPlayerScripts[i]));
-                        StartOfRound.Instance.allPlayerScripts[i].KillPlayer(Vector3.up * 3f, spawnBody: true, CauseOfDeath.Burning, 6);
+                        StartOfRound.Instance.allPlayerScripts[i].KillPlayer(Vector3.up * 6f, spawnBody: true, CauseOfDeath.Burning, 6);
+                    }
+                    else if (!submerged && !player.isPlayerDead && Vector3.Distance(player.transform.position, base.transform.position) < damageRange * 4f)
+                    {
+                        player.DamagePlayer(6, hasDamageSFX: true, causeOfDeath: CauseOfDeath.Electrocution);
                     }
                 }
                 damageTime += damageInterval;
@@ -299,9 +327,9 @@ public class Toaster : AnimatedItem, IHittable
         base.OnHitGround();
         if (inserted && underwaterCollider != null && underwaterCollider.bounds.Contains(base.transform.position))
         {
-            underwater = true;
-            EjectAndSync();
+            isUnderwater = true;
             ZapAndSync(1.9f, underwater: true);
+            EjectAndSync();
         }
     }
 
@@ -344,6 +372,7 @@ public class Toaster : AnimatedItem, IHittable
             }
             ejectCoroutine = StartCoroutine(WaitToEject(ejectTime));
         }
+        lastRainZapTime = Time.realtimeSinceStartup;
     }
 
     public IEnumerator WaitToEject(float delay)
