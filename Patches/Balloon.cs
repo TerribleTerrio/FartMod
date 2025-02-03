@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using GameNetcodeStuff;
 using Unity.Netcode;
@@ -8,6 +9,8 @@ public class Balloon : GrabbableObject
 
     [Space(15f)]
     [Header("Balloon Settings")]
+
+    public float disableCatchingCooldown;
 
     [Space(5f)]
     [Header("Game Object References")]
@@ -24,7 +27,41 @@ public class Balloon : GrabbableObject
     public GameObject popPrefab;
 
     [Space(5f)]
+    [Header("Position Syncing")]
+    public float syncPositionInterval = 0.2f;
+
+    public float syncPositionThreshold = 0.5f;
+
+    private float syncTimer;
+
+    private Vector3 balloonServerPosition;
+
+    [Space(5f)]
     [Header("Force Settings")]
+    public ConstantForce constantForce;
+    
+    public float upwardForce;
+
+    public String[] windyMoons;
+
+    private String lastMoon;
+
+    private bool windy;
+
+    public float windForce;
+
+    private Vector3 windDirection;
+
+    private float windTimer;
+
+    public float windTimeMin;
+
+    public float windTimeMax;
+
+    private float noiseAmount;
+
+    private float noiseTimer;
+
     private float pushTimer;
 
     public float pushCooldown;
@@ -59,6 +96,31 @@ public class Balloon : GrabbableObject
         balloon.transform.SetParent(null, true);
         balloonCollider.transform.SetParent(null, true);
 
+        lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
+        Debug.Log($"[BALLOON]: lastMoon set to {lastMoon}.");
+
+        //CHECK FOR WIND
+        Debug.Log("[BALLOON]: Checking if current weather is stormy.");
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
+        {
+            windy = true;
+        }
+        else
+        {
+            Debug.Log("[BALLOON]: Current weather is not stormy.");
+            Debug.Log("[BALLOON]: Checking if current level is a windy moon.");
+            for (int i = 0; i < windyMoons.Length; i++)
+            {
+                Debug.Log($"[BALLOON]: Checking if current level is {windyMoons[i]}...");
+                if (StartOfRound.Instance.currentLevel.PlanetName.Contains(windyMoons[i]))
+                {
+                    Debug.Log($"[BALLOON]: Current level is {windyMoons[i]}! Setting balloon to windy.");
+                    windy = true;
+                    break;
+                }
+            }
+        }
+
         for (int i = 0; i < balloonStrings.Length; i++)
         {
             balloonStrings[i].transform.SetParent(null, true);
@@ -76,6 +138,16 @@ public class Balloon : GrabbableObject
             itemColliders[i] = sphereCollider;
         }
 
+        if (base.IsOwner)
+        {
+            EnablePhysics(true);
+        }
+        else
+        {
+            EnablePhysics(false);
+        }
+
+        balloonServerPosition = balloon.transform.position;
         DampFloating();
 
 
@@ -112,12 +184,15 @@ public class Balloon : GrabbableObject
         {
             skinnedMeshRenderers[i].renderingLayerMask = 1u;
         }
-
-        // EnableItemMeshes(enable: false);
     }
 
     public override void Update()
     {
+        if (balloon == null)
+        {
+            Debug.Log("[BALLOON]: Balloon prefab destroyed, skipping update!");
+            return;
+        }
 
         //BASE UPDATE FOR SCRAP WITHOUT FALLING
         if (currentUseCooldown >= 0f)
@@ -129,15 +204,39 @@ public class Balloon : GrabbableObject
         {
             if (!wasOwnerLastFrame)
             {
+                EnablePhysics(true);
                 wasOwnerLastFrame = true;
             }
         }
         else if (wasOwnerLastFrame)
         {
+            EnablePhysics(false);
             wasOwnerLastFrame = false;
         }
 
         //BALLOON UPDATE
+        if (StartOfRound.Instance.currentLevel.PlanetName != lastMoon)
+        {
+            Debug.Log("[BALLOON]: Landed on new moon, checking for wind...");
+            lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
+
+            if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
+            {
+                windy = true;
+            }
+            else
+            {
+                for (int i = 0; i < windyMoons.Length; i++)
+                {
+                    if (StartOfRound.Instance.currentLevel.PlanetName.Contains(windyMoons[i]))
+                    {
+                        windy = true;
+                        break;
+                    }
+                }
+            }
+        }
+
         if (pushTimer > 0)
         {
             pushTimer -= Time.deltaTime;
@@ -152,27 +251,137 @@ public class Balloon : GrabbableObject
             }
         }
 
-        if (balloon.transform.position.y > 70f)
+        if (base.IsOwner)
         {
-            Pop();
+            if (disableCatchingCooldown > 0)
+            {
+                disableCatchingCooldown -= Time.deltaTime;
+                
+                if (balloon.GetComponent<Collider>().enabled = false)
+                {
+                    balloon.GetComponent<Collider>().enabled = true;
+                }
+            }
+
+            if (playerHeldBy != null)
+            {
+                if (playerHeldBy.teleportingThisFrame)
+                {
+                    Debug.Log("[BALLOON]: Player teleporting while holding balloon!");
+                    balloon.GetComponent<Collider>().enabled = false;
+                    disableCatchingCooldown = 1f;
+                }
+
+                if (playerHeldBy.teleportedLastFrame)
+                {
+                    balloon.transform.position = playerHeldBy.localItemHolder.transform.position;
+                }
+
+                //DISCARD IF STRETCHED TOO FAR FROM OWNER
+                if (disableCatchingCooldown <= 0 && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 8f)
+                {
+                    Debug.Log("[BALLOON]: Too far from player hand, discarding!");
+
+                    //PLAY SOUND
+                    PlayCaughtClipAndSync();
+
+                    //DISCARD BALLOON
+                    playerHeldBy.DiscardHeldObject();
+                }
+            }
+
+            //POP IF BALLOON FLOATS TOO HIGH
+            if (balloon.transform.position.y > 70f)
+            {
+                Pop();
+            }
+
+            //SYNC POSITION FROM OWNER TO CLIENTS ON INTERVAL
+            if (syncTimer < syncPositionInterval)
+            {
+                syncTimer += Time.deltaTime;
+            }
+            else
+            {
+                syncTimer = 0f;
+                SyncBalloonPositionServerRpc(balloon.transform.position);
+            }
+
+            Vector3 baseForce = new Vector3(0f, upwardForce, 0f);
+
+            //WIND
+            if (windy)
+            {
+                if (noiseTimer > 0)
+                {
+                    noiseTimer -= Time.deltaTime;
+                }
+                else
+                {
+                    noiseTimer = UnityEngine.Random.Range(0.05f,0.1f);
+                    noiseAmount = UnityEngine.Random.Range(-2f, 2f);
+                }
+
+                if (windTimer > 0)
+                {
+                    windTimer -= Time.deltaTime;
+                }
+                else
+                {
+                    windTimer = UnityEngine.Random.Range(windTimeMin, windTimeMax);
+                    RandomizeWindDirection();
+                }
+
+                if (!isInFactory && !isInShipRoom)
+                {
+                    constantForce.force = new Vector3(0f, upwardForce, 0f) + windDirection*windForce + windDirection*noiseAmount;
+                }
+                else
+                {
+                    constantForce.force = baseForce;
+                }
+            }
+            else
+            {
+                if (constantForce.force != baseForce)
+                {
+                    constantForce.force = baseForce;
+                }
+            }
+        }
+        else
+        {
+            balloon.transform.position = Vector3.Lerp(balloon.transform.position, balloonServerPosition, Time.deltaTime*3f);
+        }
+    }
+
+    public void PlayCaughtClipAndSync(bool makeNoise = true)
+    {
+        balloonAudio.PlayOneShot(caughtClip);
+        if (makeNoise)
+        {
+            RoundManager.Instance.PlayAudibleNoise(balloon.transform.position);
         }
 
-        if (playerHeldBy != null && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 8f)
+        PlayCaughtServerRpc();
+    }
+
+    [ServerRpc]
+    public void PlayCaughtServerRpc(bool makeNoise = true)
+    {
+        PlayCaughtClientRpc();
+    }
+
+    [ClientRpc]
+    public void PlayCaughtClientRpc(bool makeNoise = true)
+    {
+        if (!base.IsOwner)
         {
-            //PLAY SOUND
             balloonAudio.PlayOneShot(caughtClip);
-
-            //PLAY AUDIBLE NOISE
-            // if (Vector3.Distance(lastPosition, balloon.transform.position) > 2f)
-            // {
-            //     timesPlayedInOneSpot = 0;
-            // }
-            // timesPlayedInOneSpot++;
-            // lastPosition = balloon.transform.position;
-            // RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
-
-            //DISCARD BALLOON
-            playerHeldBy.DiscardHeldObject();
+            if (makeNoise)
+            {
+                RoundManager.Instance.PlayAudibleNoise(balloon.transform.position);
+            }
         }
     }
 
@@ -186,10 +395,23 @@ public class Balloon : GrabbableObject
         //SET STRING TO HAND IF OBJECT IS HELD BY PLAYER
         if (isHeld)
         {
-            grabString.transform.position = playerHeldBy.localItemHolder.transform.position;
+            if (IsOwner)
+            {
+                grabString.transform.position = playerHeldBy.localItemHolder.transform.position;
+            }
+            else
+            {
+                grabString.transform.position = playerHeldBy.serverItemHolder.transform.position;
+            }
         }
 
         //SET POSITIONS OF BALLOON PARTS
+        if (balloon == null || grabString == null)
+        {
+            Debug.Log("[BALLOON]: Floating balloon prefab was not found, skipping setting postions!");
+            return;
+        }
+
         base.transform.position = grabString.transform.position;
         scanNode.transform.position = balloon.transform.position;
         balloonCollider.transform.position = balloon.transform.position;
@@ -209,12 +431,39 @@ public class Balloon : GrabbableObject
         lineRenderer.SetPositions(stringPositions);
     }
 
+    public void EnablePhysics(bool enable = true)
+    {
+        if (enable)
+        {
+            balloon.GetComponent<Rigidbody>().isKinematic = false;
+            balloon.GetComponent<Collider>().enabled = true;
+        }
+        else
+        {
+            balloon.GetComponent<Rigidbody>().isKinematic = true;
+            balloon.GetComponent<Collider>().enabled = false;
+        }
+    }
+
+    public void RandomizeWindDirection()
+    {
+        Vector2 dir2D = UnityEngine.Random.insideUnitCircle;
+        Vector3 dir = new Vector3(dir2D.x, 0, dir2D.y);
+        dir.Normalize();
+        windDirection = dir;
+        Debug.Log($"[BALLOON]: Wind direction set to {windDirection}.");
+    }
+
 
 
     //GRABBING AND DISCARDING
     public override void GrabItem()
     {
         base.GrabItem();
+        for (int i = 0; i < itemColliders.Length; i++)
+        {
+            itemColliders[i].enabled = false;
+        }
     }
 
     public override void GrabItemFromEnemy(EnemyAI enemy)
@@ -226,6 +475,10 @@ public class Balloon : GrabbableObject
     {
         base.DiscardItem();
         DampFloating();
+        for (int i = 0; i < itemColliders.Length; i++)
+        {
+            itemColliders[i].enabled = true;
+        }
     }
 
     public override void DiscardItemFromEnemy()
@@ -296,7 +549,8 @@ public class Balloon : GrabbableObject
     public void OnTouch(Collider other)
     {
         GameObject otherObject = other.gameObject;
-        Debug.Log($"[BALLOON]: Collided with {otherObject}");
+
+        Debug.Log($"[BALLOON]: Balloon collided with {gameObject}.");
 
         RaycastHit hitInfo;
         if (Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
@@ -426,6 +680,24 @@ public class Balloon : GrabbableObject
                     Pop();
                 }
             }
+
+            else if (enemy.mainScript.enemyType.enemyName != "RadMech")
+            {
+                RadMechAI radMech = enemy.mainScript as RadMechAI;
+                if (radMech.chargingForward)
+                {
+                    Pop();
+                }
+                else if (radMech.inFlyingMode)
+                {
+                    Pop();
+                }
+                else
+                {
+                    PushBalloon(otherObject.transform.position, 30f);
+                }
+
+            }
         }
 
         //VEHICLE COLLISION
@@ -442,6 +714,12 @@ public class Balloon : GrabbableObject
             }
         }
 
+        //OTHER BALLOON COLLISION
+        else if (otherObject.GetComponent<BalloonCollisionDetection>() != null)
+        {
+            PushBalloon(otherObject.transform.position, 5);
+        }
+
         //ITEM COLLISION
         else if (otherObject.layer == 6 && otherObject.GetComponent<GrabbableObject>() != null)
         {
@@ -455,12 +733,6 @@ public class Balloon : GrabbableObject
                     Pop();
                 }
             }
-        }
-
-        //SPIKE TRAP COLLISION
-        else if (otherObject.layer == 11 && otherObject.tag == "Aluminum" && otherObject.name == "Cube (2)")
-        {
-            Pop();
         }
     }
 
@@ -484,7 +756,7 @@ public class Balloon : GrabbableObject
             balloon.GetComponent<Rigidbody>().AddForce(force, ForceMode.Impulse);
 
             //PLAY SOUND
-            balloonAudio.PlayOneShot(bumpClips[Random.Range(0,bumpClips.Length)]);
+            balloonAudio.PlayOneShot(bumpClips[UnityEngine.Random.Range(0,bumpClips.Length)]);
 
             //PLAY AUDIBLE NOISE
             // if (Vector3.Distance(lastPosition, balloon.transform.position) > 2f)
@@ -502,18 +774,50 @@ public class Balloon : GrabbableObject
     //POPPING
     public void Pop()
     {
-        Debug.Log("[BALLOON]: Popped!");
-        SetScrapValue(0);
+        PopServerRpc();
+    }
 
+    [ServerRpc(RequireOwnership = false)]
+    public void PopServerRpc()
+    {
+        //RELEASE FROM PLAYER IF HELD
         if (playerHeldBy != null)
         {
             playerHeldBy.DiscardHeldObject();
         }
 
+        PopClientRpc();
+    }
+
+    [ClientRpc]
+    public void PopClientRpc()
+    {
+        Debug.Log("[BALLOON]: Popped!");
+
+        //DESTROY FLOATING PREFAB
+        DestroyBalloon();
+
         //SPAWN POP PREFAB
         Instantiate(popPrefab, balloon.transform.position, Quaternion.identity);
 
-        DespawnServerRpc();
+        //PLAY AUDIBLE NOISE
+        RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange: 15f, noiseLoudness: 1f);
+
+        //DESPAWN BALLOON ITEM
+        if (IsOwner)
+        {
+            StartCoroutine(DespawnAfterFrame());
+        }
+    }
+
+    public IEnumerator DespawnAfterFrame()
+    {
+        yield return new WaitForEndOfFrame();
+        if (base.gameObject.GetComponent<NetworkObject>().IsSpawned)
+        {
+            Debug.Log("[BALLOON]: Despawning!");
+            base.gameObject.GetComponent<NetworkObject>().Despawn();
+        }
     }
 
     public void DestroyBalloon()
@@ -526,26 +830,25 @@ public class Balloon : GrabbableObject
         Destroy(balloonCollider);
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void DespawnServerRpc()
+
+
+    //SYNCING POSITIONS
+    [ServerRpc]
+    private void SyncBalloonPositionServerRpc(Vector3 balloonPos)
     {
-        DespawnClientRpc();
+        SyncBalloonPositionClientRpc(balloonPos);
     }
 
     [ClientRpc]
-    public void DespawnClientRpc()
+    private void SyncBalloonPositionClientRpc(Vector3 balloonPos)
     {
-        StartCoroutine(DespawnAfterFrame());
-    }
-
-    public IEnumerator DespawnAfterFrame()
-    {
-        yield return new WaitForEndOfFrame();
-        DestroyBalloon();
-        if (base.gameObject.GetComponent<NetworkObject>().IsSpawned)
+        if (!base.IsOwner)
         {
-            Debug.Log("[BALLOON]: Despawning!");
-            base.gameObject.GetComponent<NetworkObject>().Despawn();
+            if (Vector3.Distance(balloon.transform.position, balloonPos) > syncPositionThreshold)
+            {
+                balloonServerPosition = balloonPos;
+            }
         }
     }
+
 }
