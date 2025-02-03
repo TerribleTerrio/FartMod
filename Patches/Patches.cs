@@ -172,7 +172,7 @@ internal class TurretPatch
         if (Time.realtimeSinceStartup - lastInterval > 0.2f)
         {
             lastInterval = Time.realtimeSinceStartup;
-            if (__instance.turretMode == TurretMode.Firing || __instance.turretMode == TurretMode.Berserk)
+            if (__instance.turretMode == TurretMode.Firing || (__instance.turretMode == TurretMode.Berserk && !__instance.enteringBerserkMode))
             {
                 Ray propRay = new Ray(__instance.aimPoint.position - Vector3.up * 0.25f, __instance.aimPoint.forward);
                 if (Physics.Raycast(propRay, out RaycastHit propHit, 30f, Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Ignore))
