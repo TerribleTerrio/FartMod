@@ -3,6 +3,7 @@ using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using System.Collections;
+using AsmResolver.PE.Imports.Builder;
 namespace CoronaMod.Patches;
 
 internal class NetworkPatches
@@ -144,6 +145,17 @@ internal class SpikeRoofTrapPatch
                     player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>()?.ExplodeAndSync();
                 }
             }
+        }
+    }
+
+    [HarmonyPatch("OnTriggerStay")]
+    [HarmonyPrefix]
+    static void OnTriggerStay(SpikeRoofTrap __instance, Collider other)
+    {
+        if (other.gameObject.GetComponent<BalloonCollisionDetection>() != null)
+        {
+            other.gameObject.GetComponent<BalloonCollisionDetection>().mainScript.Pop();
+            return;
         }
     }
 }
@@ -304,6 +316,21 @@ internal class TerminalPatch
     }
 }
 
+[HarmonyPatch(typeof(KillLocalPlayer))]
+internal class KillLocalPlayerPatch
+{
+    [HarmonyPatch("OnTriggerEnter")]
+    [HarmonyPostfix]
+    static void OnTriggerEnter(KillLocalPlayer __instance, Collider other)
+    {
+        if (other.gameObject.GetComponent<BalloonCollisionDetection>() != null && __instance.deathAnimation == 1)
+        {
+            Debug.Log("[KILLLOCALPLAYER]: Balloon detected in trigger!");
+            other.gameObject.GetComponent<BalloonCollisionDetection>().mainScript.Pop();
+        }
+    }
+}
+
 [HarmonyPatch(typeof(PlayerControllerB))]
 internal class PlayerControllerBPatch
 {
@@ -316,6 +343,26 @@ internal class PlayerControllerBPatch
             if (__instance.currentlyHeldObjectServer.gameObject.GetComponent<Balloon>() != null)
             {
                 __instance.DiscardHeldObject();
+            }
+        }
+    }
+
+    [HarmonyPatch("BeginGrabObject")]
+    [HarmonyPrefix]
+    static void BeginGrabObject(PlayerControllerB __instance)
+    {
+        if (__instance.currentlyHeldObjectServer != null)
+        {
+            if (__instance.currentlyHeldObjectServer.gameObject.GetComponent<Balloon>() != null)
+            {
+                __instance.interactRay = new Ray(__instance.gameplayCamera.transform.position, __instance.gameplayCamera.transform.forward);
+                if (Physics.Raycast(__instance.interactRay, out __instance.hit, __instance.grabDistance, __instance.interactableObjectsMask))
+                {
+                    if (__instance.hit.collider.gameObject.layer == 8 && __instance.hit.collider.tag != "PhysicsProp")
+                    {
+                        __instance.DiscardHeldObject();
+                    }
+                }
             }
         }
     }
