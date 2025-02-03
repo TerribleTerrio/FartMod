@@ -8,7 +8,6 @@ using UnityEngine.VFX;
 
 public class Toaster : AnimatedItem, IHittable
 {
-
     [Header("Toaster Settings")]
     public float ejectTimeMin;
 
@@ -41,6 +40,7 @@ public class Toaster : AnimatedItem, IHittable
 
     public AudioClip[] hitSFX;
 
+    [HideInInspector]
     public AudioSource zapSource;
 
     public AudioClip[] zapSFX;
@@ -48,6 +48,16 @@ public class Toaster : AnimatedItem, IHittable
     public AudioClip zapSteam;
 
     public GameObject zapPrefab;
+
+    public AudioSource rainSource;
+
+    public ParticleSystem rainDropParticle;
+
+    public AudioClip[] raindropClips;
+   
+    public ParticleSystem rainSizzleParticle;
+
+    public AudioClip[] sizzleClips;
 
     [HideInInspector]
     public Collider? underwaterCollider;
@@ -58,9 +68,29 @@ public class Toaster : AnimatedItem, IHittable
 
     private bool zapping;
 
-    private float lastRainZapTime;
+    private float lastRainZapCheckTime;
 
-    private float rainZapInterval = 1f;
+    private float rainZapCheckInterval = 1f;
+
+    private float rainVisAmount;
+
+    private float sizzleInterval = 3f;
+
+    private float lastSizzleTime;
+
+    private float raindropInterval = 0.1f;
+
+    private float lastRaindropTime;
+
+    private float rainInsertZapMeter;
+
+    private float rainInsertZapTime = 4f;
+
+    private float sizzleChance = 60f;
+
+    private float raindropChance = 25f;
+
+    private bool inRain;
 
     private float lastHauntCheckTime;
 
@@ -97,6 +127,12 @@ public class Toaster : AnimatedItem, IHittable
                 }
             }
         }
+        WaterUpdate();
+        base.Update();
+    }
+
+    public void WaterUpdate()
+    {
         if (isHeld && playerHeldBy != null && playerHeldBy.isUnderwater && playerHeldBy.underwaterCollider != null && playerHeldBy.underwaterCollider.bounds.Contains(base.transform.position + Vector3.up * 0.5f))
         {
             if (underwaterCollider == null)
@@ -121,45 +157,81 @@ public class Toaster : AnimatedItem, IHittable
             }
             isUnderwater = false;
         }
+
         if (isUnderwater && inserted)
         {
-            ZapAndSync(1.9f, underwater: true);
+            ZapAndSync(1.9f, submergedEffect: true);
             EjectAndSync();
         }
-        if ((StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Rainy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded) && Time.realtimeSinceStartup - lastRainZapTime > rainZapInterval)
+
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Rainy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy || StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Flooded)
         {
-            lastRainZapTime = Time.realtimeSinceStartup;
-            if (inserted && !isInFactory && !isInShipRoom && !Physics.Raycast(base.transform.position, Vector3.up, out _, 100f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            inRain = !Physics.Raycast(base.transform.position, Vector3.up, out _, 100f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore);
+            rainVisAmount = Mathf.Lerp(rainVisAmount, inRain ? 1f : 0f, Time.deltaTime * (inRain ? 0.4f : 8f));
+            rainSource.volume = Mathf.Lerp(rainSource.volume, inRain ? 1f : 0f, Time.deltaTime * (inRain ? 1.5f : 8f));;
+            rainInsertZapMeter = Mathf.Clamp(inRain && inserted ? rainInsertZapMeter + Time.deltaTime : rainInsertZapMeter - Time.deltaTime, 0f, rainInsertZapTime);
+
+            if (rainVisAmount > 0.1f)
             {
-                ZapAndSync(0.5f, underwater: false);
-                EjectAndSync();
+                if (Time.realtimeSinceStartup - lastRaindropTime > raindropInterval)
+                {
+                    raindropInterval = Random.Range(0.015f, 0.075f);
+                    lastRaindropTime = Time.realtimeSinceStartup;
+                    if (Random.Range(0f, 100f) < raindropChance * Mathf.Clamp(rainInsertZapMeter / 2, 0.5f, rainInsertZapMeter))
+                    {
+                        rainDropParticle.Play();
+                        rainSource.PlayOneShot(raindropClips[Random.Range(0, raindropClips.Length)]);
+                    }
+                }
+            }
+
+            if (rainVisAmount > 0.5f)
+            {
+                if (Time.realtimeSinceStartup - lastSizzleTime > sizzleInterval)
+                {
+                    sizzleInterval = Random.Range(inserted ? 0.3f : 1.5f, inserted ? 1.4f : 4f);
+                    lastSizzleTime = Time.realtimeSinceStartup;
+                    if (Random.Range(0f, 100f) < sizzleChance * Mathf.Clamp(rainInsertZapMeter / 2, 0.5f, rainInsertZapMeter))
+                    {
+                        rainSizzleParticle.Play();
+                        rainSource.PlayOneShot(sizzleClips[Random.Range(0, sizzleClips.Length)]);
+                    }
+                }
+            }
+
+            if (Time.realtimeSinceStartup - lastRainZapCheckTime > rainZapCheckInterval)
+            {
+                lastRainZapCheckTime = Time.realtimeSinceStartup;
+                if (inserted && !isInFactory && !isInShipRoom && rainVisAmount > 0.75f && !Physics.Raycast(base.transform.position, Vector3.up, out _, 100f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore) && rainInsertZapMeter >= rainInsertZapTime)
+                {
+                    EjectAndSync();
+                }
             }
         }
-        base.Update();
     }
 
-    public void ZapAndSync(float length, bool underwater)
+    public void ZapAndSync(float length, bool submergedEffect, bool fryOwner = false)
     {
-        StartCoroutine(ZapEffect(length, underwater));
-        ZapServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, length, underwater);
+        StartCoroutine(ZapEffect(length, submergedEffect, fryOwner));
+        ZapServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, length, submergedEffect, fryOwner);
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void ZapServerRpc(int clientWhoSentRpc, float length, bool underwater)
+    public void ZapServerRpc(int clientWhoSentRpc, float length, bool submergedEffect, bool fryOwner = false)
     {
-        ZapClientRpc(clientWhoSentRpc, length, underwater);
+        ZapClientRpc(clientWhoSentRpc, length, submergedEffect, fryOwner);
     }
 
     [ClientRpc]
-    public void ZapClientRpc(int clientWhoSentRpc, float length, bool underwater)
+    public void ZapClientRpc(int clientWhoSentRpc, float length, bool submergedEffect, bool fryOwner = false)
     {
         if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
         {
-            StartCoroutine(ZapEffect(length, underwater));
+            StartCoroutine(ZapEffect(length, submergedEffect, fryOwner));
         }
     }
 
-    public IEnumerator ZapEffect(float length, bool submerged)
+    public IEnumerator ZapEffect(float length, bool submergedEffect, bool fryOwner = false)
     {
         if (zapping)
         {
@@ -168,9 +240,9 @@ public class Toaster : AnimatedItem, IHittable
         zapping = true;
         float timeElapsed = 0f;
         float duration = length;
-        float damageInterval = submerged ? 0.15f : 0.4f;
+        float damageInterval = submergedEffect ? 0.15f : 0.4f;
         float damageTime = 0f;
-        float[] zapIntervals = submerged ? [0.25f, 0.35f, 0.5f, 0.65f, 0.75f, 0.9f] : [0.2f, 0.4f, 0.6f, 0.8f];
+        float[] zapIntervals = submergedEffect ? [0.25f, 0.35f, 0.5f, 0.65f, 0.75f, 0.9f] : [0.2f, 0.4f, 0.6f, 0.8f];
         int zapInterval = 0;
         GameObject zapPrefabInstance = Instantiate(zapPrefab, base.transform.position, Quaternion.identity);
         VisualEffect zapEffect = zapPrefabInstance.GetComponent<VisualEffect>();
@@ -189,9 +261,9 @@ public class Toaster : AnimatedItem, IHittable
         const string MaxBounds = "MaxBounds";
         zapEffect.SetFloat(compSize, 1.8f);
         zapEffect.SetFloat(compDirectionMult, 2.35f);
-        zapLight.lightDimmer = submerged ? 0.7f : 1f;
-        zapLight.range = submerged ? 9f : 1f;
-        if (!submerged)
+        zapLight.lightDimmer = submergedEffect ? 0.7f : 1f;
+        zapLight.range = submergedEffect ? 9f : 1f;
+        if (!submergedEffect)
         {
             zapEffect.Stop();
             zapEffect.SetVector3(MinBounds, new(-18f, -18f, -18f));
@@ -211,7 +283,7 @@ public class Toaster : AnimatedItem, IHittable
                         zapEffect.SetFloat(lifetime, 0.2f);
                         zapEffect.SetFloat(size, 1.4f);
                         zapEffect.SetFloat(directionMult, 1.2f);
-                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.1f : 0.4f);
+                        zapEffect.SetFloat(arcNoiseMult, submergedEffect ? 0.1f : 0.4f);
                         break;
 
                     case 1:
@@ -219,7 +291,7 @@ public class Toaster : AnimatedItem, IHittable
                         zapEffect.SetFloat(lifetime, 0.2f);
                         zapEffect.SetFloat(size, 2.4f);
                         zapEffect.SetFloat(directionMult, 3f);
-                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.15f : 0.5f);
+                        zapEffect.SetFloat(arcNoiseMult, submergedEffect ? 0.15f : 0.5f);
                         break;
 
                     case 2:
@@ -227,7 +299,7 @@ public class Toaster : AnimatedItem, IHittable
                         zapEffect.SetFloat(lifetime, 0.3f);
                         zapEffect.SetFloat(size, 5f);
                         zapEffect.SetFloat(directionMult, 5f);
-                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.45f : 0.6f);
+                        zapEffect.SetFloat(arcNoiseMult, submergedEffect ? 0.45f : 0.6f);
                         break;
 
                     case 3:
@@ -235,7 +307,7 @@ public class Toaster : AnimatedItem, IHittable
                         zapEffect.SetFloat(lifetime, 0.2f);
                         zapEffect.SetFloat(size, 3.4f);
                         zapEffect.SetFloat(directionMult, 3f);
-                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.25f : 0.4f);
+                        zapEffect.SetFloat(arcNoiseMult, submergedEffect ? 0.25f : 0.4f);
                         break;
 
                     case 4:
@@ -243,7 +315,7 @@ public class Toaster : AnimatedItem, IHittable
                         zapEffect.SetFloat(lifetime, 0.2f);
                         zapEffect.SetFloat(size, 2.4f);
                         zapEffect.SetFloat(directionMult, 3f);
-                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.15f : 0.3f);
+                        zapEffect.SetFloat(arcNoiseMult, submergedEffect ? 0.15f : 0.3f);
                         break;
 
                     case 5:
@@ -251,7 +323,7 @@ public class Toaster : AnimatedItem, IHittable
                         zapEffect.SetFloat(lifetime, 0.2f);
                         zapEffect.SetFloat(size, 1.4f);
                         zapEffect.SetFloat(directionMult, 2f);
-                        zapEffect.SetFloat(arcNoiseMult, submerged ? 0.15f : 0.2f);
+                        zapEffect.SetFloat(arcNoiseMult, submergedEffect ? 0.15f : 0.2f);
                         break;
                 }
                 zapParticle.Stop();
@@ -267,12 +339,18 @@ public class Toaster : AnimatedItem, IHittable
                 for (int i = 0; i < StartOfRound.Instance.allPlayerScripts.Length; i++)
                 {
                     PlayerControllerB player = StartOfRound.Instance.allPlayerScripts[i];
-                    if (submerged && !player.isPlayerDead && underwaterCollider != null && underwaterCollider.bounds.Contains(player.transform.position) && Vector3.Distance(player.transform.position, base.transform.position) < 20f)
+                    if (fryOwner && playerHeldBy == player && !player.isPlayerDead)
                     {
-                        StartCoroutine(FloatBodyToSurface(StartOfRound.Instance.allPlayerScripts[i]));
-                        StartOfRound.Instance.allPlayerScripts[i].KillPlayer(Vector3.up * 6f, spawnBody: true, CauseOfDeath.Burning, 6);
+                        StartCoroutine(ReturnDropPosition(player.gameplayCamera.transform.position));
+                        StartCoroutine(FryBody(player, submerged: false));
+                        player.KillPlayer(player.transform.forward * 8f, spawnBody: true, CauseOfDeath.Burning, 6);
                     }
-                    else if (!submerged && !player.isPlayerDead && Vector3.Distance(player.transform.position, base.transform.position) < damageRange * 4f)
+                    if (!fryOwner && submergedEffect && !player.isPlayerDead && underwaterCollider != null && underwaterCollider.bounds.Contains(player.transform.position) && Vector3.Distance(player.transform.position, base.transform.position) < 20f)
+                    {
+                        StartCoroutine(FryBody(player));
+                        player.KillPlayer(Vector3.up * 6f, spawnBody: true, CauseOfDeath.Burning, 6);
+                    }
+                    else if (!player.isPlayerDead && Vector3.Distance(player.transform.position, base.transform.position) < damageRange * 4f)
                     {
                         player.DamagePlayer(6, hasDamageSFX: true, causeOfDeath: CauseOfDeath.Electrocution);
                     }
@@ -287,7 +365,16 @@ public class Toaster : AnimatedItem, IHittable
         zapping = false;
     }
 
-    public IEnumerator FloatBodyToSurface(PlayerControllerB killedPlayer)
+    public IEnumerator ReturnDropPosition(Vector3 prevPosition)
+    {
+        yield return null;
+        base.transform.position = prevPosition;
+        startFallingPosition = base.transform.parent.InverseTransformPoint(base.transform.position);
+        FallToGround(randomizePosition: true);
+        fallTime = Random.Range(-0.3f, 0.05f);
+    }
+
+    public IEnumerator FryBody(PlayerControllerB killedPlayer, bool submerged = true)
     {
 		float timeAtStart = Time.realtimeSinceStartup;
 		yield return new WaitUntil(() => killedPlayer.deadBody != null || Time.realtimeSinceStartup - timeAtStart > 3f);
@@ -295,7 +382,10 @@ public class Toaster : AnimatedItem, IHittable
 		{
             yield return null;
             killedPlayer.deadBody.bodyAudio.PlayOneShot(zapSteam, 0.65f);
-            killedPlayer.deadBody.causeOfDeath = CauseOfDeath.Drowning;
+            if (submerged)
+            {
+                killedPlayer.deadBody.causeOfDeath = CauseOfDeath.Drowning;
+            }
 		}
     }
 
@@ -308,7 +398,7 @@ public class Toaster : AnimatedItem, IHittable
             {
                 if (downHit.collider.gameObject.TryGetComponent<QuicksandTrigger>(out var quicksand))
                 {
-                    if (quicksand.isWater || quicksand.isInsideWater)
+                    if ((!isInFactory && quicksand.isWater) || (isInFactory && quicksand.isInsideWater))
                     {
                         underwaterCollider = downHit.collider;
                     }
@@ -328,7 +418,7 @@ public class Toaster : AnimatedItem, IHittable
         if (inserted && underwaterCollider != null && underwaterCollider.bounds.Contains(base.transform.position))
         {
             isUnderwater = true;
-            ZapAndSync(1.9f, underwater: true);
+            ZapAndSync(1.9f, submergedEffect: true);
             EjectAndSync();
         }
     }
@@ -358,6 +448,8 @@ public class Toaster : AnimatedItem, IHittable
         inserted = true;
         isBeingUsed = true;
         itemAnimator.SetTrigger("Insert");
+        rainInsertZapMeter = 0f;
+        rainInsertZapTime = Random.Range(3f, 5.5f);
 
         RoundManager.Instance.PlayAudibleNoise(base.transform.position, 2, noiseLoudness/1.5f, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
         RoundManager.PlayRandomClip(popSource, insertSFX, randomize: true, 1f, -1);
@@ -372,7 +464,7 @@ public class Toaster : AnimatedItem, IHittable
             }
             ejectCoroutine = StartCoroutine(WaitToEject(ejectTime));
         }
-        lastRainZapTime = Time.realtimeSinceStartup;
+        lastRainZapCheckTime = Time.realtimeSinceStartup;
     }
 
     public IEnumerator WaitToEject(float delay)
@@ -411,6 +503,10 @@ public class Toaster : AnimatedItem, IHittable
         if (!inserted)
         {
             return;
+        }
+        if (inRain)
+        {
+            ZapAndSync(0.5f, submergedEffect: false);
         }
         isBeingUsed = false;
         itemAnimator.SetTrigger("Eject");
@@ -491,11 +587,18 @@ public class Toaster : AnimatedItem, IHittable
         base.UseUpBatteries();
         if (inserted)
         {
-            inserted = false;
-            Eject();
-            EjectServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+            EjectAndSync();
         }
     }
+
+	public override void ChargeBatteries()
+	{
+        if (inserted && playerHeldBy != null && insertedBattery.charge == 1f)
+        {
+            ZapAndSync(1.5f, submergedEffect: true, fryOwner: true);
+            EjectAndSync();
+        }
+	}
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
@@ -508,7 +611,6 @@ public class Toaster : AnimatedItem, IHittable
 
         if (inserted)
         {
-            inserted = false;
             EjectAndSync();
         }
         else
