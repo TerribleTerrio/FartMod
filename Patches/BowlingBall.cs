@@ -106,7 +106,7 @@ public class BowlingBall : GrabbableObject
         while (!isHeld && !isHeldByEnemy && !hasHitGround)
         {
             yield return null;
-            RaycastHit[] results = Physics.SphereCastAll(base.transform.position, 0.1f, Vector3.down, 0.1f, CoronaMod.Masks.PlayerPropsEnemiesMapHazards);
+            RaycastHit[] results = Physics.SphereCastAll(base.transform.position, 1f, Vector3.down, 1f, CoronaMod.Masks.PlayerPropsEnemiesMapHazards);
             for (int i = 0; i < results.Count(); i++)
             {
                 if (CollidersHitByFallingBowlingBall.Contains(results[i].collider))
@@ -138,13 +138,25 @@ public class BowlingBall : GrabbableObject
         }
 
         //FOR PLAYERS
-        if (other.gameObject.layer == 3)
+        if (other.gameObject.layer == 3 && other.gameObject.TryGetComponent<PlayerControllerB>(out var player))
         {
-            if (other.gameObject.TryGetComponent<IHittable>(out var hittable))
+            if (previousPlayerHeldBy == player)
             {
-                hittable.Hit((fallHeight > damageHeight * 2) ? 10 : bowlingBallHitForce * 2, (fallHeight > damageHeight * 2) ? Vector3.down * 6f : Vector3.down * 3f, previousPlayerHeldBy, playHitSFX: true, 1);
+                Debug.Log("[BOWLING BALL]: Hit the player who dropped me while falling!");
                 return;
             }
+            if (player.TryGetComponent<IHittable>(out var hittable))
+            {
+                hittable.Hit((fallHeight > damageHeight * 2) ? 10 : 4, Vector3.down * 0.8f, previousPlayerHeldBy, playHitSFX: true, 1);
+                Debug.Log($"[BOWLING BALL]: Damaged player with damage of {((fallHeight > damageHeight * 2) ? 10 : 4)}.");
+                if ((fallHeight > damageHeight * 2) || player.health <= 30)
+                {
+                    Debug.Log("[BOWLING BALL]: Player about to die!");
+                    StartCoroutine(KillAnimation(player));
+                    KillAnimationServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, (int)player.playerClientId);
+                }
+            }
+            return;
         }
 
         //FOR ENEMIES
@@ -164,6 +176,8 @@ public class BowlingBall : GrabbableObject
             other.gameObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
             other.gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             other.gameObject.GetComponent<Toaster>()?.GetComponent<IHittable>().Hit(1, Vector3.down);
+            other.gameObject.GetComponent<Balloon>()?.Pop();
+            other.gameObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
         }
 
         //FOR HAZARDS
@@ -183,6 +197,42 @@ public class BowlingBall : GrabbableObject
                 turret.SwitchTurretMode(3);
                 turret.EnterBerserkModeServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
             }
+        }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void KillAnimationServerRpc(int clientWhoSentRpc, int playerKilled)
+    {
+        KillAnimationClientRpc(clientWhoSentRpc, playerKilled);
+    }
+
+    [ClientRpc]
+    public void KillAnimationClientRpc(int clientWhoSentRpc, int playerKilled)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            StartCoroutine(KillAnimation(StartOfRound.Instance.allPlayerScripts[playerKilled]));
+        }
+    }
+
+    private IEnumerator KillAnimation(PlayerControllerB killedPlayer)
+    {
+		float startTime = Time.realtimeSinceStartup;
+		yield return new WaitUntil(() => Time.realtimeSinceStartup - startTime > 1f || killedPlayer.deadBody != null);
+		if (killedPlayer.deadBody != null)
+		{
+            Debug.Log("[BOWLING BALL]: Dead player body found, attaching head to bowling ball!");
+			killedPlayer.deadBody.attachedLimb = killedPlayer.deadBody.bodyParts[0];
+			killedPlayer.deadBody.attachedTo = base.gameObject.transform;
+			killedPlayer.deadBody.matchPositionExactly = true;
+            killedPlayer.deadBody.canBeGrabbedBackByPlayers = true;
+            yield return new WaitForSeconds(2.5f);
+			killedPlayer.deadBody.attachedLimb = null;
+			killedPlayer.deadBody.attachedTo = null;
+		}
+        else
+        {
+            Debug.Log("[BOWLING BALL]: No dead body :/");
         }
     }
 
