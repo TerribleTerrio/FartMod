@@ -325,13 +325,13 @@ public class BowlingBall : GrabbableObject
 							}
 							continue;
 						}
-						if (objectsHitByBowlingBallList[i].transform.GetComponent<PlayerControllerB>() != null)
+						if (!(objectsHitByBowlingBallList[i].transform.GetComponent<PlayerControllerB>() != null))
 						{
-                            finalDmg *= 2;
 							goto HIT;
 						}
 						if (!flag3)
 						{
+                            finalDmg *= 2;
 							flag3 = true;
 							goto HIT;
 						}
