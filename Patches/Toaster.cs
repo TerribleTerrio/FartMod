@@ -5,6 +5,7 @@ using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.VFX;
+using System.Linq;
 
 public class Toaster : AnimatedItem, IHittable
 {
@@ -100,10 +101,30 @@ public class Toaster : AnimatedItem, IHittable
 
     private float hauntChance = 22f;
 
+    private float lastWaterCheck;
+
+    private float waterInterval = 1f;
+
+    private List<Collider> waterColliders = [];
+
+    private bool gotColliderOnDrop;
+
     public override void Start()
     {
         base.Start();
         playersInPopRange = new List<PlayerControllerB>();
+        SetupToaster();
+        StartOfRound.Instance.StartNewRoundEvent.AddListener(SetupToaster);
+    }
+
+    public void SetupToaster()
+    {
+        haunted = false;
+        QuicksandTrigger[] array = FindObjectsOfType<QuicksandTrigger>().Where(x => x.isWater || x.isInsideWater).ToArray();
+        for (int i = 0; i < array.Length; i++)
+        {
+            waterColliders.Add(array[i].gameObject.GetComponent<Collider>());
+        }
     }
 
     public override void Update()
@@ -133,31 +154,22 @@ public class Toaster : AnimatedItem, IHittable
 
     public void WaterUpdate()
     {
-        if (isHeld && playerHeldBy != null && playerHeldBy.isUnderwater && playerHeldBy.underwaterCollider != null && playerHeldBy.underwaterCollider.bounds.Contains(base.transform.position + Vector3.up * 0.5f))
+        if (Time.realtimeSinceStartup - lastWaterCheck > waterInterval)
         {
-            if (underwaterCollider == null)
+            lastWaterCheck = Time.realtimeSinceStartup;
+            if (!gotColliderOnDrop && waterColliders.Count > 0)
             {
-                underwaterCollider = playerHeldBy.underwaterCollider;
+                underwaterCollider = waterColliders.OrderBy(collider => (collider.transform.position - base.transform.position).sqrMagnitude).First();
             }
+        }
+        if (underwaterCollider != null && underwaterCollider.bounds.Contains(base.transform.position))
+        {
             isUnderwater = true;
         }
-        else if (isHeld && playerHeldBy != null && playerHeldBy.isUnderwater && playerHeldBy.underwaterCollider != null && !playerHeldBy.underwaterCollider.bounds.Contains(base.transform.position + Vector3.up * 0.5f))
+        else
         {
-            if (underwaterCollider == null)
-            {
-                underwaterCollider = playerHeldBy.underwaterCollider;
-            }
             isUnderwater = false;
         }
-        else if (isHeld && playerHeldBy != null && !playerHeldBy.isUnderwater)
-        {
-            if (underwaterCollider != null)
-            {
-                underwaterCollider = null;
-            }
-            isUnderwater = false;
-        }
-
         if (isUnderwater && inserted)
         {
             ZapAndSync(1.9f, submergedEffect: true);
@@ -392,34 +404,68 @@ public class Toaster : AnimatedItem, IHittable
     public override void DiscardItem()
     {
         base.DiscardItem();
-        if (underwaterCollider == null)
+        SetParticleAndSync(true);
+        if (Physics.Raycast(base.transform.position, Vector3.down, out RaycastHit downHit, 200f, CoronaMod.Masks.DefaultTriggers, QueryTriggerInteraction.Collide))
         {
-            if (Physics.Raycast(base.transform.position, Vector3.down, out RaycastHit downHit, 200f, CoronaMod.Masks.DefaultTriggers, QueryTriggerInteraction.Collide))
+            if (downHit.collider.gameObject.TryGetComponent<QuicksandTrigger>(out var quicksand))
             {
-                if (downHit.collider.gameObject.TryGetComponent<QuicksandTrigger>(out var quicksand))
+                if ((!isInFactory && quicksand.isWater) || (isInFactory && quicksand.isInsideWater))
                 {
-                    if ((!isInFactory && quicksand.isWater) || (isInFactory && quicksand.isInsideWater))
-                    {
-                        underwaterCollider = downHit.collider;
-                    }
+                    underwaterCollider = downHit.collider;
+                    gotColliderOnDrop = true;
+                    return;
                 }
             }
         }
+        gotColliderOnDrop = false;
     }
 
     public override void EquipItem()
     {
         base.EquipItem();
+        SetParticleAndSync(true);
+    }
+
+    public override void PocketItem()
+    {
+        base.PocketItem();
+        SetParticleAndSync(false);
+    }
+
+    public void SetParticleAndSync(bool setto)
+    {
+        SetParticle(setto);
+        SetParticleServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, setto);
+    }
+    
+    [ServerRpc(RequireOwnership = false)]
+    public void SetParticleServerRpc(int clientWhoSentRpc, bool setto)
+    {
+        SetParticleClientRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, setto);
+    }
+
+    [ClientRpc]
+    public void SetParticleClientRpc(int clientWhoSentRpc, bool setto)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            SetParticle(setto);
+        }
+    }
+
+    public void SetParticle(bool setto)
+    {
+        rainDropParticle.gameObject.SetActive(setto);
+        rainSizzleParticle.gameObject.SetActive(setto);
+        rainSource.gameObject.SetActive(setto);
     }
 
     public override void OnHitGround()
     {
         base.OnHitGround();
-        if (inserted && underwaterCollider != null && underwaterCollider.bounds.Contains(base.transform.position))
+        if (underwaterCollider != null && underwaterCollider.bounds.Contains(base.transform.position))
         {
             isUnderwater = true;
-            ZapAndSync(1.9f, submergedEffect: true);
-            EjectAndSync();
         }
     }
 
