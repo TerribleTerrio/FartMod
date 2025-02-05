@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
@@ -78,17 +79,64 @@ public class Balloon : GrabbableObject
 
     [Space(5f)]
     [Header("Sounds")]
-    public AudioSource balloonAudio;
+    public AudioSource itemAudio;
 
-    public AudioClip caughtClip;
+    public AudioSource physicsAudio;
+
+    public AudioSource caughtAudio;
+
+    public AudioClip[] snapClips;
 
     public AudioClip[] bumpClips;
 
     public AudioClip tugClip;
 
+    public AudioClip[] tugStringClips;
+
     private LineRenderer lineRenderer;
 
     private SphereCollider[] itemColliders;
+
+    private bool tugging;
+
+    private float popHeight = 55f;
+
+    private float stringColliderRadius = 1f;
+
+    private bool frozen;
+
+    [HideInInspector]
+    public RuntimeAnimatorController playerDefaultAnimatorController;
+
+    [HideInInspector]
+    public RuntimeAnimatorController otherPlayerDefaultAnimatorController;
+
+    [Header("Animators to replace default player animators")]
+    public RuntimeAnimatorController playerCustomAnimatorController;
+
+    public RuntimeAnimatorController otherPlayerCustomAnimatorController;
+
+	private PlayerControllerB previousPlayerHeldBy;
+
+    private bool isCrouching;
+
+    private bool isJumping;
+
+    private bool isWalking;
+
+    private bool isSprinting;
+
+    private AnimatorStateInfo currentStateInfo;
+
+    private float currentAnimationTime;
+
+	public float noiseRange = 15f;
+
+	public float noiseLoudness = 0.55f;
+
+	private int timesPlayedInOneSpot;
+
+	private Vector3 lastPosition;
 
     public override void Start()
     {
@@ -134,7 +182,7 @@ public class Balloon : GrabbableObject
         for (int i = 0; i < balloonStrings.Length; i++)
         {
             SphereCollider sphereCollider = base.gameObject.AddComponent<SphereCollider>();
-            sphereCollider.radius = 1f;
+            sphereCollider.radius = stringColliderRadius;
             itemColliders[i] = sphereCollider;
         }
 
@@ -256,11 +304,10 @@ public class Balloon : GrabbableObject
             if (disableCatchingCooldown > 0)
             {
                 disableCatchingCooldown -= Time.deltaTime;
-                
-                if (balloon.GetComponent<Collider>().enabled = false)
-                {
-                    balloon.GetComponent<Collider>().enabled = true;
-                }
+            }
+            else if (frozen)
+            {
+                FreezePhysics(false);
             }
 
             if (playerHeldBy != null)
@@ -268,30 +315,45 @@ public class Balloon : GrabbableObject
                 if (playerHeldBy.teleportingThisFrame)
                 {
                     Debug.Log("[BALLOON]: Player teleporting while holding balloon!");
-                    balloon.GetComponent<Collider>().enabled = false;
-                    disableCatchingCooldown = 1f;
+                    FreezePhysics(true);
+                    disableCatchingCooldown = 0.05f;
                 }
 
+                //BRING BALLOON IN VIEW OF PLAYER AFTER TELEPORTING
                 if (playerHeldBy.teleportedLastFrame)
                 {
-                    balloon.transform.position = playerHeldBy.localItemHolder.transform.position;
+                    balloon.transform.position = playerHeldBy.localItemHolder.transform.position + Vector3.up * 1f;
+                    balloonStrings[1].transform.position = playerHeldBy.localItemHolder.transform.position + Vector3.up * 0.75f;
+                    balloonStrings[2].transform.position = playerHeldBy.localItemHolder.transform.position + Vector3.up * 0.25f;
+                    grabString.transform.position = playerHeldBy.localItemHolder.transform.position;
+                }
+
+                if (Physics.Linecast(balloon.transform.position, grabString.transform.position, StartOfRound.Instance.collidersAndRoomMaskAndDefault) && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 5f)
+                {
+                    caughtAudio.volume = Mathf.Lerp(caughtAudio.volume, 1f, Time.deltaTime * 10f);
+                }
+                else
+                {
+                    caughtAudio.volume = Mathf.Lerp(caughtAudio.volume, 0f, Time.deltaTime * 10f);
                 }
 
                 //DISCARD IF STRETCHED TOO FAR FROM OWNER
-                if (disableCatchingCooldown <= 0 && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 8f)
+                if (disableCatchingCooldown <= 0 && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 7f)
                 {
                     Debug.Log("[BALLOON]: Too far from player hand, discarding!");
 
                     //PLAY SOUND
-                    PlayCaughtClipAndSync();
+                    PlaySnapClipAndSync();
 
                     //DISCARD BALLOON
                     playerHeldBy.DiscardHeldObject();
+
+                    caughtAudio.volume = 0f;
                 }
             }
 
             //POP IF BALLOON FLOATS TOO HIGH
-            if (balloon.transform.position.y > 70f)
+            if (balloon.transform.position.y > popHeight)
             {
                 Pop();
             }
@@ -353,35 +415,55 @@ public class Balloon : GrabbableObject
         {
             balloon.transform.position = Vector3.Lerp(balloon.transform.position, balloonServerPosition, Time.deltaTime*3f);
         }
-    }
 
-    public void PlayCaughtClipAndSync(bool makeNoise = true)
-    {
-        balloonAudio.PlayOneShot(caughtClip);
-        if (makeNoise)
+        //PLAYER ANIMATOR UPDATE
+        if (previousPlayerHeldBy == null || !base.IsOwner)
         {
-            RoundManager.Instance.PlayAudibleNoise(balloon.transform.position);
+            return;
         }
-
-        PlayCaughtServerRpc();
+        else 
+        {
+            if (previousPlayerHeldBy.isPlayerDead)
+            {
+                SetAnimator(setOverride: false);
+            }
+        }
     }
 
-    [ServerRpc]
-    public void PlayCaughtServerRpc(bool makeNoise = true)
+    public void FreezePhysics(bool freeze)
     {
-        PlayCaughtClientRpc();
+        for (int i = 0; i < balloonStrings.Length; i++)
+        {
+            balloonStrings[i].GetComponent<Rigidbody>().isKinematic = freeze;
+        }
+        frozen = freeze;
+    }
+
+    public void PlaySnapClipAndSync()
+    {
+        physicsAudio.clip = snapClips[UnityEngine.Random.Range(0, snapClips.Length)];
+        physicsAudio.pitch = UnityEngine.Random.Range(0.9f, 1.15f);
+        physicsAudio.Play();
+        RoundManager.Instance.PlayAudibleNoise(balloon.transform.position);
+
+        PlaySnapClipServerRpc();
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void PlaySnapClipServerRpc()
+    {
+        PlaySnapClipClientRpc();
     }
 
     [ClientRpc]
-    public void PlayCaughtClientRpc(bool makeNoise = true)
+    public void PlaySnapClipClientRpc()
     {
         if (!base.IsOwner)
         {
-            balloonAudio.PlayOneShot(caughtClip);
-            if (makeNoise)
-            {
-                RoundManager.Instance.PlayAudibleNoise(balloon.transform.position);
-            }
+            physicsAudio.clip = snapClips[UnityEngine.Random.Range(0, snapClips.Length)];
+            physicsAudio.pitch = UnityEngine.Random.Range(0.9f, 1.15f);
+            physicsAudio.Play();
+            RoundManager.Instance.PlayAudibleNoise(balloon.transform.position);
         }
     }
 
@@ -392,24 +474,20 @@ public class Balloon : GrabbableObject
             radarIcon.position = base.transform.position;
         }
 
-        //SET STRING TO HAND IF OBJECT IS HELD BY PLAYER
-        if (isHeld)
-        {
-            if (IsOwner)
-            {
-                grabString.transform.position = playerHeldBy.localItemHolder.transform.position;
-            }
-            else
-            {
-                grabString.transform.position = playerHeldBy.serverItemHolder.transform.position;
-            }
-        }
-
         //SET POSITIONS OF BALLOON PARTS
         if (balloon == null || grabString == null)
         {
             Debug.Log("[BALLOON]: Floating balloon prefab was not found, skipping setting postions!");
             return;
+        }
+
+        //SET STRING TO HAND IF OBJECT IS HELD BY PLAYER
+        if (parentObject != null)
+        {
+			Vector3 positionOffset = itemProperties.positionOffset;
+            grabString.transform.position = parentObject.transform.position;
+            positionOffset = parentObject.transform.rotation * positionOffset;
+			grabString.transform.position += positionOffset;
         }
 
         base.transform.position = grabString.transform.position;
@@ -423,15 +501,52 @@ public class Balloon : GrabbableObject
         }
 
         //SET LINE RENDERER POSITIONS
-        Vector3[] stringPositions = new Vector3[balloonStrings.Length];
-        for (int i = 0; i < balloonStrings.Length; i++)
-        {
-            stringPositions[i] = balloonStrings[i].transform.position;
-        }
-        lineRenderer.SetPositions(stringPositions);
+        SubdivideStrings(subdivisions: 3);
     }
 
-    public void EnablePhysics(bool enable = true)
+    public void SubdivideStrings(int subdivisions)
+    {
+        static Vector3 SplinePosition(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t, float k)
+        {
+            Vector3 a = 2f * p1;
+            Vector3 b = (p2 - p0) * k;
+            Vector3 c = (2f * p0 - 5f * p1 + 4f * p2 - p3) * k;
+            Vector3 d = (-p0 + 3f * p1 - 3f * p2 + p3) * k;
+            
+            return 0.5f * (a + (b * t) + (c * t * t) + (d * t * t * t));
+        }
+        List<Vector3> origStringPoints = [];
+        for (int i = 0; i < balloonStrings.Length; i++)
+        {
+            origStringPoints.Add(balloonStrings[i].transform.position);
+        }
+        if (isHeld)
+        {
+            //ADD UNMOVING STRING SEGMENT IN PLAYER'S HAND
+            origStringPoints.Add(balloonStrings[^1].transform.position - playerHeldBy.localItemHolder.transform.right * 0.1f);
+        }
+        List<Vector3> subdivPoints = [];
+        for (int i = 0; i < origStringPoints.Count - 1; i++)
+        {
+            float curvature = i < 2 ? 1f : i == 2 ? 0.75f : 0.25f;
+            Vector3 p0 = origStringPoints[i - 1 < 0 ? 0 : i - 1];
+            Vector3 p1 = origStringPoints[i];
+            Vector3 p2 = origStringPoints[i + 1];
+            Vector3 p3 = origStringPoints[i + 2 >= origStringPoints.Count ? origStringPoints.Count - 1 : 1 + 2];
+
+            subdivPoints.Add(p1);
+            for (int j = 1; j <= subdivisions; j++)
+            {
+                float t = j / (float)(subdivisions + 1);
+                subdivPoints.Add(SplinePosition(p0, p1, p2, p3, t, curvature));
+            }
+        }
+        subdivPoints.Add(origStringPoints[^1]);
+        lineRenderer.positionCount = subdivPoints.Count;
+        lineRenderer.SetPositions(subdivPoints.ToArray());
+    }
+
+    public new void EnablePhysics(bool enable = true)
     {
         if (enable)
         {
@@ -466,6 +581,14 @@ public class Balloon : GrabbableObject
         }
     }
 
+    public override void EquipItem()
+    {
+        base.EquipItem();
+        previousPlayerHeldBy = playerHeldBy;
+        SetAnimator(setOverride: true);
+        playerHeldBy.playerBodyAnimator.Play("HoldBalloon");
+    }
+
     public override void GrabItemFromEnemy(EnemyAI enemy)
     {
         base.GrabItemFromEnemy(enemy);
@@ -479,11 +602,18 @@ public class Balloon : GrabbableObject
         {
             itemColliders[i].enabled = true;
         }
+        SetAnimator(setOverride: false);
     }
 
     public override void DiscardItemFromEnemy()
     {
 
+    }
+
+    public override void OnDestroy()
+    {
+        DestroyBalloon();
+        base.OnDestroy();
     }
 
     public void DampFloating()
@@ -525,25 +655,53 @@ public class Balloon : GrabbableObject
     //USING ITEM
     public override void ItemActivate(bool used, bool buttonDown = true)
     {
-        Debug.Log("[BALLOON]: Used item!");
+        if (tugging)
+        {
+            return;
+        }
         base.ItemActivate(used, buttonDown);
 
         //ANIMATE HAND DOWN TO TUG ON BALLOON A BIT
-
-        //PLAY SOUND
-        balloonAudio.PlayOneShot(tugClip);
+        StartCoroutine(TugBalloon());
 
         //PLAY AUDIBLE NOISE
-        // if (Vector3.Distance(lastPosition, balloon.transform.position) > 2f)
-        // {
-        //     timesPlayedInOneSpot = 0;
-        // }
-        // timesPlayedInOneSpot++;
-        // lastPosition = balloon.transform.position;
-        // RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+        if (Vector3.Distance(lastPosition, balloon.transform.position) > 2f)
+        {
+            timesPlayedInOneSpot = 0;
+        }
+        timesPlayedInOneSpot++;
+        lastPosition = balloon.transform.position;
+        RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
     }
 
-
+    public IEnumerator TugBalloon()
+    {
+        tugging = true;
+        if (IsOwner)
+        {
+            previousPlayerHeldBy.playerBodyAnimator.SetTrigger("TugBalloon");
+        }
+        itemAudio.clip = tugClip;
+        itemAudio.pitch = UnityEngine.Random.Range(0.95f, 1.1f);
+        itemAudio.Play();
+        yield return new WaitForSeconds(0.2f);
+        if (IsOwner)
+        {
+            Vector3 direction = Vector3.Lerp(Vector3.down, (balloonCollider.transform.position - grabString.transform.position).normalized * -1f, 0.5f);
+            float force = Mathf.Clamp(Vector3.Distance(balloonCollider.transform.position, grabString.transform.position) * 6f, 5f, 25f);
+            balloon.GetComponent<Rigidbody>().AddForce(direction * force, ForceMode.Impulse);
+            DampFloating();
+        }
+        physicsAudio.clip = tugStringClips[UnityEngine.Random.Range(0, tugStringClips.Length)];
+        physicsAudio.pitch = UnityEngine.Random.Range(0.9f, 1.15f);
+        physicsAudio.Play();
+        yield return new WaitForSeconds(0.75f);
+        if (IsOwner)
+        {
+            previousPlayerHeldBy.playerBodyAnimator.ResetTrigger("TugBalloon");
+        }
+        tugging = false;
+    }
 
     //COLLISIONS
     public void OnTouch(Collider other)
@@ -553,7 +711,7 @@ public class Balloon : GrabbableObject
         Debug.Log($"[BALLOON]: Balloon collided with {gameObject}.");
 
         RaycastHit hitInfo;
-        if (Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+        if (frozen || Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
         {
             return;
         }
@@ -756,16 +914,18 @@ public class Balloon : GrabbableObject
             balloon.GetComponent<Rigidbody>().AddForce(force, ForceMode.Impulse);
 
             //PLAY SOUND
-            balloonAudio.PlayOneShot(bumpClips[UnityEngine.Random.Range(0,bumpClips.Length)]);
+            physicsAudio.clip = bumpClips[UnityEngine.Random.Range(0,bumpClips.Length)];
+            physicsAudio.pitch = UnityEngine.Random.Range(0.9f, 1.15f);
+            physicsAudio.Play();
 
             //PLAY AUDIBLE NOISE
-            // if (Vector3.Distance(lastPosition, balloon.transform.position) > 2f)
-            // {
-            //     timesPlayedInOneSpot = 0;
-            // }
-            // timesPlayedInOneSpot++;
-            // lastPosition = balloon.transform.position;
-            // RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
+            if (Vector3.Distance(lastPosition, balloon.transform.position) > 2f)
+            {
+                timesPlayedInOneSpot = 0;
+            }
+            timesPlayedInOneSpot++;
+            lastPosition = balloon.transform.position;
+            RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
         }
     }
 
@@ -780,12 +940,6 @@ public class Balloon : GrabbableObject
     [ServerRpc(RequireOwnership = false)]
     public void PopServerRpc()
     {
-        //RELEASE FROM PLAYER IF HELD
-        if (playerHeldBy != null)
-        {
-            playerHeldBy.DiscardHeldObject();
-        }
-
         PopClientRpc();
     }
 
@@ -793,6 +947,23 @@ public class Balloon : GrabbableObject
     public void PopClientRpc()
     {
         Debug.Log("[BALLOON]: Popped!");
+
+        //RELEASE FROM PLAYER IF HELD AND DESPAWN BALLOON
+        if (playerHeldBy != null)
+        {
+            if (playerHeldBy == GameNetworkManager.Instance.localPlayerController)
+            {
+                playerHeldBy.DiscardHeldObject();
+                DespawnBalloonServerRpc();
+            }
+        }
+        else
+        {
+            if (base.IsServer)
+            {
+                StartCoroutine(DespawnAfterFrame());
+            }
+        }
 
         //DESTROY FLOATING PREFAB
         DestroyBalloon();
@@ -802,12 +973,12 @@ public class Balloon : GrabbableObject
 
         //PLAY AUDIBLE NOISE
         RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange: 15f, noiseLoudness: 1f);
+    }
 
-        //DESPAWN BALLOON ITEM
-        if (IsOwner)
-        {
-            StartCoroutine(DespawnAfterFrame());
-        }
+    [ServerRpc(RequireOwnership = false)]
+    public void DespawnBalloonServerRpc()
+    {
+        StartCoroutine(DespawnAfterFrame());
     }
 
     public IEnumerator DespawnAfterFrame()
@@ -851,4 +1022,71 @@ public class Balloon : GrabbableObject
         }
     }
 
+    // --- CHANGE ANIMATOR - RIPPED FROM HAND MIRROR! ---
+    private void SetAnimator(bool setOverride)
+    {
+        if (setOverride == true)
+        {
+            if (playerHeldBy != null)
+            {
+                if (playerHeldBy == StartOfRound.Instance.localPlayerController)
+                {
+                    SaveAnimatorStates(playerHeldBy.playerBodyAnimator);
+                    if (playerDefaultAnimatorController != playerCustomAnimatorController)
+                    {
+                        playerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                    }
+                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerCustomAnimatorController;
+                    SetAnimatorStates(playerHeldBy.playerBodyAnimator);
+                }
+                else
+                {
+                    SaveAnimatorStates(playerHeldBy.playerBodyAnimator);
+                    if (otherPlayerDefaultAnimatorController != otherPlayerCustomAnimatorController)
+                    {
+                        otherPlayerDefaultAnimatorController = playerHeldBy.playerBodyAnimator.runtimeAnimatorController;
+                    }
+                    playerHeldBy.playerBodyAnimator.runtimeAnimatorController = otherPlayerCustomAnimatorController;
+                    SetAnimatorStates(playerHeldBy.playerBodyAnimator);
+                }
+            }
+        }
+        else
+        {
+            if (previousPlayerHeldBy != null)
+            {
+                if (previousPlayerHeldBy == StartOfRound.Instance.localPlayerController)
+                {
+                    SaveAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                    previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = playerDefaultAnimatorController;
+                    SetAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                }
+                else
+                {
+                    SaveAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                    previousPlayerHeldBy.playerBodyAnimator.runtimeAnimatorController = otherPlayerDefaultAnimatorController;
+                    SetAnimatorStates(previousPlayerHeldBy.playerBodyAnimator);
+                }
+            }
+        }
+    }
+
+    public void SaveAnimatorStates(Animator animator)
+    {
+        isCrouching = animator.GetBool("crouching");
+        isJumping = animator.GetBool("Jumping");
+        isWalking = animator.GetBool("Walking");
+        isSprinting = animator.GetBool("Sprinting");
+        currentStateInfo = animator.GetCurrentAnimatorStateInfo(0);
+        currentAnimationTime = currentStateInfo.normalizedTime;
+    }
+
+    public void SetAnimatorStates(Animator animator)
+    {
+        animator.Play(currentStateInfo.fullPathHash, 0, currentAnimationTime);
+        animator.SetBool("crouching", isCrouching);
+        animator.SetBool("Jumping", isJumping);
+        animator.SetBool("Walking", isWalking);
+        animator.SetBool("Sprinting", isSprinting);
+    }
 }
