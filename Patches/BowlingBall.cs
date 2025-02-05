@@ -142,16 +142,13 @@ public class BowlingBall : GrabbableObject
         {
             if (previousPlayerHeldBy == player)
             {
-                Debug.Log("[BOWLING BALL]: Hit the player who dropped me while falling!");
                 return;
             }
             if (player.TryGetComponent<IHittable>(out var hittable))
             {
                 hittable.Hit((fallHeight > damageHeight * 2) ? 10 : 4, Vector3.down * 0.8f, previousPlayerHeldBy, playHitSFX: true, 1);
-                Debug.Log($"[BOWLING BALL]: Damaged player with damage of {((fallHeight > damageHeight * 2) ? 10 : 4)}.");
                 if ((fallHeight > damageHeight * 2) || player.health <= 30)
                 {
-                    Debug.Log("[BOWLING BALL]: Player about to die!");
                     StartCoroutine(KillAnimation(player));
                     KillAnimationServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, (int)player.playerClientId);
                 }
@@ -221,7 +218,6 @@ public class BowlingBall : GrabbableObject
 		yield return new WaitUntil(() => Time.realtimeSinceStartup - startTime > 1f || killedPlayer.deadBody != null);
 		if (killedPlayer.deadBody != null)
 		{
-            Debug.Log("[BOWLING BALL]: Dead player body found, attaching head to bowling ball!");
 			killedPlayer.deadBody.attachedLimb = killedPlayer.deadBody.bodyParts[0];
 			killedPlayer.deadBody.attachedTo = base.gameObject.transform;
 			killedPlayer.deadBody.matchPositionExactly = true;
@@ -230,10 +226,6 @@ public class BowlingBall : GrabbableObject
 			killedPlayer.deadBody.attachedLimb = null;
 			killedPlayer.deadBody.attachedTo = null;
 		}
-        else
-        {
-            Debug.Log("[BOWLING BALL]: No dead body :/");
-        }
     }
 
     public override void OnHitGround()
