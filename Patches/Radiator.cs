@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using System;
 using Random = UnityEngine.Random;
+using UnityEngine.Events;
 
 public class Radiator : GrabbableObject, IHittable, ITouchable
 {
@@ -79,13 +80,16 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
     {
         path = new NavMeshPath();
         lastActionTime = Time.realtimeSinceStartup;
-        if (StartOfRound.Instance.timeSinceRoundStarted < 2f)
-        {
-            haunted = false;
-        }
         ResetStatesAndSync();
         ResetAnimationsAndSync(silent: true, clearMemory: true);
         base.Start();
+        ResetHaunt();
+        StartOfRound.Instance.StartNewRoundEvent.AddListener(ResetHaunt);
+    }
+
+    public void ResetHaunt()
+    {
+        haunted = false;
     }
 
     public override void Update()
