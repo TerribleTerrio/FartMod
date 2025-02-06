@@ -70,10 +70,30 @@ public class Rake : GrabbableObject, ITouchable
 
     private bool dropAnimationComplete;
 
+    private bool randomSpawnRotation = false;
+
     public override void Start()
     {
         collidersTouching = new List<Collider>();
         base.Start();
+        StartOfRound.Instance.StartNewRoundEvent.AddListener(DropRakeWithRandomRotation);
+    }
+
+    public void DropRakeWithRandomRotation()
+    {
+        if (!scrapPersistedThroughRounds)
+        {
+            Vector3 closestAINode = RoundManager.Instance.insideAINodes.OrderBy(x => Vector3.Distance(base.transform.position, x.transform.position)).First().transform.position;
+            base.transform.position = RoundManager.Instance.GetRandomNavMeshPositionInBoxPredictable(closestAINode, 8f, randomSeed: RoundManager.Instance.AnomalyRandom) + Vector3.up;
+            startFallingPosition = base.transform.position;
+			if (base.transform.parent != null)
+			{
+				startFallingPosition = base.transform.parent.InverseTransformPoint(startFallingPosition);
+			}
+			FallToGround();
+            hasHitGround = false;
+            randomSpawnRotation = true;
+        }
     }
 
     public override void Update()
@@ -110,9 +130,19 @@ public class Rake : GrabbableObject, ITouchable
 
     private IEnumerator SetDropRotation()
     {
+        yield return null;
         yield return new WaitUntil(() => dropAnimationComplete);
-        var sendingRotation = base.transform.rotation;
-        SetDropRotationServerRpc(sendingRotation);
+        if (randomSpawnRotation)
+        {
+            randomSpawnRotation = false;
+            var sendingRotation = Quaternion.Euler(0f, UnityEngine.Random.Range(0, 360), 0f);
+            SetDropRotationServerRpc(sendingRotation);
+        }
+        else
+        {
+            var sendingRotation = base.transform.rotation;
+            SetDropRotationServerRpc(sendingRotation);
+        }
     }
 
     [ServerRpc(RequireOwnership = false)]
