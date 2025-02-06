@@ -86,6 +86,7 @@ internal class LandminePatch
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Explosion");
             otherObject.GetComponent<Balloon>()?.Pop();
+            otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
             if (otherObject.GetComponent<Vase>() != null)
             {
                 if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
@@ -183,6 +184,8 @@ internal class TurretPatch
                     otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
                     otherObject.GetComponent<Vase>()?.ExplodeAndSync();
                     otherObject.GetComponent<Radiator>()?.FallOverAndSync(__instance.aimPoint.forward);
+                    otherObject.GetComponent<Balloon>()?.Pop();
+                    otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
                     if (otherObject.GetComponent<PlayerControllerB>() != null)
                     {
                         PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
@@ -222,6 +225,7 @@ internal class ShotgunPatch
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Shotgun");
             otherObject.GetComponent<Vase>()?.ExplodeAndSync();
             otherObject.GetComponent<Balloon>()?.Pop();
+            otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
