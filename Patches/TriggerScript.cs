@@ -8,23 +8,23 @@ public class TriggerScript : MonoBehaviour, IHittable
 {
     public NetworkBehaviour objectScript;
 
-    public String callOnTriggerEnter;
+    public string? callOnTriggerEnter;
 
-    public String callOnTriggerExit;
+    public string? callOnTriggerExit;
 
-    public String callOnHit;
+    public string? callOnHit;
 
-    private MethodInfo onEnter;
+    private MethodInfo? onEnter;
 
-    private ParameterInfo[] onEnterParameters;
+    private ParameterInfo[]? onEnterParameters;
 
-    private MethodInfo onExit;
+    private MethodInfo? onExit;
 
-    private ParameterInfo[] onExitParameters;
+    private ParameterInfo[]? onExitParameters;
 
-    private MethodInfo onHit;
+    private MethodInfo? onHit;
 
-    private ParameterInfo[] onHitParameters;
+    private ParameterInfo[]? onHitParameters;
 
     public void Start()
     {
@@ -33,34 +33,42 @@ public class TriggerScript : MonoBehaviour, IHittable
         if (!string.IsNullOrEmpty(callOnTriggerEnter))
         {
             onEnter = itemType.GetMethod(callOnTriggerEnter);
-            onEnterParameters = onEnter.GetParameters();
+            if (onEnter != null)
+            {
+                onEnterParameters = onEnter.GetParameters();
+            }
         }
 
         if (!string.IsNullOrEmpty(callOnTriggerExit))
         {
             onExit = itemType.GetMethod(callOnTriggerExit);
-            onExitParameters = onExit.GetParameters();
+            if (onExit != null)
+            {
+                onExitParameters = onExit.GetParameters();
+            }
         }
 
         if (!string.IsNullOrEmpty(callOnHit))
         {
             onHit = itemType.GetMethod(callOnHit);
-            onHitParameters = onHit.GetParameters();
+            if (onHit != null)
+            {
+                onHitParameters = onHit.GetParameters();
+            }
         }
     }
     
     public void OnTriggerEnter(Collider other)
     {
-        if (!string.IsNullOrEmpty(callOnTriggerEnter))
+        if (onEnter != null && !string.IsNullOrEmpty(callOnTriggerEnter))
         {
-            if (onEnterParameters.Length == 0)
+            if (onEnterParameters is null || onEnterParameters.Length == 0)
             {
                 onEnter.Invoke(objectScript, null);
             }
             else
             {
-                object[] parametersArray = new object[1];
-                parametersArray[0] = other;
+                object[] parametersArray = [other];
                 onEnter.Invoke(objectScript, parametersArray);
             }
         }
@@ -68,16 +76,15 @@ public class TriggerScript : MonoBehaviour, IHittable
 
     public void OnTriggerExit(Collider other)
     {
-        if (!string.IsNullOrEmpty(callOnTriggerExit))
+        if (onExit != null && !string.IsNullOrEmpty(callOnTriggerExit))
         {
-            if (onExitParameters.Length == 0)
+            if (onExitParameters is null || onExitParameters.Length == 0)
             {
                 onExit.Invoke(objectScript, null);
             }
             else
             {
-                object[] parametersArray = new object[1];
-                parametersArray[0] = other;
+                object[] parametersArray = [other];
                 onExit.Invoke(objectScript, parametersArray);
             }
         }
@@ -85,9 +92,17 @@ public class TriggerScript : MonoBehaviour, IHittable
 
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = false, int hitID = -1)
     {
-        if (!string.IsNullOrEmpty(callOnHit))
+        if (onHit != null && !string.IsNullOrEmpty(callOnHit))
         {
-            onHit.Invoke(objectScript, null);
+            if (onHitParameters is null || onHitParameters.Length == 0)
+            {
+                onHit.Invoke(objectScript, null);
+            }
+            else
+            {
+                object[] parametersArray = [force, hitDirection, playerWhoHit = null, playHitSFX = false, hitID = -1];
+                onHit.Invoke(objectScript, parametersArray);
+            }
         }
         return false;
     }
