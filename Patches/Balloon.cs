@@ -19,6 +19,8 @@ public class Balloon : GrabbableObject
 
     public GameObject balloonCollider;
 
+    public GameObject stringCollider;
+
     public GameObject[] balloonStrings;
 
     public GameObject grabString;
@@ -101,7 +103,7 @@ public class Balloon : GrabbableObject
 
     private float popHeight = 55f;
 
-    private float stringColliderRadius = 1f;
+    private float stringGrabRadius = 1f;
 
     private bool frozen;
 
@@ -138,64 +140,90 @@ public class Balloon : GrabbableObject
 
 	private Vector3 lastPosition;
 
+    private EnemyAI? focusedByEnemy;
+
+    private Vector3 lastDroppedPosition;
+
+    private const int originalItemId = 0;
+
+    private const int baboonHawkUngrabbableId = 1531; //Beehive ID --- Remember to only set this when necessary!
+
+    private float enemyGrabHeight = 8f;
+
+    private bool poppedThisFrame = false;
+
+    private Color[] balloonColors =
+    {
+        new(0.9f, 0.2f, 0.2f),      //RED
+        new(0.4f, 0.9f, 0.3f),      //GREEN
+        new(0.95f, 0.95f, 0.4f),    //YELLOW
+        new(0.4f, 0.5f, 0.95f),     //BLUE
+        new(0.4f, 0.95f, 0.85f),    //CYAN
+        new(1f, 0.5f, 0.1f),        //ORANGE
+        new(1f, 0.5f, 0.7f),        //PINK
+        new(0.6f, 0.1f, 0.8f)       //PURPLE
+    };
+
+    private Color balloonColor;
+
+    private bool startSetColorFlag = false;
+
+    private int balloonColorIndex = 0;
+
+    private Rigidbody[] balloonStringsPhys;
+
+    private Vector3 lastShipPos;
+
     public override void Start()
     {
         //BALLOON START
         balloon.transform.SetParent(null, true);
         balloonCollider.transform.SetParent(null, true);
+        stringCollider.transform.SetParent(null, true);
 
+        //CHECK FOR WIND AND POP HEIGHT
         lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
         Debug.Log($"[BALLOON]: lastMoon set to {lastMoon}.");
+        MoonConditionsCheck();
+        StartOfRound.Instance.StartNewRoundEvent.AddListener(StartShipLanding);
 
-        //CHECK FOR WIND
-        Debug.Log("[BALLOON]: Checking if current weather is stormy.");
-        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
-        {
-            windy = true;
-        }
-        else
-        {
-            Debug.Log("[BALLOON]: Current weather is not stormy.");
-            Debug.Log("[BALLOON]: Checking if current level is a windy moon.");
-            for (int i = 0; i < windyMoons.Length; i++)
-            {
-                Debug.Log($"[BALLOON]: Checking if current level is {windyMoons[i]}...");
-                if (StartOfRound.Instance.currentLevel.PlanetName.Contains(windyMoons[i]))
-                {
-                    Debug.Log($"[BALLOON]: Current level is {windyMoons[i]}! Setting balloon to windy.");
-                    windy = true;
-                    break;
-                }
-            }
-        }
-
+        //INITIALIZE ARRAYS AND ARRAY VALUES
+        lastShipPos = StartOfRound.Instance.elevatorTransform.position;
+        itemColliders = new SphereCollider[balloonStrings.Length];
+        balloonStringsPhys = new Rigidbody[balloonStrings.Length];
         for (int i = 0; i < balloonStrings.Length; i++)
         {
             balloonStrings[i].transform.SetParent(null, true);
+            SphereCollider sphereCollider = base.gameObject.AddComponent<SphereCollider>();
+            sphereCollider.radius = stringGrabRadius;
+            itemColliders[i] = sphereCollider;
+            balloonStringsPhys[i] = balloonStrings[i].GetComponent<Rigidbody>();
         }
-
         lineRenderer = base.gameObject.GetComponent<LineRenderer>();
         lineRenderer.positionCount = balloonStrings.Length;
+        SetBalloonColor();
 
-        //CREATE COLLIDERS FOR EACH STRING SECTION
-        itemColliders = new SphereCollider[balloonStrings.Length];
-        for (int i = 0; i < balloonStrings.Length; i++)
-        {
-            SphereCollider sphereCollider = base.gameObject.AddComponent<SphereCollider>();
-            sphereCollider.radius = stringColliderRadius;
-            itemColliders[i] = sphereCollider;
-        }
-
+        //INITIAL POSITION SYNC
         if (base.IsOwner)
         {
+            Debug.Log("[BALLOON]: Enabling physics for initial position sync!");
             EnablePhysics(true);
+            disableCatchingCooldown = 0.05f;
+            balloon.transform.position = base.transform.position + Vector3.up * 0.3f;
+            balloonStrings[1].transform.position = base.transform.position + Vector3.up * 0.2f;
+            balloonStrings[2].transform.position = base.transform.position + Vector3.up * 0.1f;
+            grabString.transform.position = base.transform.position;
+            SyncPositionInstantlyServerRpc(base.transform.position);
         }
         else
         {
+            Debug.Log("[BALLOON]: Disabling physics for initial position sync!");
             EnablePhysics(false);
         }
 
         balloonServerPosition = balloon.transform.position;
+        lastDroppedPosition = base.transform.position;
+        itemProperties.itemId = originalItemId;
         DampFloating();
 
 
@@ -252,12 +280,14 @@ public class Balloon : GrabbableObject
         {
             if (!wasOwnerLastFrame)
             {
+                Debug.Log("[BALLOON]: Enabling physics by changing ownership!");
                 EnablePhysics(true);
                 wasOwnerLastFrame = true;
             }
         }
         else if (wasOwnerLastFrame)
         {
+            Debug.Log("[BALLOON]: Disabling physics by changing ownership!");
             EnablePhysics(false);
             wasOwnerLastFrame = false;
         }
@@ -265,24 +295,9 @@ public class Balloon : GrabbableObject
         //BALLOON UPDATE
         if (StartOfRound.Instance.currentLevel.PlanetName != lastMoon)
         {
-            Debug.Log("[BALLOON]: Landed on new moon, checking for wind...");
             lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
-
-            if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
-            {
-                windy = true;
-            }
-            else
-            {
-                for (int i = 0; i < windyMoons.Length; i++)
-                {
-                    if (StartOfRound.Instance.currentLevel.PlanetName.Contains(windyMoons[i]))
-                    {
-                        windy = true;
-                        break;
-                    }
-                }
-            }
+            Debug.Log($"[BALLOON]: Landed on new moon, setting LastMoon to {lastMoon} and checking for wind and height...");
+            MoonConditionsCheck();
         }
 
         if (pushTimer > 0)
@@ -290,43 +305,65 @@ public class Balloon : GrabbableObject
             pushTimer -= Time.deltaTime;
         }
 
-        for (int i = 0; i < balloonStrings.Length; i++)
+        for (int i = 0; i < balloonStringsPhys.Length; i++)
         {
-            Rigidbody rigidbody = balloonStrings[i].GetComponent<Rigidbody>();
-            if (rigidbody != null)
-            {
-                rigidbody.drag = drag;
-            }
+            balloonStringsPhys[i].drag = drag;
         }
 
         if (base.IsOwner)
         {
-            if (disableCatchingCooldown > 0)
+            if (disableCatchingCooldown > 0f)
             {
                 disableCatchingCooldown -= Time.deltaTime;
             }
             else if (frozen)
             {
-                FreezePhysics(false);
+                Debug.Log("[BALLOON]: Enabling physics because disableCatchingCooldown fell to 0!");
+                EnablePhysics(true);
             }
 
+            //HANDLING TELEPORTING
             if (playerHeldBy != null)
             {
                 if (playerHeldBy.teleportingThisFrame)
                 {
-                    Debug.Log("[BALLOON]: Player teleporting while holding balloon!");
-                    FreezePhysics(true);
+                    Debug.Log("[BALLOON]: Player teleporting while holding balloon, disabling physics!");
+                    EnablePhysics(false);
                     disableCatchingCooldown = 0.05f;
                 }
 
-                //BRING BALLOON IN VIEW OF PLAYER AFTER TELEPORTING
                 if (playerHeldBy.teleportedLastFrame)
                 {
                     balloon.transform.position = playerHeldBy.localItemHolder.transform.position + Vector3.up * 1f;
                     balloonStrings[1].transform.position = playerHeldBy.localItemHolder.transform.position + Vector3.up * 0.75f;
                     balloonStrings[2].transform.position = playerHeldBy.localItemHolder.transform.position + Vector3.up * 0.25f;
                     grabString.transform.position = playerHeldBy.localItemHolder.transform.position;
+                    SyncPositionInstantlyServerRpc(playerHeldBy.localItemHolder.transform.position);
                 }
+            }
+
+            //HANDLING HEIGHTS
+            if (disableCatchingCooldown <= 0 && !isInShipRoom && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > popHeight)
+            {
+                Pop();
+            }
+            else if (grabbableToEnemies && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > enemyGrabHeight)
+            {
+                grabbableToEnemies = false;
+                itemProperties.itemId = baboonHawkUngrabbableId;
+                Debug.Log($"[BALLOON]: Setting grabbableToEnemies: {grabbableToEnemies}, {itemProperties.itemId}");
+            }
+            else if (!grabbableToEnemies && Vector3.Distance(lastDroppedPosition, balloon.transform.position) < enemyGrabHeight)
+            {
+                grabbableToEnemies = true;
+                itemProperties.itemId = originalItemId;
+                Debug.Log($"[BALLOON]: Setting grabbableToEnemies: {grabbableToEnemies}, {itemProperties.itemId}");
+            }
+
+            //HANDLING BEING HELD
+            if (isHeld || isHeldByEnemy)
+            {
+                lastDroppedPosition = base.transform.position;
 
                 if (Physics.Linecast(balloon.transform.position, grabString.transform.position, StartOfRound.Instance.collidersAndRoomMaskAndDefault) && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 5f)
                 {
@@ -340,22 +377,28 @@ public class Balloon : GrabbableObject
                 //DISCARD IF STRETCHED TOO FAR FROM OWNER
                 if (disableCatchingCooldown <= 0 && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 7f)
                 {
-                    Debug.Log("[BALLOON]: Too far from player hand, discarding!");
+                    Debug.Log("[BALLOON]: Too far from holder, discarding!");
 
                     //PLAY SOUND
                     PlaySnapClipAndSync();
 
                     //DISCARD BALLOON
-                    playerHeldBy.DiscardHeldObject();
-
-                    caughtAudio.volume = 0f;
+                    if (playerHeldBy != null)
+                    {
+                        Debug.Log("[BALLOON]: Too far from player holding, discarding!");
+                        playerHeldBy.DiscardHeldObject();
+                    }
+                    else if (focusedByEnemy != null)
+                    {
+                        Debug.Log("[BALLOON]: Too far from enemy holding, discarding!");
+                        (focusedByEnemy as BaboonBirdAI)?.DropHeldItemAndSync();
+                        (focusedByEnemy as HoarderBugAI)?.DropItemAndCallDropRPC((focusedByEnemy as HoarderBugAI)?.heldItem.itemGrabbableObject.GetComponent<NetworkObject>(), false);
+                    }
                 }
             }
-
-            //POP IF BALLOON FLOATS TOO HIGH
-            if (balloon.transform.position.y > popHeight)
+            else
             {
-                Pop();
+                caughtAudio.volume = Mathf.Lerp(caughtAudio.volume, 0f, Time.deltaTime * 10f);
             }
 
             //SYNC POSITION FROM OWNER TO CLIENTS ON INTERVAL
@@ -430,13 +473,126 @@ public class Balloon : GrabbableObject
         }
     }
 
-    public void FreezePhysics(bool freeze)
+    private void StartShipLanding()
     {
-        for (int i = 0; i < balloonStrings.Length; i++)
+        if (base.IsOwner && isInShipRoom)
         {
-            balloonStrings[i].GetComponent<Rigidbody>().isKinematic = freeze;
+            StartCoroutine(HandleShipLanding());
         }
-        frozen = freeze;
+    }
+
+    private IEnumerator HandleShipLanding()
+    {
+        EnablePhysics(false);
+        disableCatchingCooldown = 13f;
+        float timeStart = Time.realtimeSinceStartup;
+        yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed") || Time.realtimeSinceStartup - timeStart > 12f);
+        yield return null;
+        disableCatchingCooldown = 0f;
+        SyncPositionInstantlyServerRpc(balloon.transform.position);
+    }
+
+    public override int GetItemDataToSave()
+    {
+        return balloonColorIndex;
+    }
+
+    public override void LoadItemSaveData(int saveData)
+    {
+        StartCoroutine(WaitToLoadBalloonColor(saveData));
+    }
+
+    private IEnumerator WaitToLoadBalloonColor(int index)
+    {
+        yield return new WaitUntil(() => startSetColorFlag);
+        {
+            SetBalloonColor(index);
+        }
+    }
+
+    public void SetBalloonColor(int index = -1)
+    {
+        if (index != -1)
+        {
+            balloonColorIndex = index;
+        }
+        else
+        {
+            int common = UnityEngine.Random.Range(0, 4);
+            int uncommon = UnityEngine.Random.Range(4, 6);
+            int rare = UnityEngine.Random.Range(6, balloonColors.Length);
+            float rareChance = 2f;
+            float uncommonChance = 20f;
+            float random = UnityEngine.Random.Range(0f, 100f);
+            balloonColorIndex = (random < rareChance) ? rare : (random < uncommonChance) ? uncommon : common;
+        }
+        balloonColor = balloonColors[balloonColorIndex];
+        balloon.GetComponent<Renderer>().material.color = balloonColor;
+        startSetColorFlag = true;
+    }
+
+    public void MoonConditionsCheck()
+    {
+        if (StartOfRound.Instance.currentLevel.currentWeather == LevelWeatherType.Stormy)
+        {
+            Debug.Log("[BALLOON]: Current weather is stormy.");
+            windy = true;
+        }
+        else
+        {
+            Debug.Log("[BALLOON]: Current weather is not stormy.");
+            Debug.Log("[BALLOON]: Checking if current level is a windy moon.");
+            for (int i = 0; i < windyMoons.Length; i++)
+            {
+                Debug.Log($"[BALLOON]: Checking if current level is {windyMoons[i]}...");
+                if (StartOfRound.Instance.currentLevel.PlanetName.Contains(windyMoons[i]))
+                {
+                    Debug.Log($"[BALLOON]: Current level is {windyMoons[i]}! Setting balloon to windy.");
+                    windy = true;
+                    break;
+                }
+            }
+        }
+        popHeight = StartOfRound.Instance.currentLevel.levelID switch
+        {
+            0 => 60f,   //Experimentation
+            1 => 60f,   //Assurance
+            2 => 40f,   //Vow
+            8 => 60f,   //Offense
+            4 => 40f,   //March
+            5 => 60f,   //Adamance
+            6 => 40f,   //Rend
+            7 => 40f,   //Dine
+            9 => 70f,   //Titan
+            10 => 50f,  //Artifice
+            12 => 50f,  //Embrion
+            3 => 40f,   //The Company Building
+            _ => 55f    //Default
+        };
+        Debug.Log($"[BALLOON]: Pop height for this moon is {popHeight}!");
+    }
+
+    public void OnStringTouch(Collider other)
+    {
+        if (base.IsOwner && !isHeld && !isHeldByEnemy && other.gameObject.layer == 19 && other.gameObject.TryGetComponent<EnemyAICollisionDetect>(out var enemycollider) && enemycollider.mainScript != null)
+        {
+            switch (enemycollider.mainScript)
+            {
+                case BaboonBirdAI baboonBird:
+                    if (baboonBird.focusedScrap == this && Vector3.Distance(base.transform.position, enemycollider.mainScript.transform.position) < 8f)
+                    {
+                        focusedByEnemy = baboonBird;
+                    }
+                    break;
+
+                case HoarderBugAI hoarderBug:
+                    if (hoarderBug.targetItem == this && Vector3.Distance(base.transform.position, enemycollider.mainScript.transform.position) < 8f)
+                    {
+                        focusedByEnemy = hoarderBug;
+                    }
+                    break;
+            }
+        }
     }
 
     public void PlaySnapClipAndSync()
@@ -490,9 +646,27 @@ public class Balloon : GrabbableObject
 			grabString.transform.position += positionOffset;
         }
 
-        base.transform.position = grabString.transform.position;
+        //SET BASE ACCESSIBLE TO GRABBING ENEMIES
+        if (focusedByEnemy == null)
+        {
+            base.transform.position = grabString.transform.position;
+        }
+        else if (!isHeldByEnemy)
+        {
+            base.transform.position = focusedByEnemy.transform.position;
+        }
+        else
+        {
+            base.transform.position = focusedByEnemy switch
+            {
+                BaboonBirdAI bird => bird.grabTarget.transform.position,
+                HoarderBugAI bug => bug.grabTarget.transform.position,
+                _ => focusedByEnemy.transform.position
+            };
+        }
         scanNode.transform.position = balloon.transform.position;
         balloonCollider.transform.position = balloon.transform.position;
+        stringCollider.transform.position = grabString.transform.position;
 
         //SET POSITIONS OF GRAB COLLIDERS
         for (int i = 0; i < itemColliders.Length; i++)
@@ -502,6 +676,17 @@ public class Balloon : GrabbableObject
 
         //SET LINE RENDERER POSITIONS
         SubdivideStrings(subdivisions: 3);
+
+        //MOVE RELATIVE TO SHIP
+        if (isInShipRoom || isInShipRoom && (StartOfRound.Instance.inShipPhase || !StartOfRound.Instance.shipHasLanded))
+        {
+            for (int i = 0; i < balloonStrings.Length; i++)
+            {
+                Vector3 shipDelta = StartOfRound.Instance.elevatorTransform.position - lastShipPos;
+                balloonStrings[i].transform.position = balloonStrings[i].transform.position + shipDelta;
+            }
+        }
+        lastShipPos = StartOfRound.Instance.elevatorTransform.position;
     }
 
     public void SubdivideStrings(int subdivisions)
@@ -548,16 +733,13 @@ public class Balloon : GrabbableObject
 
     public new void EnablePhysics(bool enable = true)
     {
-        if (enable)
+
+        Debug.Log($"[BALLOON]: {(enable ? "Enabling" : "Disabling")} physics!");
+        for (int i = 0; i < balloonStringsPhys.Length; i++)
         {
-            balloon.GetComponent<Rigidbody>().isKinematic = false;
-            balloon.GetComponent<Collider>().enabled = true;
+            balloonStringsPhys[i].isKinematic = !enable;
         }
-        else
-        {
-            balloon.GetComponent<Rigidbody>().isKinematic = true;
-            balloon.GetComponent<Collider>().enabled = false;
-        }
+        frozen = !enable;
     }
 
     public void RandomizeWindDirection()
@@ -603,15 +785,21 @@ public class Balloon : GrabbableObject
             itemColliders[i].enabled = true;
         }
         SetAnimator(setOverride: false);
+        lastDroppedPosition = base.transform.position;
     }
 
     public override void DiscardItemFromEnemy()
     {
-
+        focusedByEnemy = null;
+        lastDroppedPosition = base.transform.position;
     }
 
     public override void OnDestroy()
     {
+        if (itemProperties.itemId != originalItemId)
+        {
+            itemProperties.itemId = originalItemId;
+        }
         DestroyBalloon();
         base.OnDestroy();
     }
@@ -620,13 +808,9 @@ public class Balloon : GrabbableObject
     {
         Debug.Log("[BALLOON]: Damping physics!");
 
-        for (int i = 0; i < balloonStrings.Length; i++)
+        for (int i = 0; i < balloonStringsPhys.Length; i++)
         {
-            Rigidbody rigidbody = balloonStrings[i].GetComponent<Rigidbody>();
-            if (rigidbody != null)
-            {
-                rigidbody.velocity = new Vector3(0f,0f,0f);
-            }
+            balloonStringsPhys[i].velocity = new Vector3(0f,0f,0f);
         }
 
         if (lerpDrag != null)
@@ -708,10 +892,7 @@ public class Balloon : GrabbableObject
     {
         GameObject otherObject = other.gameObject;
 
-        Debug.Log($"[BALLOON]: Balloon collided with {gameObject}.");
-
-        RaycastHit hitInfo;
-        if (frozen || Physics.Linecast(transform.position, other.transform.position, out hitInfo, 1073742080, QueryTriggerInteraction.Ignore))
+        if (frozen || Physics.Linecast(transform.position, other.transform.position, out _, CoronaMod.Masks.RoomVehicle, QueryTriggerInteraction.Ignore))
         {
             return;
         }
@@ -729,132 +910,111 @@ public class Balloon : GrabbableObject
             EnemyAICollisionDetect enemy = otherObject.GetComponent<EnemyAICollisionDetect>();
             Debug.Log($"[BALLOON]: Bumped by enemytype {enemy.mainScript.enemyType.enemyName}.");
 
-            if (enemy.mainScript.enemyType.enemyName == "Flowerman")
+            switch (enemy.mainScript)
             {
-                PushBalloon(otherObject.transform.position, 8f);
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "Spring")
-            {
-                PushBalloon(otherObject.transform.position, 20f);
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "Jester")
-            {
-                JesterAI jester = enemy.mainScript as JesterAI;
-                if (jester.creatureAnimator.GetBool("poppedOut"))
-                {
-                    Pop();
-                }
-                else
-                {
+                case FlowermanAI:
                     PushBalloon(otherObject.transform.position, 8f);
-                }
-            }
+                    break;
 
-            else if (enemy.mainScript.enemyType.enemyName == "Maneater")
-            {
-                CaveDwellerAI caveDweller = enemy.mainScript as CaveDwellerAI;
-                if (caveDweller.adultContainer.activeSelf)
-                {
+                case SpringManAI:
                     PushBalloon(otherObject.transform.position, 20f);
-                }
-            }
+                    break;
 
-            else if (enemy.mainScript.enemyType.enemyName == "Masked")
-            {
-                PushBalloon(otherObject.transform.position, 10f);
-            }
+                case JesterAI jester:
+                    if (jester.creatureAnimator.GetBool("poppedOut"))
+                    {
+                        Pop();
+                    }
+                    else
+                    {
+                        PushBalloon(otherObject.transform.position, 8f);
+                    }
+                    break;
 
-            else if (enemy.mainScript.enemyType.enemyName == "Crawler")
-            {
-                CrawlerAI crawler = enemy.mainScript as CrawlerAI;
-                if (crawler.hasEnteredChaseMode)
-                {
+                case CaveDwellerAI caveDweller:
+                    if (caveDweller.adultContainer.activeSelf)
+                    {
+                        PushBalloon(otherObject.transform.position, 20f);
+                    }
+                    break;
+
+                case MaskedPlayerEnemy:
+                    PushBalloon(otherObject.transform.position, 10f);
+                    break;
+
+                case CrawlerAI crawler:
+                    if (crawler.hasEnteredChaseMode)
+                    {
+                        Pop();
+                    }
+                    else
+                    {
+                        PushBalloon(otherObject.transform.position, 20f);
+                    }
+                    break;
+
+                case RedLocustBees:
                     Pop();
-                }
-                else
-                {
-                    PushBalloon(otherObject.transform.position, 20f);
-                }
-            }
+                    break;
 
-            else if (enemy.mainScript.enemyType.enemyName == "Red Locust Bees")
-            {
-                Pop();
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "Earth Leviathan")
-            {
-                Pop();
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "MouthDog")
-            {
-                MouthDogAI mouthDog = enemy.mainScript as MouthDogAI;
-                if (mouthDog.hasEnteredChaseModeFully)
-                {
+                case SandWormAI:
                     Pop();
-                }
-                else
-                {
-                    PushBalloon(otherObject.transform.position, 20f);
-                }
-            }
+                    break;
 
-            else if (enemy.mainScript.enemyType.enemyName == "ForestGiant")
-            {
-                PushBalloon(otherObject.transform.position, 30f);
-            }
+                case MouthDogAI mouthDog:
+                    if (mouthDog.hasEnteredChaseModeFully)
+                    {
+                        Pop();
+                    }
+                    else
+                    {
+                        PushBalloon(otherObject.transform.position, 20f);
+                    }
+                    break;
 
-            else if (enemy.mainScript.enemyType.enemyName == "Manticoil")
-            {
-                DoublewingAI doublewing = enemy.mainScript as DoublewingAI;
-                if (doublewing.creatureAnimator.GetBool("flying"))
-                {
-                    Pop();
-                }
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "Docile Locust Bees")
-            {
-                Pop();
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "Tulip Snake")
-            {
-                FlowerSnakeEnemy flowerSnake = enemy.mainScript as FlowerSnakeEnemy;
-                if (flowerSnake.leaping)
-                {
-                    Pop();
-                }
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName == "Centipede")
-            {
-                CentipedeAI centipede = enemy.mainScript as CentipedeAI;
-                if (centipede.triggeredFall)
-                {
-                    Pop();
-                }
-            }
-
-            else if (enemy.mainScript.enemyType.enemyName != "RadMech")
-            {
-                RadMechAI radMech = enemy.mainScript as RadMechAI;
-                if (radMech.chargingForward)
-                {
-                    Pop();
-                }
-                else if (radMech.inFlyingMode)
-                {
-                    Pop();
-                }
-                else
-                {
+                case ForestGiantAI:
                     PushBalloon(otherObject.transform.position, 30f);
-                }
+                    break;
 
+                case DoublewingAI doublewing:
+                    if (doublewing.creatureAnimator.GetBool("flying"))
+                    {
+                        Pop();
+                    }
+                    break;
+
+                case DocileLocustBeesAI:
+                    Pop();
+                    break;
+
+                case FlowerSnakeEnemy flowerSnake:
+                    if (flowerSnake.leaping)
+                    {
+                        Pop();
+                    }
+                    break;
+
+                case CentipedeAI centipede:
+                    if (centipede.triggeredFall)
+                    {
+                        Pop();
+                    }
+                    break;
+
+                case RadMechAI radMech:
+                    if (radMech.chargingForward)
+                    {
+                        Pop();
+                    }
+                    else if (radMech.inFlyingMode)
+                    {
+                        Pop();
+                    }
+                    else
+                    {
+                        PushBalloon(otherObject.transform.position, 30f);
+                    }
+                    break;
             }
         }
 
@@ -946,6 +1106,11 @@ public class Balloon : GrabbableObject
     [ClientRpc]
     public void PopClientRpc()
     {
+        if (poppedThisFrame)
+        {
+            return;
+        }
+        poppedThisFrame = true;
         Debug.Log("[BALLOON]: Popped!");
 
         //RELEASE FROM PLAYER IF HELD AND DESPAWN BALLOON
@@ -969,10 +1134,14 @@ public class Balloon : GrabbableObject
         DestroyBalloon();
 
         //SPAWN POP PREFAB
-        Instantiate(popPrefab, balloon.transform.position, Quaternion.identity);
+        GameObject popParticleObj = Instantiate(popPrefab, balloon.transform.position, Quaternion.identity).transform.Find("MainBlast/ColorParticles").gameObject;
+        var popParticleModule = popParticleObj.GetComponent<ParticleSystem>().main;
+        var popRendererModule = popParticleObj.GetComponent<ParticleSystemRenderer>();
+        popParticleModule.startColor = balloonColor;
+        popRendererModule.material.color = balloonColor;
 
         //PLAY AUDIBLE NOISE
-        RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange: 15f, noiseLoudness: 1f);
+        RoundManager.Instance.PlayAudibleNoise(balloon.transform.position, noiseRange: 17f, noiseLoudness: 1f);
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -999,11 +1168,31 @@ public class Balloon : GrabbableObject
         }
 
         Destroy(balloonCollider);
+        Destroy(stringCollider);
     }
 
 
 
     //SYNCING POSITIONS
+    [ServerRpc(RequireOwnership = false)]
+    private void SyncPositionInstantlyServerRpc(Vector3 balloonPos)
+    {
+        SyncPositionInstantlyClientRpc(balloonPos);
+    }
+
+    [ClientRpc]
+    private void SyncPositionInstantlyClientRpc(Vector3 balloonPos)
+    {
+        if (!base.IsOwner)
+        {
+            balloonServerPosition = balloonPos + Vector3.up * 0.3f;
+            balloon.transform.position = balloonPos + Vector3.up * 0.3f;
+            balloonStrings[1].transform.position = balloonPos + Vector3.up * 0.2f;
+            balloonStrings[2].transform.position = balloonPos + Vector3.up * 0.1f;
+            grabString.transform.position = balloonPos;
+        }
+    }
+
     [ServerRpc]
     private void SyncBalloonPositionServerRpc(Vector3 balloonPos)
     {
