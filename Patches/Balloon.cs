@@ -11,7 +11,7 @@ public class Balloon : GrabbableObject
     [Space(15f)]
     [Header("Balloon Settings")]
 
-    public float disableCatchingCooldown;
+    public float disablePhysicsCooldown;
 
     [Space(5f)]
     [Header("Game Object References")]
@@ -97,7 +97,7 @@ public class Balloon : GrabbableObject
 
     private LineRenderer lineRenderer;
 
-    private SphereCollider[] itemColliders;
+    private SphereCollider[] itemColliders = [];
 
     private bool tugging;
 
@@ -170,9 +170,17 @@ public class Balloon : GrabbableObject
 
     private int balloonColorIndex = 0;
 
-    private Rigidbody[] balloonStringsPhys;
+    private Rigidbody[] balloonStringsPhys = [];
 
-    private Vector3 lastShipPos;
+	public void OnEnable()
+	{
+		StartOfRound.Instance.StartNewRoundEvent.AddListener(StartShipHandling);
+	}
+
+	public void OnDisable()
+	{
+		StartOfRound.Instance.StartNewRoundEvent.RemoveListener(StartShipHandling);
+	}
 
     public override void Start()
     {
@@ -181,14 +189,7 @@ public class Balloon : GrabbableObject
         balloonCollider.transform.SetParent(null, true);
         stringCollider.transform.SetParent(null, true);
 
-        //CHECK FOR WIND AND POP HEIGHT
-        lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
-        Debug.Log($"[BALLOON]: lastMoon set to {lastMoon}.");
-        MoonConditionsCheck();
-        StartOfRound.Instance.StartNewRoundEvent.AddListener(StartShipLanding);
-
         //INITIALIZE ARRAYS AND ARRAY VALUES
-        lastShipPos = StartOfRound.Instance.elevatorTransform.position;
         itemColliders = new SphereCollider[balloonStrings.Length];
         balloonStringsPhys = new Rigidbody[balloonStrings.Length];
         for (int i = 0; i < balloonStrings.Length; i++)
@@ -203,12 +204,17 @@ public class Balloon : GrabbableObject
         lineRenderer.positionCount = balloonStrings.Length;
         SetBalloonColor();
 
+        //CHECK FOR WIND AND POP HEIGHT
+        lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
+        Debug.Log($"[BALLOON]: lastMoon set to {lastMoon}.");
+        MoonConditionsCheck();
+
         //INITIAL POSITION SYNC
         if (base.IsOwner)
         {
-            Debug.Log("[BALLOON]: Enabling physics for initial position sync!");
-            EnablePhysics(true);
-            disableCatchingCooldown = 0.05f;
+            EnableStringPhysics(true);
+            EnableBalloonPhysics(true);
+            disablePhysicsCooldown = 0.05f;
             balloon.transform.position = base.transform.position + Vector3.up * 0.3f;
             balloonStrings[1].transform.position = base.transform.position + Vector3.up * 0.2f;
             balloonStrings[2].transform.position = base.transform.position + Vector3.up * 0.1f;
@@ -217,8 +223,8 @@ public class Balloon : GrabbableObject
         }
         else
         {
-            Debug.Log("[BALLOON]: Disabling physics for initial position sync!");
-            EnablePhysics(false);
+            EnableStringPhysics(true);
+            EnableBalloonPhysics(false);
         }
 
         balloonServerPosition = balloon.transform.position;
@@ -280,14 +286,12 @@ public class Balloon : GrabbableObject
         {
             if (!wasOwnerLastFrame)
             {
-                Debug.Log("[BALLOON]: Enabling physics by changing ownership!");
                 EnablePhysics(true);
                 wasOwnerLastFrame = true;
             }
         }
         else if (wasOwnerLastFrame)
         {
-            Debug.Log("[BALLOON]: Disabling physics by changing ownership!");
             EnablePhysics(false);
             wasOwnerLastFrame = false;
         }
@@ -310,16 +314,28 @@ public class Balloon : GrabbableObject
             balloonStringsPhys[i].drag = drag;
         }
 
-        if (base.IsOwner)
+        if (!base.IsOwner)
         {
-            if (disableCatchingCooldown > 0f)
+            if (disablePhysicsCooldown > 0f)
             {
-                disableCatchingCooldown -= Time.deltaTime;
+                disablePhysicsCooldown -= Time.deltaTime;
             }
             else if (frozen)
             {
-                Debug.Log("[BALLOON]: Enabling physics because disableCatchingCooldown fell to 0!");
-                EnablePhysics(true);
+                EnableStringPhysics(true);
+            }
+            balloon.transform.position = Vector3.Lerp(balloon.transform.position, balloonServerPosition, Time.deltaTime*3f);
+        }
+        else
+        {
+            if (disablePhysicsCooldown > 0f)
+            {
+                disablePhysicsCooldown -= Time.deltaTime;
+            }
+            else if (frozen)
+            {
+                EnableStringPhysics(true);
+                EnableBalloonPhysics(true);
             }
 
             //HANDLING TELEPORTING
@@ -327,9 +343,9 @@ public class Balloon : GrabbableObject
             {
                 if (playerHeldBy.teleportingThisFrame)
                 {
-                    Debug.Log("[BALLOON]: Player teleporting while holding balloon, disabling physics!");
-                    EnablePhysics(false);
-                    disableCatchingCooldown = 0.05f;
+                    EnableStringPhysics(false);
+                    EnableBalloonPhysics(false);
+                    disablePhysicsCooldown = 0.05f;
                 }
 
                 if (playerHeldBy.teleportedLastFrame)
@@ -343,11 +359,11 @@ public class Balloon : GrabbableObject
             }
 
             //HANDLING HEIGHTS
-            if (disableCatchingCooldown <= 0 && !isInShipRoom && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > popHeight)
+            if (!isInShipRoom && !isInElevator && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > popHeight)
             {
                 Pop();
             }
-            else if (grabbableToEnemies && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > enemyGrabHeight)
+            else if (!isInShipRoom && grabbableToEnemies && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > enemyGrabHeight)
             {
                 grabbableToEnemies = false;
                 itemProperties.itemId = baboonHawkUngrabbableId;
@@ -375,7 +391,7 @@ public class Balloon : GrabbableObject
                 }
 
                 //DISCARD IF STRETCHED TOO FAR FROM OWNER
-                if (disableCatchingCooldown <= 0 && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 7f)
+                if (disablePhysicsCooldown <= 0 && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 7f)
                 {
                     Debug.Log("[BALLOON]: Too far from holder, discarding!");
 
@@ -454,10 +470,6 @@ public class Balloon : GrabbableObject
                 }
             }
         }
-        else
-        {
-            balloon.transform.position = Vector3.Lerp(balloon.transform.position, balloonServerPosition, Time.deltaTime*3f);
-        }
 
         //PLAYER ANIMATOR UPDATE
         if (previousPlayerHeldBy == null || !base.IsOwner)
@@ -473,23 +485,57 @@ public class Balloon : GrabbableObject
         }
     }
 
-    private void StartShipLanding()
+    private void StartShipHandling()
     {
-        if (base.IsOwner && isInShipRoom)
-        {
-            StartCoroutine(HandleShipLanding());
-        }
+        StartCoroutine(HandleShipLanding());
     }
 
     private IEnumerator HandleShipLanding()
     {
-        EnablePhysics(false);
-        disableCatchingCooldown = 13f;
-        float timeStart = Time.realtimeSinceStartup;
-        yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed") || Time.realtimeSinceStartup - timeStart > 12f);
         yield return null;
-        disableCatchingCooldown = 0f;
-        SyncPositionInstantlyServerRpc(balloon.transform.position);
+        if (isInShipRoom)
+        {
+            Debug.Log("[BALLOON]: Ship is landing!");
+            EnableStringPhysics(false);
+            EnableBalloonPhysics(false);
+            disablePhysicsCooldown = 20f;
+            float timeStart = Time.realtimeSinceStartup;
+            yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed") || Time.realtimeSinceStartup - timeStart > 20f);
+            yield return null;
+            Debug.Log("[BALLOON]: Ship doors opening!");
+            disablePhysicsCooldown = 0f;
+            if (base.IsOwner)
+            {
+                SyncPositionInstantlyServerRpc(base.transform.position);
+            }
+        }
+        StartCoroutine(HandleShipLeaving());
+    }
+
+    private IEnumerator HandleShipLeaving()
+    {
+        yield return null;
+        yield return new WaitUntil(() => StartOfRound.Instance.shipHasLanded);
+        Debug.Log("[BALLOON]: Ship has landed!");
+        yield return new WaitUntil(() => StartOfRound.Instance.shipIsLeaving);
+        Debug.Log("[BALLOON]: Ship is leaving!");
+        yield return new WaitUntil(() => RoundManager.Instance.playersManager.shipDoorsAnimator.GetBool("Closed"));
+        Debug.Log("[BALLOON]: Ship doors closed!");
+        yield return new WaitForSeconds(1.5f);
+        if (isInShipRoom)
+        {
+            EnableStringPhysics(false);
+            EnableBalloonPhysics(false);
+            disablePhysicsCooldown = 20f;
+            float timeStart = Time.realtimeSinceStartup;
+            yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsEnabled);
+            yield return null;
+            disablePhysicsCooldown = 0f;
+            if (base.IsOwner)
+            {
+                SyncPositionInstantlyServerRpc(base.transform.position);
+            }
+        }
     }
 
     public override int GetItemDataToSave()
@@ -637,6 +683,43 @@ public class Balloon : GrabbableObject
             return;
         }
 
+        //PARENT TO SHIP
+        if (disablePhysicsCooldown <= 0f)
+        {
+            if (isInElevator || playerHeldBy != null && playerHeldBy.isInElevator || StartOfRound.Instance.shipBounds.bounds.Contains(base.transform.position) || StartOfRound.Instance.shipBounds.bounds.Contains(grabString.transform.position))
+            {
+                if (base.IsServer && base.transform.parent != StartOfRound.Instance.elevatorTransform)
+                {
+                    Debug.Log("[BALLOON]: Server parenting base object to ship!");
+                    base.transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
+                }
+                for (int i = 0; i < balloonStrings.Length; i++)
+                {
+                    if (balloonStrings[i].transform.parent == null || balloonStrings[i].transform.parent != StartOfRound.Instance.elevatorTransform)
+                    {
+                        Debug.Log($"[BALLOON]: Parenting balloon {balloonStrings[i].gameObject.name} to ship!");
+                        balloonStrings[i].transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
+                    }
+                }
+            }
+            else
+            {
+                if (base.IsServer && base.transform.parent == StartOfRound.Instance.elevatorTransform)
+                {
+                    Debug.Log("[BALLOON]: Server unparenting base object from ship!");
+                    base.transform.SetParent(null, true);
+                }
+                for (int i = 0; i < balloonStrings.Length; i++)
+                {
+                    if (balloonStrings[i].transform.parent != null || balloonStrings[i].transform.parent == StartOfRound.Instance.elevatorTransform)
+                    {
+                        Debug.Log($"[BALLOON]: Unparenting {balloonStrings[i].gameObject.name} from ship!");
+                        balloonStrings[i].transform.SetParent(null, true);
+                    }
+                }
+            }
+        }
+
         //SET STRING TO HAND IF OBJECT IS HELD BY PLAYER
         if (parentObject != null)
         {
@@ -676,17 +759,6 @@ public class Balloon : GrabbableObject
 
         //SET LINE RENDERER POSITIONS
         SubdivideStrings(subdivisions: 3);
-
-        //MOVE RELATIVE TO SHIP
-        if (isInShipRoom || isInShipRoom && (StartOfRound.Instance.inShipPhase || !StartOfRound.Instance.shipHasLanded))
-        {
-            for (int i = 0; i < balloonStrings.Length; i++)
-            {
-                Vector3 shipDelta = StartOfRound.Instance.elevatorTransform.position - lastShipPos;
-                balloonStrings[i].transform.position = balloonStrings[i].transform.position + shipDelta;
-            }
-        }
-        lastShipPos = StartOfRound.Instance.elevatorTransform.position;
     }
 
     public void SubdivideStrings(int subdivisions)
@@ -731,15 +803,28 @@ public class Balloon : GrabbableObject
         lineRenderer.SetPositions(subdivPoints.ToArray());
     }
 
-    public new void EnablePhysics(bool enable = true)
+    public void EnableStringPhysics(bool enable)
     {
-
-        Debug.Log($"[BALLOON]: {(enable ? "Enabling" : "Disabling")} physics!");
-        for (int i = 0; i < balloonStringsPhys.Length; i++)
+        Debug.Log($"[BALLOON]: {(enable ? "Enabling" : "Disabling")} physics on strings!");
+        for (int i = 1; i < balloonStringsPhys.Length; i++)
         {
             balloonStringsPhys[i].isKinematic = !enable;
         }
         frozen = !enable;
+    }
+
+    public void EnableBalloonPhysics(bool enable)
+    {
+        Debug.Log($"[BALLOON]: {(enable ? "Enabling" : "Disabling")} physics on balloon!");
+        balloon.GetComponent<Rigidbody>().isKinematic = !enable;
+        balloon.GetComponent<Collider>().enabled = enable;
+        balloon.GetComponent<Rigidbody>().isKinematic = !enable;
+        balloon.GetComponent<Collider>().enabled = enable;
+    }
+
+    public new void EnablePhysics(bool enable)
+    {
+        EnableBalloonPhysics(enable);
     }
 
     public void RandomizeWindDirection()
@@ -1033,7 +1118,7 @@ public class Balloon : GrabbableObject
         }
 
         //OTHER BALLOON COLLISION
-        else if (otherObject.GetComponent<BalloonCollisionDetection>() != null)
+        else if (otherObject.TryGetComponent<BalloonCollisionDetection>(out var balloonCollision) && balloonCollision.mainScript != this)
         {
             PushBalloon(otherObject.transform.position, 5);
         }
@@ -1185,15 +1270,18 @@ public class Balloon : GrabbableObject
     {
         if (!base.IsOwner)
         {
+            EnableStringPhysics(false);
+            EnableBalloonPhysics(false);
             balloonServerPosition = balloonPos + Vector3.up * 0.3f;
             balloon.transform.position = balloonPos + Vector3.up * 0.3f;
             balloonStrings[1].transform.position = balloonPos + Vector3.up * 0.2f;
             balloonStrings[2].transform.position = balloonPos + Vector3.up * 0.1f;
             grabString.transform.position = balloonPos;
+            base.transform.position = balloonPos;
         }
     }
 
-    [ServerRpc]
+    [ServerRpc(RequireOwnership = false)]
     private void SyncBalloonPositionServerRpc(Vector3 balloonPos)
     {
         SyncBalloonPositionClientRpc(balloonPos);
