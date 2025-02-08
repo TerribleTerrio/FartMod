@@ -50,6 +50,8 @@ internal class NetworkPatches
     [HarmonyPatch(typeof(StartOfRound))]
     internal class StartOfRoundPatch
     {
+        public static SimpleEvent EndRoundEvent = new SimpleEvent();
+
         [HarmonyPostfix]
         [HarmonyPatch("Awake")]
         static void SpawnNetworkHandler()
@@ -60,6 +62,13 @@ internal class NetworkPatches
                 networkHandlerHost.GetComponent<NetworkObject>().Spawn();
                 Debug.Log("Network prefab spawned during StartOfRound Start!");
             }
+        }
+
+        [HarmonyPatch("ShipHasLeft")]
+        [HarmonyPostfix]
+        static void ShipHasLeft()
+        {
+            EndRoundEvent.Invoke();
         }
     }
 }

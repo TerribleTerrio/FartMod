@@ -166,35 +166,31 @@ public class Balloon : GrabbableObject
 
     private Color balloonColor;
 
-    private bool startSetColorFlag = false;
-
     private int balloonColorIndex = 0;
 
     private Rigidbody[] balloonStringsPhys = [];
 
-	public void OnEnable()
-	{
-		StartOfRound.Instance.StartNewRoundEvent.AddListener(StartShipHandling);
-	}
+    private Coroutine? shipLandingCoroutine;
 
-	public void OnDisable()
-	{
-		StartOfRound.Instance.StartNewRoundEvent.RemoveListener(StartShipHandling);
-	}
+    private Coroutine? shipLeavingCoroutine;
+
+    private bool stopSyncingPosition;
+
+    private float syncPositionLerpSpeed = 3f;
 
     public override void Start()
     {
         //BALLOON START
-        balloon.transform.SetParent(null, true);
-        balloonCollider.transform.SetParent(null, true);
-        stringCollider.transform.SetParent(null, true);
+        balloon.transform.SetParent(StartOfRound.Instance.propsContainer, true);
+        balloonCollider.transform.SetParent(StartOfRound.Instance.propsContainer, true);
+        stringCollider.transform.SetParent(StartOfRound.Instance.propsContainer, true);
 
         //INITIALIZE ARRAYS AND ARRAY VALUES
         itemColliders = new SphereCollider[balloonStrings.Length];
         balloonStringsPhys = new Rigidbody[balloonStrings.Length];
         for (int i = 0; i < balloonStrings.Length; i++)
         {
-            balloonStrings[i].transform.SetParent(null, true);
+            balloonStrings[i].transform.SetParent(StartOfRound.Instance.propsContainer, true);
             SphereCollider sphereCollider = base.gameObject.AddComponent<SphereCollider>();
             sphereCollider.radius = stringGrabRadius;
             itemColliders[i] = sphereCollider;
@@ -202,7 +198,10 @@ public class Balloon : GrabbableObject
         }
         lineRenderer = base.gameObject.GetComponent<LineRenderer>();
         lineRenderer.positionCount = balloonStrings.Length;
-        SetBalloonColor();
+        if (base.IsOwner)
+        {
+            SetBalloonColor(RPC: true);
+        }
 
         //CHECK FOR WIND AND POP HEIGHT
         lastMoon = StartOfRound.Instance.currentLevel.PlanetName;
@@ -268,6 +267,18 @@ public class Balloon : GrabbableObject
         }
     }
 
+	public void OnEnable()
+	{
+		StartOfRound.Instance.StartNewRoundEvent.AddListener(StartHandlingShipLanding);
+        CoronaMod.Patches.NetworkPatches.StartOfRoundPatch.EndRoundEvent.AddListener(StartHandlingShipLeaving);
+	}
+
+	public void OnDisable()
+	{
+		StartOfRound.Instance.StartNewRoundEvent.RemoveListener(StartHandlingShipLanding);
+        CoronaMod.Patches.NetworkPatches.StartOfRoundPatch.EndRoundEvent.AddListener(StartHandlingShipLeaving);
+	}
+
     public override void Update()
     {
         if (balloon == null)
@@ -324,7 +335,10 @@ public class Balloon : GrabbableObject
             {
                 EnableStringPhysics(true);
             }
-            balloon.transform.position = Vector3.Lerp(balloon.transform.position, balloonServerPosition, Time.deltaTime*3f);
+            if (!stopSyncingPosition)
+            {
+                balloon.transform.position = Vector3.Lerp(balloon.transform.position, balloonServerPosition, Time.deltaTime * syncPositionLerpSpeed);
+            }
         }
         else
         {
@@ -359,7 +373,7 @@ public class Balloon : GrabbableObject
             }
 
             //HANDLING HEIGHTS
-            if (!isInShipRoom && !isInElevator && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > popHeight)
+            if (disablePhysicsCooldown <= 0 && !isInShipRoom && !isInElevator && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > popHeight)
             {
                 Pop();
             }
@@ -425,7 +439,11 @@ public class Balloon : GrabbableObject
             else
             {
                 syncTimer = 0f;
-                SyncBalloonPositionServerRpc(balloon.transform.position);
+                if (!stopSyncingPosition && Vector3.Distance(balloonServerPosition, balloon.transform.position) > syncPositionThreshold)
+                {
+                    SyncBalloonPositionServerRpc(balloon.transform.position);
+                    balloonServerPosition = balloon.transform.position;
+                }
             }
 
             Vector3 baseForce = new Vector3(0f, upwardForce, 0f);
@@ -485,56 +503,71 @@ public class Balloon : GrabbableObject
         }
     }
 
-    private void StartShipHandling()
+    private void StartHandlingShipLanding()
     {
-        StartCoroutine(HandleShipLanding());
+        if (shipLandingCoroutine != null)
+        {
+            StopCoroutine(shipLandingCoroutine);
+            shipLandingCoroutine = null;
+        }
+        shipLandingCoroutine = StartCoroutine(HandleShipLanding());
+    }
+
+    private void StartHandlingShipLeaving()
+    {
+        if (shipLeavingCoroutine != null)
+        {
+            StopCoroutine(shipLeavingCoroutine);
+            shipLeavingCoroutine = null;
+        }
+        shipLeavingCoroutine = StartCoroutine(HandleShipLeaving());
     }
 
     private IEnumerator HandleShipLanding()
     {
         yield return null;
+        Debug.Log("[BALLOON]: Handling ship landing!");
         if (isInShipRoom)
         {
+            yield return new WaitUntil(() => !StartOfRound.Instance.inShipPhase);
             Debug.Log("[BALLOON]: Ship is landing!");
             EnableStringPhysics(false);
             EnableBalloonPhysics(false);
-            disablePhysicsCooldown = 20f;
+            disablePhysicsCooldown = 15f;
+            stopSyncingPosition = true;
+            syncPositionLerpSpeed = 6f;
             float timeStart = Time.realtimeSinceStartup;
-            yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed") || Time.realtimeSinceStartup - timeStart > 20f);
-            yield return null;
-            Debug.Log("[BALLOON]: Ship doors opening!");
+            yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed"));
+            yield return new WaitUntil(() => isHeld || isHeldByEnemy || Time.realtimeSinceStartup - timeStart > 15f);
+            EnableStringPhysics(true);
+            EnableBalloonPhysics(base.IsOwner);
             disablePhysicsCooldown = 0f;
-            if (base.IsOwner)
-            {
-                SyncPositionInstantlyServerRpc(base.transform.position);
-            }
+            stopSyncingPosition = false;
+            syncPositionLerpSpeed = 3f;
         }
-        StartCoroutine(HandleShipLeaving());
     }
 
     private IEnumerator HandleShipLeaving()
     {
         yield return null;
-        yield return new WaitUntil(() => StartOfRound.Instance.shipHasLanded);
-        Debug.Log("[BALLOON]: Ship has landed!");
-        yield return new WaitUntil(() => StartOfRound.Instance.shipIsLeaving);
-        Debug.Log("[BALLOON]: Ship is leaving!");
-        yield return new WaitUntil(() => RoundManager.Instance.playersManager.shipDoorsAnimator.GetBool("Closed"));
-        Debug.Log("[BALLOON]: Ship doors closed!");
-        yield return new WaitForSeconds(1.5f);
+        Debug.Log("[BALLOON]: Handling ship leaving!");
         if (isInShipRoom)
         {
+            yield return new WaitUntil(() => RoundManager.Instance.playersManager.shipDoorsAnimator.GetBool("Closed"));
+            yield return new WaitForSeconds(1f);
+            Debug.Log("[BALLOON]: Ship is leaving!");
             EnableStringPhysics(false);
             EnableBalloonPhysics(false);
-            disablePhysicsCooldown = 20f;
+            disablePhysicsCooldown = 15f;
+            stopSyncingPosition = true;
             float timeStart = Time.realtimeSinceStartup;
             yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsEnabled);
-            yield return null;
+            yield return new WaitUntil(() => isHeld || isHeldByEnemy || Time.realtimeSinceStartup - timeStart > 15f);
+            EnableStringPhysics(true);
+            EnableBalloonPhysics(base.IsOwner);
             disablePhysicsCooldown = 0f;
-            if (base.IsOwner)
-            {
-                SyncPositionInstantlyServerRpc(base.transform.position);
-            }
+            stopSyncingPosition = false;
+            syncPositionLerpSpeed = 3f;
         }
     }
 
@@ -545,18 +578,19 @@ public class Balloon : GrabbableObject
 
     public override void LoadItemSaveData(int saveData)
     {
-        StartCoroutine(WaitToLoadBalloonColor(saveData));
+        StartCoroutine(WaitToLoadSaveData(saveData));
     }
 
-    private IEnumerator WaitToLoadBalloonColor(int index)
+    private IEnumerator WaitToLoadSaveData(int saveData)
     {
-        yield return new WaitUntil(() => startSetColorFlag);
+        yield return new WaitForSeconds(3f);
         {
-            SetBalloonColor(index);
+            SetBalloonColor(saveData);
+            ParentBalloonToShip(true);
         }
     }
 
-    public void SetBalloonColor(int index = -1)
+    public void SetBalloonColor(int index = -1, bool RPC = false)
     {
         if (index != -1)
         {
@@ -574,7 +608,25 @@ public class Balloon : GrabbableObject
         }
         balloonColor = balloonColors[balloonColorIndex];
         balloon.GetComponent<Renderer>().material.color = balloonColor;
-        startSetColorFlag = true;
+        if (RPC)
+        {
+            SetBalloonColorServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, balloonColorIndex);
+        }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void SetBalloonColorServerRpc(int clientWhoSentRpc, int index = -1)
+    {
+        SetBalloonColorClientRpc(clientWhoSentRpc, index);
+    }
+
+    [ClientRpc]
+    public void SetBalloonColorClientRpc(int clientWhoSentRpc, int index = -1)
+    {
+        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            SetBalloonColor(index);
+        }
     }
 
     public void MoonConditionsCheck()
@@ -684,38 +736,24 @@ public class Balloon : GrabbableObject
         }
 
         //PARENT TO SHIP
-        if (disablePhysicsCooldown <= 0f)
+        if (base.IsOwner && disablePhysicsCooldown <= 0f)
         {
             if (isInElevator || playerHeldBy != null && playerHeldBy.isInElevator || StartOfRound.Instance.shipBounds.bounds.Contains(base.transform.position) || StartOfRound.Instance.shipBounds.bounds.Contains(grabString.transform.position))
             {
-                if (base.IsServer && base.transform.parent != StartOfRound.Instance.elevatorTransform)
+                if (base.transform.parent != StartOfRound.Instance.elevatorTransform)
                 {
-                    Debug.Log("[BALLOON]: Server parenting base object to ship!");
-                    base.transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
-                }
-                for (int i = 0; i < balloonStrings.Length; i++)
-                {
-                    if (balloonStrings[i].transform.parent == null || balloonStrings[i].transform.parent != StartOfRound.Instance.elevatorTransform)
-                    {
-                        Debug.Log($"[BALLOON]: Parenting balloon {balloonStrings[i].gameObject.name} to ship!");
-                        balloonStrings[i].transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
-                    }
+                    ParentBalloonToShip(true);
+                    Debug.Log("[BALLOON]: Owner sending ParentBalloonToShipServerRpc() (Parenting to ship!)");
+                    ParentBalloonToShipServerRpc(true);
                 }
             }
             else
             {
-                if (base.IsServer && base.transform.parent == StartOfRound.Instance.elevatorTransform)
+                if (base.transform.parent == StartOfRound.Instance.elevatorTransform)
                 {
-                    Debug.Log("[BALLOON]: Server unparenting base object from ship!");
-                    base.transform.SetParent(null, true);
-                }
-                for (int i = 0; i < balloonStrings.Length; i++)
-                {
-                    if (balloonStrings[i].transform.parent != null || balloonStrings[i].transform.parent == StartOfRound.Instance.elevatorTransform)
-                    {
-                        Debug.Log($"[BALLOON]: Unparenting {balloonStrings[i].gameObject.name} from ship!");
-                        balloonStrings[i].transform.SetParent(null, true);
-                    }
+                    ParentBalloonToShip(false);
+                    Debug.Log("[BALLOON]: Owner sending ParentBalloonToShipServerRpc() (Parenting to propsContainer!)");
+                    ParentBalloonToShipServerRpc(false);
                 }
             }
         }
@@ -759,6 +797,45 @@ public class Balloon : GrabbableObject
 
         //SET LINE RENDERER POSITIONS
         SubdivideStrings(subdivisions: 3);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void ParentBalloonToShipServerRpc(bool parentToShip)
+    {
+        ParentBalloonToShipClientRpc(parentToShip);
+    }
+
+    [ClientRpc]
+    public void ParentBalloonToShipClientRpc(bool parentToShip)
+    {
+        if (!base.IsOwner)
+        {
+            Debug.Log($"[BALLOON]: Non-owner receiving ParentBalloonToShipClientRpc() (Parenting: {parentToShip})");
+            ParentBalloonToShip(parentToShip);
+        }
+    }
+
+    public void ParentBalloonToShip(bool parentToShip)
+    {
+        if (parentToShip && base.transform.parent != StartOfRound.Instance.elevatorTransform)
+        {
+            base.transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
+        }
+        else if (!parentToShip)
+        {
+            base.transform.SetParent(StartOfRound.Instance.propsContainer, true);
+        }
+        for (int i = 0; i < balloonStrings.Length; i++)
+        {
+            if (parentToShip && balloonStrings[i].transform.parent != StartOfRound.Instance.elevatorTransform)
+            {
+                balloonStrings[i].transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
+            }
+            else if (!parentToShip)
+            {
+                balloonStrings[i].transform.SetParent(StartOfRound.Instance.propsContainer, true);
+            }
+        }
     }
 
     public void SubdivideStrings(int subdivisions)
@@ -860,6 +937,14 @@ public class Balloon : GrabbableObject
     {
         base.GrabItemFromEnemy(enemy);
     }
+
+	public override void PocketItem()
+	{
+		if (base.IsOwner && playerHeldBy != null)
+		{
+			playerHeldBy.IsInspectingItem = false;
+		}
+	}
 
     public override void DiscardItem()
     {
@@ -1292,10 +1377,7 @@ public class Balloon : GrabbableObject
     {
         if (!base.IsOwner)
         {
-            if (Vector3.Distance(balloon.transform.position, balloonPos) > syncPositionThreshold)
-            {
-                balloonServerPosition = balloonPos;
-            }
+            balloonServerPosition = balloonPos;
         }
     }
 
