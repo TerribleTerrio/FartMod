@@ -3,7 +3,6 @@ using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using System.Collections;
-using AsmResolver.PE.Imports.Builder;
 namespace CoronaMod.Patches;
 
 internal class NetworkPatches
@@ -349,7 +348,7 @@ internal class PlayerControllerBPatch
 {
     [HarmonyPatch("SwitchToItemSlot")]
     [HarmonyPrefix]
-    static void SwitchToItemSlot(PlayerControllerB __instance, int slot, GrabbableObject fillSlotWithItem = null)
+    static void SwitchToItemSlot(PlayerControllerB __instance)
     {
         if (__instance.currentlyHeldObjectServer != null)
         {
@@ -359,24 +358,20 @@ internal class PlayerControllerBPatch
             }
         }
     }
+}
 
-    [HarmonyPatch("BeginGrabObject")]
+[HarmonyPatch(typeof(DepositItemsDesk))]
+internal class DepositItemsDeskPatch
+{
+    [HarmonyPatch("PlaceItemOnCounter")]
     [HarmonyPrefix]
-    static void BeginGrabObject(PlayerControllerB __instance)
+    static void PlaceItemOnCounter(DepositItemsDesk __instance, PlayerControllerB playerWhoTriggered)
     {
-        if (__instance.currentlyHeldObjectServer != null)
-        {
-            if (__instance.currentlyHeldObjectServer.gameObject.GetComponent<Balloon>() != null)
-            {
-                __instance.interactRay = new Ray(__instance.gameplayCamera.transform.position, __instance.gameplayCamera.transform.forward);
-                if (Physics.Raycast(__instance.interactRay, out __instance.hit, __instance.grabDistance, __instance.interactableObjectsMask))
-                {
-                    if (__instance.hit.collider.gameObject.layer == 8 && __instance.hit.collider.tag != "PhysicsProp")
-                    {
-                        __instance.DiscardHeldObject();
-                    }
-                }
-            }
-        }
+		if (playerWhoTriggered.currentlyHeldObjectServer != null && playerWhoTriggered.currentlyHeldObjectServer.gameObject.TryGetComponent(out Balloon balloon) && __instance.deskObjectsContainer.GetComponentsInChildren<GrabbableObject>().Length < 12 && !__instance.inGrabbingObjectsAnimation && GameNetworkManager.Instance != null && playerWhoTriggered == GameNetworkManager.Instance.localPlayerController)
+		{
+            Debug.Log("[BALLOON]: discard held object called from deposit items desk while holding balloon!");
+            balloon.DestroyBalloon();
+            balloon.AddBoxCollider();
+		}
     }
 }

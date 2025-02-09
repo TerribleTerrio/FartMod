@@ -29,6 +29,8 @@ public class Balloon : GrabbableObject
 
     public GameObject popPrefab;
 
+    public GameObject deflatedBalloon;
+
     [Space(5f)]
     [Header("Position Syncing")]
     public float syncPositionInterval = 0.2f;
@@ -95,7 +97,11 @@ public class Balloon : GrabbableObject
 
     public AudioClip[] tugStringClips;
 
-    private LineRenderer lineRenderer;
+    public AudioSource deflateSource;
+
+    public AudioClip deflateClip;
+
+    public LineRenderer lineRenderer;
 
     private SphereCollider[] itemColliders = [];
 
@@ -142,7 +148,7 @@ public class Balloon : GrabbableObject
 
     private EnemyAI? focusedByEnemy;
 
-    private Vector3 lastDroppedPosition;
+    private float lastDroppedHeight;
 
     private const int originalItemId = 0;
 
@@ -178,6 +184,12 @@ public class Balloon : GrabbableObject
 
     private float syncPositionLerpSpeed = 3f;
 
+    private DepositItemsDesk? desk;
+
+    private PlayerPhysicsRegion? physicsRegion;
+
+    private bool startFlag = false;
+
     public override void Start()
     {
         //BALLOON START
@@ -196,7 +208,6 @@ public class Balloon : GrabbableObject
             itemColliders[i] = sphereCollider;
             balloonStringsPhys[i] = balloonStrings[i].GetComponent<Rigidbody>();
         }
-        lineRenderer = base.gameObject.GetComponent<LineRenderer>();
         lineRenderer.positionCount = balloonStrings.Length;
         if (base.IsOwner)
         {
@@ -227,8 +238,10 @@ public class Balloon : GrabbableObject
         }
 
         balloonServerPosition = balloon.transform.position;
-        lastDroppedPosition = base.transform.position;
+        lastDroppedHeight = base.transform.position.y;
         itemProperties.itemId = originalItemId;
+        pushTimer = 1f;
+        disablePhysicsCooldown = 1f;
         DampFloating();
 
 
@@ -265,6 +278,8 @@ public class Balloon : GrabbableObject
         {
             skinnedMeshRenderers[i].renderingLayerMask = 1u;
         }
+
+        startFlag = true;
     }
 
 	public void OnEnable()
@@ -283,7 +298,6 @@ public class Balloon : GrabbableObject
     {
         if (balloon == null)
         {
-            Debug.Log("[BALLOON]: Balloon prefab destroyed, skipping update!");
             return;
         }
 
@@ -373,17 +387,17 @@ public class Balloon : GrabbableObject
             }
 
             //HANDLING HEIGHTS
-            if (disablePhysicsCooldown <= 0 && !isInShipRoom && !isInElevator && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > popHeight)
+            if (disablePhysicsCooldown <= 0 && !isInShipRoom && !isInElevator && Mathf.Abs(balloon.transform.position.y - lastDroppedHeight) > popHeight)
             {
                 Pop();
             }
-            else if (!isInShipRoom && grabbableToEnemies && Vector3.Distance(lastDroppedPosition, balloon.transform.position) > enemyGrabHeight)
+            else if (!isInShipRoom && grabbableToEnemies && Mathf.Abs(balloon.transform.position.y - lastDroppedHeight) > enemyGrabHeight)
             {
                 grabbableToEnemies = false;
                 itemProperties.itemId = baboonHawkUngrabbableId;
                 Debug.Log($"[BALLOON]: Setting grabbableToEnemies: {grabbableToEnemies}, {itemProperties.itemId}");
             }
-            else if (!grabbableToEnemies && Vector3.Distance(lastDroppedPosition, balloon.transform.position) < enemyGrabHeight)
+            else if (!grabbableToEnemies && Mathf.Abs(balloon.transform.position.y - lastDroppedHeight) < enemyGrabHeight)
             {
                 grabbableToEnemies = true;
                 itemProperties.itemId = originalItemId;
@@ -393,7 +407,7 @@ public class Balloon : GrabbableObject
             //HANDLING BEING HELD
             if (isHeld || isHeldByEnemy)
             {
-                lastDroppedPosition = base.transform.position;
+                lastDroppedHeight = base.transform.position.y;
 
                 if (Physics.Linecast(balloon.transform.position, grabString.transform.position, StartOfRound.Instance.collidersAndRoomMaskAndDefault) && Vector3.Distance(balloon.transform.position, grabString.transform.position) > 5f)
                 {
@@ -471,7 +485,7 @@ public class Balloon : GrabbableObject
                     RandomizeWindDirection();
                 }
 
-                if (!isInFactory && !isInShipRoom)
+                if (!isInFactory && !isInShipRoom && !TimeOfDay.Instance.insideLighting)
                 {
                     constantForce.force = new Vector3(0f, upwardForce, 0f) + windDirection*windForce + windDirection*noiseAmount;
                 }
@@ -535,7 +549,6 @@ public class Balloon : GrabbableObject
             EnableBalloonPhysics(false);
             disablePhysicsCooldown = 15f;
             stopSyncingPosition = true;
-            syncPositionLerpSpeed = 6f;
             float timeStart = Time.realtimeSinceStartup;
             yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed"));
             yield return new WaitUntil(() => isHeld || isHeldByEnemy || Time.realtimeSinceStartup - timeStart > 15f);
@@ -543,7 +556,6 @@ public class Balloon : GrabbableObject
             EnableBalloonPhysics(base.IsOwner);
             disablePhysicsCooldown = 0f;
             stopSyncingPosition = false;
-            syncPositionLerpSpeed = 3f;
         }
     }
 
@@ -567,7 +579,6 @@ public class Balloon : GrabbableObject
             EnableBalloonPhysics(base.IsOwner);
             disablePhysicsCooldown = 0f;
             stopSyncingPosition = false;
-            syncPositionLerpSpeed = 3f;
         }
     }
 
@@ -583,10 +594,18 @@ public class Balloon : GrabbableObject
 
     private IEnumerator WaitToLoadSaveData(int saveData)
     {
-        yield return new WaitForSeconds(3f);
+        float timeLoaded = Time.realtimeSinceStartup;
+        yield return new WaitUntil(() => startFlag || Time.realtimeSinceStartup - timeLoaded > 15f);
         {
+            isInShipRoom = true;
+            isInElevator = true;
+            scrapPersistedThroughRounds = true;
             SetBalloonColor(saveData);
             ParentBalloonToShip(true);
+            if (!base.IsOwner)
+            {
+                RequestSyncBalloonPositionServerRpc();
+            }
         }
     }
 
@@ -608,22 +627,22 @@ public class Balloon : GrabbableObject
         }
         balloonColor = balloonColors[balloonColorIndex];
         balloon.GetComponent<Renderer>().material.color = balloonColor;
-        if (RPC)
+        if (base.IsOwner && RPC)
         {
-            SetBalloonColorServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId, balloonColorIndex);
+            SetBalloonColorServerRpc(balloonColorIndex);
         }
     }
 
     [ServerRpc(RequireOwnership = false)]
-    public void SetBalloonColorServerRpc(int clientWhoSentRpc, int index = -1)
+    public void SetBalloonColorServerRpc(int index = -1)
     {
-        SetBalloonColorClientRpc(clientWhoSentRpc, index);
+        SetBalloonColorClientRpc(index);
     }
 
     [ClientRpc]
-    public void SetBalloonColorClientRpc(int clientWhoSentRpc, int index = -1)
+    public void SetBalloonColorClientRpc(int index = -1)
     {
-        if (clientWhoSentRpc != (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        if (!base.IsOwner)
         {
             SetBalloonColor(index);
         }
@@ -653,17 +672,17 @@ public class Balloon : GrabbableObject
         }
         popHeight = StartOfRound.Instance.currentLevel.levelID switch
         {
-            0 => 60f,   //Experimentation
+            0 => 50f,   //Experimentation
             1 => 60f,   //Assurance
-            2 => 40f,   //Vow
+            2 => 45f,   //Vow
             8 => 60f,   //Offense
-            4 => 40f,   //March
+            4 => 45f,   //March
             5 => 60f,   //Adamance
             6 => 40f,   //Rend
             7 => 40f,   //Dine
             9 => 70f,   //Titan
-            10 => 50f,  //Artifice
-            12 => 50f,  //Embrion
+            10 => 55f,  //Artifice
+            12 => 60f,  //Embrion
             3 => 40f,   //The Company Building
             _ => 55f    //Default
         };
@@ -731,29 +750,47 @@ public class Balloon : GrabbableObject
         //SET POSITIONS OF BALLOON PARTS
         if (balloon == null || grabString == null)
         {
-            Debug.Log("[BALLOON]: Floating balloon prefab was not found, skipping setting postions!");
             return;
         }
 
-        //PARENT TO SHIP
+        //HANDLE POSSIBLE PARENTS (SHIP, PROPSCONTAINER, PHYSICSREGIONS)
         if (base.IsOwner && disablePhysicsCooldown <= 0f)
         {
-            if (isInElevator || playerHeldBy != null && playerHeldBy.isInElevator || StartOfRound.Instance.shipBounds.bounds.Contains(base.transform.position) || StartOfRound.Instance.shipBounds.bounds.Contains(grabString.transform.position))
+            if (base.transform.parent == StartOfRound.Instance.propsContainer)
             {
-                if (base.transform.parent != StartOfRound.Instance.elevatorTransform)
+                if ((playerHeldBy != null && playerHeldBy.isInElevator) || playerHeldBy == null && StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
                 {
+                    isInElevator = true;
                     ParentBalloonToShip(true);
-                    Debug.Log("[BALLOON]: Owner sending ParentBalloonToShipServerRpc() (Parenting to ship!)");
                     ParentBalloonToShipServerRpc(true);
                 }
             }
-            else
+            else if (base.transform.parent == StartOfRound.Instance.elevatorTransform)
             {
-                if (base.transform.parent == StartOfRound.Instance.elevatorTransform)
+                if ((playerHeldBy != null && !playerHeldBy.isInElevator) || playerHeldBy == null && !StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
                 {
+                    isInShipRoom = false;
+                    isInElevator = false;
                     ParentBalloonToShip(false);
-                    Debug.Log("[BALLOON]: Owner sending ParentBalloonToShipServerRpc() (Parenting to propsContainer!)");
                     ParentBalloonToShipServerRpc(false);
+                }
+            }
+            else if (base.transform.parent != null)
+            {
+                physicsRegion ??= base.transform.parent.GetComponentInChildren<PlayerPhysicsRegion>();
+                if (physicsRegion != null)
+                {
+                    lastDroppedHeight = base.transform.position.y;
+                    if (balloon.transform.parent != physicsRegion.physicsTransform && physicsRegion.itemDropCollider.bounds.Contains(balloon.transform.position))
+                    {
+                        ParentBalloonToRegionServerRpc(true, physicsRegion.physicsTransform.GetComponent<NetworkObject>());
+                        ParentBalloonToRegion(true, physicsRegion.physicsTransform);
+                    }
+                    else if (balloon.transform.parent == physicsRegion.physicsTransform && !physicsRegion.itemDropCollider.bounds.Contains(balloon.transform.position))
+                    {
+                        ParentBalloonToRegionServerRpc(false, physicsRegion.physicsTransform.GetComponent<NetworkObject>());
+                        ParentBalloonToRegion(false, physicsRegion.physicsTransform);
+                    }
                 }
             }
         }
@@ -810,13 +847,13 @@ public class Balloon : GrabbableObject
     {
         if (!base.IsOwner)
         {
-            Debug.Log($"[BALLOON]: Non-owner receiving ParentBalloonToShipClientRpc() (Parenting: {parentToShip})");
             ParentBalloonToShip(parentToShip);
         }
     }
 
     public void ParentBalloonToShip(bool parentToShip)
     {
+        Debug.Log($"[BALLOON]: Parenting to ship: {parentToShip}");
         if (parentToShip && base.transform.parent != StartOfRound.Instance.elevatorTransform)
         {
             base.transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
@@ -838,8 +875,58 @@ public class Balloon : GrabbableObject
         }
     }
 
+    [ServerRpc(RequireOwnership = false)]
+    public void ParentBalloonToRegionServerRpc(bool parentToShip, NetworkObjectReference parentRef)
+    {
+        if (parentRef.TryGet(out _))
+        {
+            ParentBalloonToRegionClientRpc(parentToShip, parentRef);
+        }
+    }
+
+    [ClientRpc]
+    public void ParentBalloonToRegionClientRpc(bool parentToShip, NetworkObjectReference parentRef)
+    {
+        if (!base.IsOwner)
+        {
+            if (parentRef.TryGet(out var parentObject))
+            {
+                ParentBalloonToRegion(parentToShip, parentObject.transform);
+            }
+        }
+    }
+
+    public void ParentBalloonToRegion(bool parentToRegion, Transform parentTransform)
+    {
+        Debug.Log($"[BALLOON]: Parenting to physics region: {parentToRegion}");
+        if (parentToRegion && base.transform.parent != parentTransform)
+        {
+            base.transform.SetParent(parentTransform, true);
+        }
+        else if (!parentToRegion)
+        {
+            base.transform.SetParent(StartOfRound.Instance.propsContainer, true);
+            physicsRegion = null;
+        }
+        for (int i = 0; i < balloonStrings.Length; i++)
+        {
+            if (parentToRegion && balloonStrings[i].transform.parent != parentTransform)
+            {
+                balloonStrings[i].transform.SetParent(parentTransform, true);
+            }
+            else if (!parentToRegion)
+            {
+                balloonStrings[i].transform.SetParent(StartOfRound.Instance.propsContainer, true);
+            }
+        }
+    }
+
     public void SubdivideStrings(int subdivisions)
     {
+        if (balloonStrings.Length == 0)
+        {
+            return;
+        }
         static Vector3 SplinePosition(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t, float k)
         {
             Vector3 a = 2f * p1;
@@ -887,7 +974,6 @@ public class Balloon : GrabbableObject
         {
             balloonStringsPhys[i].isKinematic = !enable;
         }
-        frozen = !enable;
     }
 
     public void EnableBalloonPhysics(bool enable)
@@ -897,6 +983,7 @@ public class Balloon : GrabbableObject
         balloon.GetComponent<Collider>().enabled = enable;
         balloon.GetComponent<Rigidbody>().isKinematic = !enable;
         balloon.GetComponent<Collider>().enabled = enable;
+        frozen = !enable;
     }
 
     public new void EnablePhysics(bool enable)
@@ -910,7 +997,6 @@ public class Balloon : GrabbableObject
         Vector3 dir = new Vector3(dir2D.x, 0, dir2D.y);
         dir.Normalize();
         windDirection = dir;
-        Debug.Log($"[BALLOON]: Wind direction set to {windDirection}.");
     }
 
 
@@ -955,13 +1041,13 @@ public class Balloon : GrabbableObject
             itemColliders[i].enabled = true;
         }
         SetAnimator(setOverride: false);
-        lastDroppedPosition = base.transform.position;
+        lastDroppedHeight = base.transform.position.y;
     }
 
     public override void DiscardItemFromEnemy()
     {
         focusedByEnemy = null;
-        lastDroppedPosition = base.transform.position;
+        lastDroppedHeight = base.transform.position.y;
     }
 
     public override void OnDestroy()
@@ -971,8 +1057,36 @@ public class Balloon : GrabbableObject
             itemProperties.itemId = originalItemId;
         }
         DestroyBalloon();
-        base.OnDestroy();
     }
+
+    public void AddBoxCollider()
+    {
+        BoxCollider newCollider = base.gameObject.AddComponent<BoxCollider>();
+        newCollider.size = new(0.0f, 0.0f, 0.0f);
+        newCollider.enabled = true;
+        newCollider.isTrigger = false;
+    }
+
+	public override void EnableItemMeshes(bool enable)
+	{
+
+	}
+
+	public override void OnPlaceObject()
+	{
+        desk ??= FindObjectOfType<DepositItemsDesk>();
+        if (desk != null && desk.itemsOnCounter.Contains(this))
+        {
+            Debug.Log($"[BALLOON]: Placed on the counter!");
+            deflatedBalloon.transform.position = base.transform.position;
+            scanNode.transform.position = base.transform.position;
+            deflatedBalloon.GetComponent<Renderer>().material.color = balloonColor;
+            deflatedBalloon.GetComponent<Animator>().SetTrigger("Deflate");
+            deflateSource.clip = deflateClip;
+            deflateSource.pitch = UnityEngine.Random.Range(0.9f, 1.1f);
+            deflateSource.Play();
+        }
+	}
 
     public void DampFloating()
     {
@@ -1192,13 +1306,18 @@ public class Balloon : GrabbableObject
         else if (otherObject.GetComponentInParent<VehicleController>() != null)
         {
             VehicleController vehicle = otherObject.GetComponentInParent<VehicleController>();
-            if (vehicle.averageVelocity.magnitude < 5)
+            if (physicsRegion != null && base.transform.parent != null && base.transform.parent == physicsRegion.physicsTransform && physicsRegion.physicsTransform != vehicle.transform)
             {
-                PushBalloon(otherObject.transform.position, 5*vehicle.averageVelocity.magnitude);
-            }
-            else
-            {
-                Pop();
+                switch (vehicle.averageVelocity.magnitude)
+                {
+                    case < 6f:
+                        PushBalloon(otherObject.transform.position, 6*vehicle.averageVelocity.magnitude);
+                        break;
+
+                    case > 6f:
+                        Pop();
+                        break;
+                }
             }
         }
 
@@ -1336,9 +1455,15 @@ public class Balloon : GrabbableObject
         {
             Destroy(balloonStrings[i]);
         }
-
+        for (int i = 0; i < itemColliders.Length; i++)
+        {
+            Destroy(itemColliders[i]);
+        }
+        balloonStrings = [];
+        itemColliders = [];
         Destroy(balloonCollider);
         Destroy(stringCollider);
+        lineRenderer.positionCount = 0;
     }
 
 
@@ -1363,6 +1488,21 @@ public class Balloon : GrabbableObject
             balloonStrings[2].transform.position = balloonPos + Vector3.up * 0.1f;
             grabString.transform.position = balloonPos;
             base.transform.position = balloonPos;
+        }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestSyncBalloonPositionServerRpc()
+    {
+        RequestSyncBalloonPositionClientRpc();
+    }
+
+    [ClientRpc]
+    private void RequestSyncBalloonPositionClientRpc()
+    {
+        if (base.IsOwner)
+        {
+            SyncBalloonPositionServerRpc(balloon.transform.position);
         }
     }
 
