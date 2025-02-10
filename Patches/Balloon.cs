@@ -291,7 +291,7 @@ public class Balloon : GrabbableObject
 	public void OnDisable()
 	{
 		StartOfRound.Instance.StartNewRoundEvent.RemoveListener(StartHandlingShipLanding);
-        CoronaMod.Patches.NetworkPatches.StartOfRoundPatch.EndRoundEvent.AddListener(StartHandlingShipLeaving);
+        CoronaMod.Patches.NetworkPatches.StartOfRoundPatch.EndRoundEvent.RemoveListener(StartHandlingShipLeaving);
 	}
 
     public override void Update()
