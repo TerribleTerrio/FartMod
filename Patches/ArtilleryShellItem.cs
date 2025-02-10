@@ -485,9 +485,16 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 
 	public void ZapShell()
 	{
-		if (exploded)
+		if (exploded || !hasBeenSeen)
 		{
 			return;
+		}
+		if (!explodeInOrbit)
+		{
+			if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+			{
+				return;
+			}
 		}
 		RoundManager.Instance.PlayAudibleNoise(base.transform.position, noiseRange, noiseLoudness, timesPlayedInOneSpot, isInShipRoom && StartOfRound.Instance.hangarDoorsClosed);
 		itemAudio.PlayOneShot(shellZapped);
