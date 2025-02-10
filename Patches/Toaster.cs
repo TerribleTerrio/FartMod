@@ -115,16 +115,24 @@ public class Toaster : AnimatedItem, IHittable
         playersInPopRange = new List<PlayerControllerB>();
         SetupToaster();
         StartOfRound.Instance.StartNewRoundEvent.AddListener(SetupToaster);
+        CoronaMod.Patches.NetworkPatches.StartOfRoundPatch.EndRoundEvent.AddListener(ClearToaster);
     }
 
     public void SetupToaster()
     {
         haunted = false;
+        waterColliders.Clear();
         QuicksandTrigger[] array = FindObjectsOfType<QuicksandTrigger>().Where(x => x.isWater || x.isInsideWater).ToArray();
         for (int i = 0; i < array.Length; i++)
         {
             waterColliders.Add(array[i].gameObject.GetComponent<Collider>());
         }
+    }
+
+    public void ClearToaster()
+    {
+        haunted = false;
+        waterColliders.Clear();
     }
 
     public override void Update()
@@ -154,6 +162,10 @@ public class Toaster : AnimatedItem, IHittable
 
     public void WaterUpdate()
     {
+        if (StartOfRound.Instance.inShipPhase || StartOfRound.Instance.timeSinceRoundStarted < 2f)
+        {
+            return;
+        }
         if (Time.realtimeSinceStartup - lastWaterCheck > waterInterval)
         {
             lastWaterCheck = Time.realtimeSinceStartup;

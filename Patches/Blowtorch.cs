@@ -433,6 +433,13 @@ public class Blowtorch : AnimatedItem
                 colliders[i].gameObject.GetComponentInParent<Vase>().ExplodeAndSync();
             }
 
+            else if (colliders[i].gameObject.GetComponentInParent<BalloonCollisionDetection>() != null)
+            {
+                Debug.Log($"Blowtorch detected Balloon.");
+                Spark();
+                colliders[i].gameObject.GetComponentInParent<BalloonCollisionDetection>().mainScript.Pop();
+            }
+
             else if (colliders[i].gameObject.GetComponentInParent<Toaster>() != null)
             {
                 Debug.Log($"Blowtorch detected Toaster.");

@@ -75,6 +75,8 @@ internal class NetworkPatches
     [HarmonyPatch(typeof(StartOfRound))]
     internal class StartOfRoundPatch
     {
+        public static SimpleEvent EndRoundEvent = new SimpleEvent();
+
         [HarmonyPostfix]
         [HarmonyPatch("Awake")]
         static void SpawnNetworkHandler()
@@ -85,6 +87,13 @@ internal class NetworkPatches
                 networkHandlerHost.GetComponent<NetworkObject>().Spawn();
                 Debug.Log("Network prefab spawned during StartOfRound Start!");
             }
+        }
+
+        [HarmonyPatch("ShipHasLeft")]
+        [HarmonyPostfix]
+        static void ShipHasLeft()
+        {
+            EndRoundEvent.Invoke();
         }
     }
 }
@@ -111,6 +120,7 @@ internal class LandminePatch
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Explosion");
             otherObject.GetComponent<Balloon>()?.Pop();
+            otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
             if (otherObject.GetComponent<Vase>() != null)
             {
                 if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
@@ -208,6 +218,8 @@ internal class TurretPatch
                     otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
                     otherObject.GetComponent<Vase>()?.ExplodeAndSync();
                     otherObject.GetComponent<Radiator>()?.FallOverAndSync(__instance.aimPoint.forward);
+                    otherObject.GetComponent<Balloon>()?.Pop();
+                    otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
                     if (otherObject.GetComponent<PlayerControllerB>() != null)
                     {
                         PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
@@ -247,6 +259,7 @@ internal class ShotgunPatch
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Shotgun");
             otherObject.GetComponent<Vase>()?.ExplodeAndSync();
             otherObject.GetComponent<Balloon>()?.Pop();
+            otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
@@ -361,7 +374,7 @@ internal class PlayerControllerBPatch
 {
     [HarmonyPatch("SwitchToItemSlot")]
     [HarmonyPrefix]
-    static void SwitchToItemSlot(PlayerControllerB __instance, int slot, GrabbableObject fillSlotWithItem = null)
+    static void SwitchToItemSlot(PlayerControllerB __instance)
     {
         if (__instance.currentlyHeldObjectServer != null)
         {
@@ -371,24 +384,20 @@ internal class PlayerControllerBPatch
             }
         }
     }
+}
 
-    [HarmonyPatch("BeginGrabObject")]
+[HarmonyPatch(typeof(DepositItemsDesk))]
+internal class DepositItemsDeskPatch
+{
+    [HarmonyPatch("PlaceItemOnCounter")]
     [HarmonyPrefix]
-    static void BeginGrabObject(PlayerControllerB __instance)
+    static void PlaceItemOnCounter(DepositItemsDesk __instance, PlayerControllerB playerWhoTriggered)
     {
-        if (__instance.currentlyHeldObjectServer != null)
-        {
-            if (__instance.currentlyHeldObjectServer.gameObject.GetComponent<Balloon>() != null)
-            {
-                __instance.interactRay = new Ray(__instance.gameplayCamera.transform.position, __instance.gameplayCamera.transform.forward);
-                if (Physics.Raycast(__instance.interactRay, out __instance.hit, __instance.grabDistance, __instance.interactableObjectsMask))
-                {
-                    if (__instance.hit.collider.gameObject.layer == 8 && __instance.hit.collider.tag != "PhysicsProp")
-                    {
-                        __instance.DiscardHeldObject();
-                    }
-                }
-            }
-        }
+		if (playerWhoTriggered.currentlyHeldObjectServer != null && playerWhoTriggered.currentlyHeldObjectServer.gameObject.TryGetComponent(out Balloon balloon) && __instance.deskObjectsContainer.GetComponentsInChildren<GrabbableObject>().Length < 12 && !__instance.inGrabbingObjectsAnimation && GameNetworkManager.Instance != null && playerWhoTriggered == GameNetworkManager.Instance.localPlayerController)
+		{
+            Debug.Log("[BALLOON]: discard held object called from deposit items desk while holding balloon!");
+            balloon.DestroyBalloon();
+            balloon.AddBoxCollider();
+		}
     }
 }
