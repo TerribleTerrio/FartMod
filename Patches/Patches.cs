@@ -3,7 +3,6 @@ using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using System.Collections;
-using AsmResolver.PE.Imports.Builder;
 namespace CoronaMod.Patches;
 
 internal class NetworkPatches
@@ -21,12 +20,16 @@ internal class NetworkPatches
 
         [HarmonyPostfix]
         [HarmonyPatch("ResetSavedGameValues")]
-        static void ResetScarecrowSaveFileParams(ref GameNetworkManager __instance)
+        static void ResetFileParams(ref GameNetworkManager __instance)
         {
+            Debug.Log("Save file deleted!");
+
             if (!__instance.isHostingGame)
             {
                 return;
             }
+
+            //CLEAR SCARECROW SAVE DATA
             if (ES3.KeyExists(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveSlotSaveFileName))
             {
                 ES3.DeleteKey(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveSlotSaveFileName);
@@ -44,6 +47,28 @@ internal class NetworkPatches
             }
             ES3.Save(Scarecrow.threatenedSaveFileKey, Scarecrow.timesThreatenedInSaveFile, Scarecrow.currentSaveSlotSaveFileName);
             Debug.Log($"[SCARECROW]: Saved times threatened to current save file! ({Scarecrow.currentSaveSlotSaveFileName})");
+        }
+    }
+
+    [HarmonyPatch(typeof(DeleteFileButton))]
+    internal class DeleteFileButtonPatch
+    {
+        [HarmonyPostfix]
+        [HarmonyPatch("DeleteFile")]
+        static void DeleteFile(DeleteFileButton __instance)
+        {
+            string filePath = __instance.fileToDelete switch
+            {
+                0 => "FartmodSave1",
+                1 => "FartmodSave2",
+                2 => "FartmodSave3",
+                _ => "FartmodSave1"
+            };
+
+            if (ES3.FileExists(filePath))
+            {
+                ES3.DeleteFile(filePath);
+            }
         }
     }
 

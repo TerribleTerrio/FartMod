@@ -10,6 +10,10 @@ namespace CoronaMod;
 
 public static class Masks
 {
+    public const int PlaceableShipObjects = 67108864;
+
+    public const int Colliders = 2048;
+
     public const int DefaultRoomCollidersRailingVehicle = 1342179585;
 
     public const int DefaultTriggers = 8193;
@@ -129,8 +133,8 @@ public class CoronaMod : BaseUnityPlugin
         fridgePrefab = unlockableBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/Fridge.prefab");
         fridgeBuyNode = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/FridgeBuy.asset");
         fridgeBuyConfirm = unlockableBundle.LoadAsset<TerminalNode>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/FridgeBuyConfirm.asset");
-        // Unlockables.RegisterUnlockable(fridgeUnlockable, StoreType.Decor, fridgeBuyNode, fridgeBuyConfirm, null, 110);
-        // LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(fridgePrefab);
+        Unlockables.RegisterUnlockable(fridgeUnlockable, StoreType.Decor, fridgeBuyNode, fridgeBuyConfirm, null, 110);
+        LethalLib.Modules.NetworkPrefabs.RegisterNetworkPrefab(fridgePrefab);
 
         punchingBagUnlockable = unlockableBundle.LoadAsset<UnlockableItemDef>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBagDef.asset");
         punchingBagPrefab = unlockableBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/ExtPrefabs/punchingBag.prefab");
