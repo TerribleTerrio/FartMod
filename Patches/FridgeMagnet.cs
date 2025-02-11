@@ -124,9 +124,9 @@ public class FridgeMagnet() : GrabbableObject
             newObj.GetComponent<NetworkObject>().Spawn();
             
             //GET RANDOM VALUES AND SYNC FOR CLIENTS
-            Vector3 position = RoundManager.Instance.GetRandomNavMeshPositionInRadius(transform.position, 3);
+            Vector3 position = RoundManager.Instance.GetRandomNavMeshPositionInRadius(transform.position, 20);
             position += Vector3.up * itemProperties.verticalOffset;
-            int value = UnityEngine.Random.Range(itemProperties.minValue, itemProperties.maxValue+1);
+            int value = (int)(UnityEngine.Random.Range(itemProperties.minValue, itemProperties.maxValue+1) * 0.4f);
             float rotation = UnityEngine.Random.Range(0f,360f);
             SyncValuesClientRpc(newObj.GetComponent<NetworkObject>(), value, position, rotation);
         }
