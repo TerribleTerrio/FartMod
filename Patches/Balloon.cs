@@ -111,8 +111,6 @@ public class Balloon : GrabbableObject
 
     private float stringGrabRadius = 1f;
 
-    private bool frozen;
-
     [HideInInspector]
     public RuntimeAnimatorController playerDefaultAnimatorController;
 
@@ -190,8 +188,31 @@ public class Balloon : GrabbableObject
 
     private bool startFlag = false;
 
+    private GameObject? hologramBalloon = null;
+
+    public void Awake()
+    {
+        hologramBalloon = Instantiate(balloon, base.transform);
+        hologramBalloon.GetComponent<ConstantForce>().force = new(0f, 1.2f, 0f);
+        LineRenderer hologramString = hologramBalloon.AddComponent<LineRenderer>();
+        hologramString.useWorldSpace = false;
+        hologramString.material = HUDManager.Instance.hologramMaterial;
+        hologramString.widthMultiplier = 0.0012f;
+        hologramString.positionCount = 2;
+        hologramString.textureMode = LineTextureMode.Tile;
+        hologramString.textureScale = new(50f, 50f);
+        hologramString.SetPosition(0, Vector3.down * 0.4f);
+        hologramString.SetPosition(1, Vector3.down * 3f);
+    }
+
     public override void Start()
     {
+        if (hologramBalloon is not null)
+        {
+            Destroy(hologramBalloon);
+            hologramBalloon = null;
+        }
+
         //BALLOON START
         balloon.transform.SetParent(StartOfRound.Instance.propsContainer, true);
         balloonCollider.transform.SetParent(StartOfRound.Instance.propsContainer, true);
@@ -345,7 +366,7 @@ public class Balloon : GrabbableObject
             {
                 disablePhysicsCooldown -= Time.deltaTime;
             }
-            else if (frozen)
+            else if (balloonStringsPhys[1].isKinematic)
             {
                 EnableStringPhysics(true);
             }
@@ -360,7 +381,7 @@ public class Balloon : GrabbableObject
             {
                 disablePhysicsCooldown -= Time.deltaTime;
             }
-            else if (frozen)
+            else if (balloonStringsPhys[0].isKinematic)
             {
                 EnableStringPhysics(true);
                 EnableBalloonPhysics(true);
@@ -595,8 +616,9 @@ public class Balloon : GrabbableObject
     private IEnumerator WaitToLoadSaveData(int saveData)
     {
         float timeLoaded = Time.realtimeSinceStartup;
-        yield return new WaitUntil(() => startFlag || Time.realtimeSinceStartup - timeLoaded > 15f);
+        yield return new WaitUntil(() => startFlag || Time.realtimeSinceStartup - timeLoaded > 10f);
         {
+            Debug.Log("[BALLOON]: Loading save data after start flag or after enough time has passed!");
             isInShipRoom = true;
             isInElevator = true;
             scrapPersistedThroughRounds = true;
@@ -753,45 +775,79 @@ public class Balloon : GrabbableObject
             return;
         }
 
-        //HANDLE POSSIBLE PARENTS (SHIP, PROPSCONTAINER, PHYSICSREGIONS)
+        //HANDLE POSSIBLE PARENTS
         if (base.IsOwner && disablePhysicsCooldown <= 0f)
         {
-            if (base.transform.parent == StartOfRound.Instance.propsContainer)
+            const int Props = 0;
+            const int Ship = 1;
+            const int Region = 2;
+            int? parent = (base.transform.parent == StartOfRound.Instance.propsContainer) ? Props : (base.transform.parent == StartOfRound.Instance.elevatorTransform) ? Ship : (base.transform.parent != null) ? Region : null;
+            switch (parent)
             {
-                if ((playerHeldBy != null && playerHeldBy.isInElevator) || playerHeldBy == null && StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
-                {
-                    isInElevator = true;
-                    ParentBalloonToShip(true);
-                    ParentBalloonToShipServerRpc(true);
-                }
-            }
-            else if (base.transform.parent == StartOfRound.Instance.elevatorTransform)
-            {
-                if ((playerHeldBy != null && !playerHeldBy.isInElevator) || playerHeldBy == null && !StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
-                {
-                    isInShipRoom = false;
-                    isInElevator = false;
-                    ParentBalloonToShip(false);
-                    ParentBalloonToShipServerRpc(false);
-                }
-            }
-            else if (base.transform.parent != null)
-            {
-                physicsRegion ??= base.transform.parent.GetComponentInChildren<PlayerPhysicsRegion>();
-                if (physicsRegion != null)
-                {
-                    lastDroppedHeight = base.transform.position.y;
-                    if (balloon.transform.parent != physicsRegion.physicsTransform && physicsRegion.itemDropCollider.bounds.Contains(balloon.transform.position))
+                case Props:
+                    if ((playerHeldBy != null && playerHeldBy.isInElevator) || playerHeldBy == null && StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
                     {
-                        ParentBalloonToRegionServerRpc(true, physicsRegion.physicsTransform.GetComponent<NetworkObject>());
-                        ParentBalloonToRegion(true, physicsRegion.physicsTransform);
+                        Debug.Log("[BALLOON]: Parenting base to ship from props.");
+                        isInElevator = true;
+                        ParentBalloonToShip(true);
+                        ParentBalloonToShipServerRpc(true);
                     }
-                    else if (balloon.transform.parent == physicsRegion.physicsTransform && !physicsRegion.itemDropCollider.bounds.Contains(balloon.transform.position))
+                    if (balloon.transform.parent != base.transform.parent && !StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
                     {
-                        ParentBalloonToRegionServerRpc(false, physicsRegion.physicsTransform.GetComponent<NetworkObject>());
-                        ParentBalloonToRegion(false, physicsRegion.physicsTransform);
+                        Debug.Log("[BALLOON]: Parenting balloon to props from mismatch.");
+                        ParentBalloonToShip(false);
+                        ParentBalloonToShipServerRpc(false);
                     }
-                }
+                    break;
+
+                case Ship:
+                    if ((playerHeldBy != null && !playerHeldBy.isInElevator) || playerHeldBy == null && !StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
+                    {
+                         Debug.Log("[BALLOON]: Parenting base to props from ship.");
+                        isInShipRoom = false;
+                        isInElevator = false;
+                        ParentBalloonToShip(false);
+                        ParentBalloonToShipServerRpc(false);
+                    }
+                    if (balloon.transform.parent != base.transform.parent && StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position))
+                    {
+                        Debug.Log("[BALLOON]: Parenting balloon to ship from mismatch.");
+                        ParentBalloonToShip(true);
+                        ParentBalloonToShipServerRpc(true);
+                    }
+                    break;
+
+                case Region:
+                    physicsRegion ??= base.transform.parent?.GetComponentInChildren<PlayerPhysicsRegion>();
+                    if (physicsRegion != null)
+                    {
+                        lastDroppedHeight = base.transform.position.y;
+                        if (balloon.transform.parent != physicsRegion.physicsTransform && physicsRegion.itemDropCollider.bounds.Contains(balloon.transform.position))
+                        {
+                            Debug.Log("[BALLOON]: Parenting balloon to region from mismatch.");
+                            ParentBalloonToRegionServerRpc(true, physicsRegion.physicsTransform.GetComponent<NetworkObject>());
+                            ParentBalloonToRegion(true, physicsRegion.physicsTransform);
+                        }
+                        else if (balloon.transform.parent == physicsRegion.physicsTransform && !physicsRegion.itemDropCollider.bounds.Contains(balloon.transform.position))
+                        {
+                            Debug.Log("[BALLOON]: Parenting base to props from region.");
+                            ParentBalloonToRegionServerRpc(false, physicsRegion.physicsTransform.GetComponent<NetworkObject>());
+                            ParentBalloonToRegion(false, physicsRegion.physicsTransform);
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log("[BALLOON]: Parenting base to props from non-region parent.");
+                        ParentBalloonToShip((playerHeldBy != null) ? playerHeldBy.isInElevator : StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position));
+                        ParentBalloonToShipServerRpc((playerHeldBy != null) ? playerHeldBy.isInElevator : StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position));
+                    }
+                    break;
+
+                case null:
+                    Debug.Log("[BALLOON]: Parenting base to props from null parent.");
+                    ParentBalloonToShip((playerHeldBy != null) ? playerHeldBy.isInElevator : StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position));
+                    ParentBalloonToShipServerRpc((playerHeldBy != null) ? playerHeldBy.isInElevator : StartOfRound.Instance.shipBounds.bounds.Contains(balloon.transform.position));
+                    break;
             }
         }
 
@@ -854,7 +910,7 @@ public class Balloon : GrabbableObject
     public void ParentBalloonToShip(bool parentToShip)
     {
         Debug.Log($"[BALLOON]: Parenting to ship: {parentToShip}");
-        if (parentToShip && base.transform.parent != StartOfRound.Instance.elevatorTransform)
+        if (parentToShip)
         {
             base.transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
         }
@@ -864,7 +920,7 @@ public class Balloon : GrabbableObject
         }
         for (int i = 0; i < balloonStrings.Length; i++)
         {
-            if (parentToShip && balloonStrings[i].transform.parent != StartOfRound.Instance.elevatorTransform)
+            if (parentToShip)
             {
                 balloonStrings[i].transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
             }
@@ -899,7 +955,7 @@ public class Balloon : GrabbableObject
     public void ParentBalloonToRegion(bool parentToRegion, Transform parentTransform)
     {
         Debug.Log($"[BALLOON]: Parenting to physics region: {parentToRegion}");
-        if (parentToRegion && base.transform.parent != parentTransform)
+        if (parentToRegion)
         {
             base.transform.SetParent(parentTransform, true);
         }
@@ -910,7 +966,7 @@ public class Balloon : GrabbableObject
         }
         for (int i = 0; i < balloonStrings.Length; i++)
         {
-            if (parentToRegion && balloonStrings[i].transform.parent != parentTransform)
+            if (parentToRegion)
             {
                 balloonStrings[i].transform.SetParent(parentTransform, true);
             }
@@ -983,7 +1039,6 @@ public class Balloon : GrabbableObject
         balloon.GetComponent<Collider>().enabled = enable;
         balloon.GetComponent<Rigidbody>().isKinematic = !enable;
         balloon.GetComponent<Collider>().enabled = enable;
-        frozen = !enable;
     }
 
     public new void EnablePhysics(bool enable)
@@ -1176,7 +1231,7 @@ public class Balloon : GrabbableObject
     {
         GameObject otherObject = other.gameObject;
 
-        if (frozen || Physics.Linecast(transform.position, other.transform.position, out _, CoronaMod.Masks.RoomVehicle, QueryTriggerInteraction.Ignore))
+        if (balloonStringsPhys[0].isKinematic || Physics.Linecast(transform.position, other.transform.position, out _, CoronaMod.Masks.RoomVehicle, QueryTriggerInteraction.Ignore))
         {
             return;
         }
@@ -1322,7 +1377,7 @@ public class Balloon : GrabbableObject
         }
 
         //OTHER BALLOON COLLISION
-        else if (otherObject.TryGetComponent<BalloonCollisionDetection>(out var balloonCollision) && balloonCollision.mainScript != this)
+        else if (otherObject.TryGetComponent<BalloonCollisionDetection>(out var balloonCollision))
         {
             PushBalloon(otherObject.transform.position, 5);
         }
@@ -1397,6 +1452,7 @@ public class Balloon : GrabbableObject
     {
         if (poppedThisFrame)
         {
+            Debug.Log("[BALLOON]: Popped this frame already!");
             return;
         }
         poppedThisFrame = true;

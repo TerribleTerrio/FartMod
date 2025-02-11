@@ -3,6 +3,10 @@ using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using System.Collections;
+using UnityEngine.UI;
+using System.Linq;
+using System.Collections.Generic;
+using Steamworks.ServerList;
 namespace CoronaMod.Patches;
 
 internal class NetworkPatches
@@ -119,7 +123,6 @@ internal class LandminePatch
             otherObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Explosion");
-            otherObject.GetComponent<Balloon>()?.Pop();
             otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
             if (otherObject.GetComponent<Vase>() != null)
             {
@@ -218,7 +221,6 @@ internal class TurretPatch
                     otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
                     otherObject.GetComponent<Vase>()?.ExplodeAndSync();
                     otherObject.GetComponent<Radiator>()?.FallOverAndSync(__instance.aimPoint.forward);
-                    otherObject.GetComponent<Balloon>()?.Pop();
                     otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
                     if (otherObject.GetComponent<PlayerControllerB>() != null)
                     {
@@ -258,7 +260,7 @@ internal class ShotgunPatch
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Shotgun");
             otherObject.GetComponent<Vase>()?.ExplodeAndSync();
-            otherObject.GetComponent<Balloon>()?.Pop();
+            otherObject.GetComponent<Radiator>()?.FallOverAndSync(shotgunForward);
             otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
@@ -363,7 +365,6 @@ internal class KillLocalPlayerPatch
     {
         if (other.gameObject.GetComponent<BalloonCollisionDetection>() != null && __instance.deathAnimation == 1)
         {
-            Debug.Log("[KILLLOCALPLAYER]: Balloon detected in trigger!");
             other.gameObject.GetComponent<BalloonCollisionDetection>().mainScript.Pop();
         }
     }
@@ -399,5 +400,120 @@ internal class DepositItemsDeskPatch
             balloon.DestroyBalloon();
             balloon.AddBoxCollider();
 		}
+    }
+}
+
+[HarmonyPatch(typeof(InteractTrigger))]
+internal class InteractTriggerPatch
+{
+    [HarmonyPatch("ladderClimbAnimation")]
+    [HarmonyPostfix]
+    static IEnumerator LadderClimbAnimation(IEnumerator result, PlayerControllerB playerController)
+    {
+        if (playerController.currentlyHeldObjectServer != null && playerController.currentlyHeldObjectServer.gameObject.GetComponent<Balloon>() != null)
+        {
+            playerController.DiscardHeldObject();
+        }
+        while (result.MoveNext())
+        {
+            yield return result.Current;
+        }
+    }
+}
+
+[HarmonyPatch(typeof(ExtensionLadderItem))]
+internal class ExtensionLadderItemPatch
+{
+    [HarmonyPatch("LadderAnimation")]
+    [HarmonyPostfix]
+    static IEnumerator LadderAnimation(IEnumerator result, ExtensionLadderItem __instance)
+    {
+        float prexExt = 0f;
+        float prevRot = 0f;
+        float currentExt() => __instance.ladderAnimator.GetFloat("extensionAmount");
+        float currentRot() => __instance.ladderRotateAnimator.GetFloat("rotationAmount");
+        List<Collider> collidersHit = [];
+        while (result.MoveNext())
+        {
+            if (__instance.IsOwner)
+            {
+                if (ValueChanged(ref prexExt, currentExt()))
+                {
+                    DetectAndInteract(__instance.killTrigger, falling: false);
+                }
+                if (ValueChanged(ref prevRot, currentRot()))
+                {
+                    DetectAndInteract(__instance.killTrigger, falling: true);
+                }
+            }
+            yield return result.Current;
+        }
+        bool ValueChanged(ref float lhs, float rhs)
+        {
+            bool change = lhs != rhs;
+            lhs = change ? rhs : lhs;
+            return change;
+        }
+        void DetectAndInteract(Collider collider, bool falling)
+        {
+            Vector3 pos = (falling ? collider.transform.position - collider.transform.right * 0.25f : collider.transform.position) - collider.transform.up * 2f;
+            Vector3 size = new((collider as BoxCollider)!.size.x, (collider as BoxCollider)!.size.y * 4f, (collider as BoxCollider)!.size.z);
+            Collider[] ladderHit = Physics.OverlapBox(pos, size, collider.transform.rotation, Masks.PlayerPropsEnemiesMapHazardsVehicle, QueryTriggerInteraction.Collide);
+            if (ladderHit != null)
+            {
+                for (int i = 0; i < ladderHit.Length; i++)
+                {
+                    if (collidersHit.Contains(ladderHit[i]))
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        collidersHit.Add(ladderHit[i]);
+                    }
+                    Debug.Log($"[EXTLADDER]: Hit {ladderHit[i].gameObject.name} while {(falling? "falling!" : "extending!")}");
+                    if (!falling)
+                    {
+                        ladderHit[i].gameObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
+                    }
+                    else
+                    {
+                        if ((bool)ladderHit[i].gameObject.GetComponent<TriggerScript>())
+                        {
+                            if (ladderHit[i].gameObject.GetComponent<TriggerScript>().callOnTriggerEnter == "OnStringTouch")
+                            {
+                                return;
+                            }
+                            else if (currentRot() > 0.15f)
+                            {
+                                ladderHit[i].gameObject.GetComponent<TriggerScript>().objectScript.GetComponent<Balloon>()?.Pop();
+                            }
+                        }
+                        ladderHit[i].gameObject.GetComponent<Toaster>()?.GetComponent<IHittable>().Hit(1, Vector3.zero);
+                        if ((bool)ladderHit[i].gameObject.GetComponent<ArtilleryShellItem>())
+                        {
+                            SoundManager.Instance.PlayAudio1AtPositionForAllClients(ladderHit[i].transform.position, 1);
+                            ladderHit[i].gameObject.GetComponent<ArtilleryShellItem>().ArmShellAndSync();
+                        }
+                        ladderHit[i].gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
+                        ladderHit[i].gameObject.GetComponent<PunchingBag>()?.PunchAndSync(true);
+                        ladderHit[i].gameObject.GetComponent<WhoopieCushionItem>()?.Fart();
+                        ladderHit[i].gameObject.GetComponent<Vase>()?.ExplodeAndSync();
+                        ladderHit[i].gameObject.GetComponent<Radiator>()?.FallOverAndSync((new Vector3(ladderHit[i].transform.position.x, 0f, ladderHit[i].transform.position.z) - new Vector3(collider.transform.position.x, 0f, collider.transform.position.z)).normalized);
+                        if (ladderHit[i].gameObject.GetComponent<PlayerControllerB>() != null)
+                        {
+                            PlayerControllerB player = ladderHit[i].gameObject.GetComponent<PlayerControllerB>();
+                            if (player.isHoldingObject)
+                            {
+                                player.currentlyHeldObjectServer.gameObject.GetComponent<Toaster>()?.GetComponent<IHittable>().Hit(1, Vector3.zero);
+                                player.currentlyHeldObjectServer.gameObject.GetComponent<ArtilleryShellItem>()?.ArmShellAndSync();
+                                player.currentlyHeldObjectServer.gameObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
+                                player.currentlyHeldObjectServer.gameObject.GetComponent<Vase>()?.ExplodeAndSync();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

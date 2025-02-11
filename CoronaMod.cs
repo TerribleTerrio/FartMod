@@ -41,6 +41,8 @@ public static class Masks
     public const int RadiatorMask = 1593838337; //Default, Room, InteractableObject, Colliders, Terrain, PlaceableShipObjects, PlacementBlocker, Railing, Vehicle
 
     public const int WeaponMask = 1084754248; //Player, Props, Room, Colliders, Enemies, MapHazards, EnemiesNotRendered, Vehicle --- Same as shovel
+
+    public const int LadderMask = 268437761; //Default, Room, Colliders, Railing
 }
 
 [BepInPlugin(modGUID, modName, modVersion)]
