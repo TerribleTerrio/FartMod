@@ -257,7 +257,6 @@ public class Balloon : GrabbableObject
             EnableStringPhysics(true);
             EnableBalloonPhysics(false);
         }
-
         balloonServerPosition = balloon.transform.position;
         lastDroppedHeight = base.transform.position.y;
         itemProperties.itemId = originalItemId;
@@ -301,8 +300,42 @@ public class Balloon : GrabbableObject
         }
 
         startFlag = true;
+        StartOfRound.Instance.StartNewRoundEvent.AddListener(StartGetSafeSpawn);
     }
 
+    public void StartGetSafeSpawn()
+    {
+        StartCoroutine(GetSafeSpawn());
+    }
+
+    public IEnumerator GetSafeSpawn()
+    {
+        yield return new WaitUntil(() => RoundManager.Instance.bakedNavMesh);
+        if (RoundManager.Instance.currentDungeonType != 0)
+        {
+            yield break;
+        }
+        Vector3 entrance = RoundManager.FindMainEntrancePosition(getTeleportPosition: true, getOutsideEntrance: false);
+        int tries = 0;
+        int maxTries = 50;
+        Vector3 newPos;
+        do
+        {
+            newPos = RoundManager.Instance.GetRandomNavMeshPositionInRadius(base.transform.position, 20f);
+            tries++;
+            Debug.Log($"[BALLOON]: Attempt {tries} for spawn position on Facility interior, distance from entrance fan: {Vector3.Distance(newPos, entrance)}");
+        }
+        while (Vector3.Distance(newPos, entrance) < 10f && tries < maxTries);
+        EnableStringPhysics(false);
+        EnableBalloonPhysics(false);
+        disablePhysicsCooldown = 0.05f;
+        base.transform.position = newPos;
+        balloon.transform.position = base.transform.position + Vector3.up * 0.3f;
+        balloonStrings[1].transform.position = base.transform.position + Vector3.up * 0.2f;
+        balloonStrings[2].transform.position = base.transform.position + Vector3.up * 0.1f;
+        grabString.transform.position = base.transform.position;
+        SyncPositionInstantlyServerRpc(base.transform.position);
+    }
 	public void OnEnable()
 	{
 		StartOfRound.Instance.StartNewRoundEvent.AddListener(StartHandlingShipLanding);
