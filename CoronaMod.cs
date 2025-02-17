@@ -43,6 +43,19 @@ public static class Masks
     public const int WeaponMask = 1084754248; //Player, Props, Room, Colliders, Enemies, MapHazards, EnemiesNotRendered, Vehicle --- Same as shovel
 
     public const int LadderMask = 268437761; //Default, Room, Colliders, Railing
+
+    public const int InteractableObjectsMask = 1073742656; //Props, Room, InteractableObject, Vehicle
+}
+
+public static class Info
+{
+    public const string GeneralSaveFileName = "FartModPlayerSave";
+
+    public const string SaveFileName1 = "FartModSave1";
+
+    public const string SaveFileName2 = "FartModSave2";
+
+    public const string SaveFileName3 = "FartModSave3";
 }
 
 [BepInPlugin(modGUID, modName, modVersion)]
