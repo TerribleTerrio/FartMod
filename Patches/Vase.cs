@@ -422,6 +422,29 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             }
         }
 
+        //TIRE COLLISION
+        else if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        {
+            Debug.Log("[VASE]: Bumped by tire.");
+            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+            if (speed < 2f)
+            {
+                WobbleAndSync(0);
+            }
+            else if (speed < 4f)
+            {
+                WobbleAndSync(1);
+            }
+            else if (speed < 8f)
+            {
+                WobbleAndSync(2);
+            }
+            else if (speed >= 8f)
+            {
+                ExplodeAndSync();
+            }
+        }
+
         //ENEMY COLLISION
         else if (otherObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
         {

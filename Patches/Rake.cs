@@ -184,6 +184,18 @@ public class Rake : GrabbableObject, ITouchable
             }
         }
 
+        //TIRE COLLISION
+        else if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        {
+            collidersTouching.Add(other);
+
+            if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
+            {
+                FlipAndSync();
+                return;
+            }
+        }
+
         //ENEMY COLLISION
         else if (other.gameObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
         {

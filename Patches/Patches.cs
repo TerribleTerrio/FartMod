@@ -124,6 +124,7 @@ internal class LandminePatch
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Explosion");
             otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
+            otherObject.GetComponent<Tire>()?.BounceOff(explosionPosition, extraForce: 30f);
             if (otherObject.GetComponent<Vase>() != null)
             {
                 if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)

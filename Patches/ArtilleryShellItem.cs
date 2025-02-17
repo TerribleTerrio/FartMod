@@ -406,12 +406,15 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 	public void OnTouch(Collider other)
 	{
 		GameObject otherObject = other.gameObject;
-		
-		//PLAYER COLLISION
-		if (otherObject.layer == 3)
+
+		//TIRE COLLISION
+		if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
 		{
-			PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
-			return;
+			float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+			if (speed >= 8f)
+			{
+				ArmShellAndSync();
+			}
 		}
 
 		//ENEMY COLLISION

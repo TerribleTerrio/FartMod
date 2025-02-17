@@ -1274,6 +1274,18 @@ public class Balloon : GrabbableObject
         {
             Debug.Log("[BALLOON]: Bumped by player.");
             PushBalloon(otherObject.transform.position, 10f);
+            return;
+        }
+
+        //TIRE COLLISION
+        if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        {
+            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+			if (speed >= 8f)
+			{
+				Pop();
+                return;
+			}
         }
 
         //ENEMY COLLISION
@@ -1420,13 +1432,15 @@ public class Balloon : GrabbableObject
         {
             GrabbableObject gObject = otherObject.GetComponent<GrabbableObject>();
 
-            if (gObject.itemProperties.itemName == "Soccer ball")
+            switch (gObject)
             {
-                SoccerBallProp ball = otherObject.GetComponent<SoccerBallProp>();
-                if (!ball.hasHitGround && !ball.isHeld && !ball.isHeldByEnemy)
-                {
-                    Pop();
-                }
+                case SoccerBallProp ball:
+                    if (!ball.hasHitGround && !ball.isHeld && !ball.isHeldByEnemy)
+                    {
+                        Pop();
+                        break;
+                    }
+                    break;
             }
         }
     }
