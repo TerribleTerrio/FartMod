@@ -10,7 +10,13 @@ public class TriggerScript : MonoBehaviour, IHittable
 
     public string? callOnTriggerEnter;
 
+    public string? callOnTriggerStay;
+
     public string? callOnTriggerExit;
+
+    public string? callOnCollisionEnter;
+
+    public string? callOnCollisionExit;
 
     public string? callOnHit;
 
@@ -18,9 +24,21 @@ public class TriggerScript : MonoBehaviour, IHittable
 
     private ParameterInfo[]? onEnterParameters;
 
+    private MethodInfo? onStay;
+
+    private ParameterInfo[]? onStayParameters;
+
     private MethodInfo? onExit;
 
     private ParameterInfo[]? onExitParameters;
+
+    private MethodInfo? onColEnter;
+
+    private ParameterInfo[]? onColEnterParameters;
+
+    private MethodInfo? onColExit;
+
+    private ParameterInfo[]? onColExitParameters;
 
     private MethodInfo? onHit;
 
@@ -39,12 +57,39 @@ public class TriggerScript : MonoBehaviour, IHittable
             }
         }
 
+        if (!string.IsNullOrEmpty(callOnTriggerStay))
+        {
+            onStay = itemType.GetMethod(callOnTriggerStay);
+            if (onStay != null)
+            {
+                onStayParameters = onStay.GetParameters();
+            }
+        }
+
         if (!string.IsNullOrEmpty(callOnTriggerExit))
         {
             onExit = itemType.GetMethod(callOnTriggerExit);
             if (onExit != null)
             {
                 onExitParameters = onExit.GetParameters();
+            }
+        }
+
+        if (!string.IsNullOrEmpty(callOnCollisionEnter))
+        {
+            onColEnter = itemType.GetMethod(callOnCollisionEnter);
+            if (onColEnter != null)
+            {
+                onColEnterParameters = onColEnter.GetParameters();
+            }
+        }
+
+        if (!string.IsNullOrEmpty(callOnCollisionExit))
+        {
+            onColExit = itemType.GetMethod(callOnCollisionExit);
+            if (onColExit != null)
+            {
+                onColExitParameters = onColExit.GetParameters();
             }
         }
 
@@ -73,6 +118,22 @@ public class TriggerScript : MonoBehaviour, IHittable
             }
         }
     }
+    
+    public void OnTriggerStay(Collider other)
+    {
+        if (onStay != null && !string.IsNullOrEmpty(callOnTriggerStay))
+        {
+            if (onStayParameters is null || onStayParameters.Length == 0)
+            {
+                onStay.Invoke(objectScript, null);
+            }
+            else
+            {
+                object[] parametersArray = [other];
+                onStay.Invoke(objectScript, parametersArray);
+            }
+        }
+    }
 
     public void OnTriggerExit(Collider other)
     {
@@ -86,6 +147,38 @@ public class TriggerScript : MonoBehaviour, IHittable
             {
                 object[] parametersArray = [other];
                 onExit.Invoke(objectScript, parametersArray);
+            }
+        }
+    }
+
+    public void OnCollisionEnter(Collision other)
+    {
+        if (onColEnter != null && !string.IsNullOrEmpty(callOnCollisionEnter))
+        {
+            if (onColEnterParameters is null || onColEnterParameters.Length == 0)
+            {
+                onColEnter.Invoke(objectScript, null);
+            }
+            else
+            {
+                object[] parametersArray = [other];
+                onColEnter.Invoke(objectScript, parametersArray);
+            }
+        }
+    }
+
+    public void OnCollisionExit(Collision other)
+    {
+        if (onColExit != null && !string.IsNullOrEmpty(callOnCollisionExit))
+        {
+            if (onColExitParameters is null || onColExitParameters.Length == 0)
+            {
+                onColExit.Invoke(objectScript, null);
+            }
+            else
+            {
+                object[] parametersArray = [other];
+                onColExit.Invoke(objectScript, parametersArray);
             }
         }
     }
