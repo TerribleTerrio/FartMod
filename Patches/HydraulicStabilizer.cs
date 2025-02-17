@@ -192,7 +192,17 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
 	public void OnTouch(Collider other)
 	{
+        GameObject otherObject = other.gameObject;
 
+        //TIRE COLLISION
+        if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+		{
+			float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+			if (speed >= 4f)
+			{
+				GoPsychoAndSync();
+			}
+		}
 	}
 
 	public void OnExit(Collider other)

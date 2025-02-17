@@ -658,6 +658,25 @@ public class Toaster : AnimatedItem, IHittable
         }
 	}
 
+    public void OnTouch(Collider other)
+    {
+        GameObject otherObject = other.gameObject;
+
+        //TIRE COLLISION
+        if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        {
+            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+            if (speed >= 4f && inserted)
+            {
+                EjectAndSync();
+            }
+			if (speed >= 8f)
+			{
+				ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
+			}
+        }
+    }
+
     bool IHittable.Hit(int force, Vector3 hitDirection, PlayerControllerB playerWhoHit = null, bool playHitSFX = true, int hitID = -1)
 	{
         if (Vector3.Distance(lastPosition, base.transform.position) > 2f)
