@@ -3,10 +3,7 @@ using HarmonyLib;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using System.Collections;
-using UnityEngine.UI;
-using System.Linq;
 using System.Collections.Generic;
-using Steamworks.ServerList;
 namespace CoronaMod.Patches;
 
 internal class NetworkPatches
@@ -26,31 +23,34 @@ internal class NetworkPatches
         [HarmonyPatch("ResetSavedGameValues")]
         static void ResetFileParams(ref GameNetworkManager __instance)
         {
-            Debug.Log("Save file deleted!");
-
             if (!__instance.isHostingGame)
             {
                 return;
             }
 
-            //CLEAR SCARECROW SAVE DATA
-            if (ES3.KeyExists(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveSlotSaveFileName))
+            if (ES3.KeyExists(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveFile))
             {
-                ES3.DeleteKey(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveSlotSaveFileName);
-                Debug.Log($"[SCARECROW]: Reset times threatened in current save file! ({Scarecrow.currentSaveSlotSaveFileName})");
+                ES3.DeleteKey(Scarecrow.threatenedSaveFileKey, Scarecrow.currentSaveFile);
+                Debug.Log($"[SCARECROW]: Reset saved data! ({Scarecrow.currentSaveFile})");
+            }
+            if (ES3.KeyExists(Fridge.magnetsKey, Fridge.currentSaveFile))
+            {
+                ES3.DeleteKey(Fridge.magnetsKey, Fridge.currentSaveFile);
+                Debug.Log($"[FRIDGE]: Reset saved data! ({Fridge.currentSaveFile})");
             }
         }
 
         [HarmonyPostfix]
         [HarmonyPatch("SaveGameValues")]
-        static void SaveScarecrowSaveFileParams(ref GameNetworkManager __instance)
+        static void SaveFileParams(ref GameNetworkManager __instance)
         {
-            if (!StartOfRound.Instance.inShipPhase || StartOfRound.Instance.isChallengeFile)
+            if (!__instance.isHostingGame || !StartOfRound.Instance.inShipPhase || StartOfRound.Instance.isChallengeFile)
             {
                 return;
             }
-            ES3.Save(Scarecrow.threatenedSaveFileKey, Scarecrow.timesThreatenedInSaveFile, Scarecrow.currentSaveSlotSaveFileName);
-            Debug.Log($"[SCARECROW]: Saved times threatened to current save file! ({Scarecrow.currentSaveSlotSaveFileName})");
+            Fridge.Instance?.SaveData();
+            ES3.Save(Scarecrow.threatenedSaveFileKey, Scarecrow.timesThreatenedInSaveFile, Scarecrow.currentSaveFile);
+            Debug.Log($"[SCARECROW]: Saved new data! ({Scarecrow.currentSaveFile})");
         }
     }
 
@@ -63,15 +63,16 @@ internal class NetworkPatches
         {
             string filePath = __instance.fileToDelete switch
             {
-                0 => "FartmodSave1",
-                1 => "FartmodSave2",
-                2 => "FartmodSave3",
-                _ => "FartmodSave1"
+                0 => Info.SaveFileName1,
+                1 => Info.SaveFileName2,
+                2 => Info.SaveFileName3,
+                _ => Info.SaveFileName1
             };
 
             if (ES3.FileExists(filePath))
             {
                 ES3.DeleteFile(filePath);
+                CoronaMod.Instance.nls.LogInfo($"Deleted save data in slot {__instance.fileToDelete}!");
             }
         }
     }
@@ -515,5 +516,66 @@ internal class ExtensionLadderItemPatch
                 }
             }
         }
+    }
+}
+
+[HarmonyPatch(typeof(BeltBagItem))]
+internal class BeltBagItemPatch
+{
+    [HarmonyPatch("ItemInteractLeftRight")]
+    [HarmonyPrefix]
+    static void ItemInteractLeftRight(BeltBagItem __instance, bool right)
+    {
+		if (__instance.playerHeldBy == null || __instance.tryingAddToBag || __instance.objectsInBag.Count >= 15 || right)
+		{
+			return;
+		}
+		if (Physics.Raycast(__instance.playerHeldBy.gameplayCamera.transform.position, __instance.playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, 1073742144, QueryTriggerInteraction.Collide))
+		{
+			if (hitInfo.collider.gameObject.TryGetComponent(out FridgeMagnet magnet))
+			{
+				__instance.TryAddObjectToBag(magnet);
+			}
+		}
+    }
+}
+
+[HarmonyPatch(typeof(ShipBuildModeManager))]
+internal class ShipBuildModeManagerPatch
+{
+    [HarmonyPatch("PlayerMeetsConditionsToBuild")]
+    [HarmonyPostfix]
+    static void PlayerMeetsConditionsToBuild(ref bool __result)
+    {
+        if (!StartOfRound.Instance.inShipPhase && Fridge.Instance != null && Fridge.Instance.LocalPlayerHidingInPridge)
+        {
+            __result = false;
+        }
+    }
+}
+
+[HarmonyPatch(typeof(MaskedPlayerEnemy))]
+internal class MaskedPlayerEnemyPatch
+{
+    [HarmonyPatch("ChooseShipHidingSpot")]
+    [HarmonyPostfix]
+    static void ChooseShipHidingSpot(MaskedPlayerEnemy __instance)
+    {
+        if (Fridge.Instance != null && Fridge.Instance.enemyInsideFridge == null)
+        {
+            Debug.Log("[FRIDGE]: Masked choosing fridge as hiding spot!");
+            __instance.shipHidingSpot = Fridge.Instance.ItemContainer.transform.position;
+        }
+    }
+
+    public static IEnumerator LetMaskedIntoFridge(MaskedPlayerEnemy __instance)
+    {
+        Debug.Log("[FRIDGE]: Masked opening fridge door!");
+        Fridge.Instance!.ForceOpenDoor(loud: 2);
+        while (Vector3.Distance(__instance.transform.position with {y = 0f}, __instance.shipHidingSpot with {y = 0f}) > 0.4f)
+        {
+            yield return null;
+        }
+        Debug.Log("[FRIDGE]: Masked hiding in fridge!");
     }
 }

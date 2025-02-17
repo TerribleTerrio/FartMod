@@ -1,12 +1,9 @@
-using System;
 using System.Collections;
-using System.IO;
 using Unity.Netcode;
 using UnityEngine;
 
-public class FridgeMagnet() : GrabbableObject
+public class FridgeMagnet : GrabbableObject
 {
-
     [Space(15f)]
     [Header("Fridge Magnet Settings")]
     public int minExtraMagnets = 3;
@@ -17,63 +14,87 @@ public class FridgeMagnet() : GrabbableObject
 
     [Space(5f)]
     [Header("Fridge Magnet Save Data")]
-    public int spawnExtras = 1;
-
     public int meshVariant = -1;
 
     public char letter;
 
-    public String meshVariantLetters = "AEIOUBCDFGHJKLMNPQRSTVWXYZ";
+    public string meshVariantLetters = "AEIOUBCDFGHJKLMNPQRSTVWXYZ";
 
     public int fridgeID = 0;
 
+    public bool loadedData = false;
+
     public override void Start()
     {
-        if (IsOwner)
+        StartOfRound.Instance.StartNewRoundEvent.AddListener(SpawnExtraMagnets);
+        if (base.IsHost)
         {
-            if (spawnExtras == 1)
-            {
-                StartCoroutine(SpawnExtraMagnetsAfterFrame());
-            }
-
-            if (meshVariant < 0)
+            if (meshVariant == -1)
             {
                 SetMeshVariantServerRpc();
             }
         }
-
-        base.Start();
-
-        if (meshVariant != -1)
+        else
         {
-            letter = meshVariantLetters[meshVariant];
+            StartCoroutine(WaitToLoadSaveData());
         }
+        base.Start();
+    }
 
-        // itemProperties.isScrap = false;
+    public override void EquipItem()
+    {
+        if (Fridge.Instance != null)
+        {
+            if (Fridge.Instance.placedMagnets.Contains(this))
+            {
+                Fridge.Instance.RemoveMagnet(this);
+                Fridge.Instance.RemoveMagnetServerRpc(base.gameObject.GetComponent<NetworkObject>());
+            }
+        }
+        base.EquipItem();
+    }
+
+    public IEnumerator WaitToLoadSaveData()
+    {
+        float timeStart = Time.realtimeSinceStartup;
+        yield return new WaitUntil(() => GameNetworkManager.Instance.localPlayerController != null || Time.realtimeSinceStartupAsDouble - timeStart > 10f);
+        RequestHostSaveDataServerRpc((int)GameNetworkManager.Instance.localPlayerController.playerClientId);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestHostSaveDataServerRpc(int clientWhoSentRpc)
+    {
+        ReceiveHostSaveDataClientRpc(GetItemDataToSave(), clientWhoSentRpc);
+    }
+
+    [ClientRpc]
+    public void ReceiveHostSaveDataClientRpc(int data, int clientWhoSentRpc)
+    {
+        if (clientWhoSentRpc == (int)GameNetworkManager.Instance.localPlayerController.playerClientId)
+        {
+            LoadItemSaveData(data);
+        }
     }
 
     public override int GetItemDataToSave()
     {
-        String saveData = spawnExtras.ToString();
-        if (meshVariant.ToString().Length == 1)
+        string saveData = "1";
+        if (meshVariant < 10)
         {
             saveData += "0";
         }
         saveData += meshVariant.ToString();
         saveData += fridgeID.ToString();
-
-        // itemProperties.isScrap = true;
-
         return int.Parse(saveData);
     }
 
     public override void LoadItemSaveData(int saveData)
     {
-        spawnExtras = int.Parse(saveData.ToString().Substring(0,1));
-        meshVariant = int.Parse(saveData.ToString().Substring(1,2));
+        meshVariant = int.Parse(saveData.ToString().Substring(1, 2));
+        fridgeID = int.Parse(saveData.ToString()[3..]);
         gameObject.GetComponent<MeshFilter>().mesh = meshVariants[meshVariant];
         letter = meshVariantLetters[meshVariant];
-        fridgeID = int.Parse(saveData.ToString().Substring(3));
+        loadedData = true;
     }
 
     [ServerRpc(RequireOwnership = true)]
@@ -97,16 +118,25 @@ public class FridgeMagnet() : GrabbableObject
         gameObject.GetComponent<MeshFilter>().mesh = meshVariants[variant];
         meshVariant = variant;
         letter = meshVariantLetters[variant];
+        Debug.Log($"[FRIDGEMAGNET]: Mesh variant set to {letter} | {meshVariant}.");
+    }
 
-        Debug.Log($"[FRIDGEMAGNET]: Mesh variant set to {letter}.");
-        GetItemDataToSave();
+    public void SpawnExtraMagnets()
+    {
+        if (!base.IsServer || scrapPersistedThroughRounds || isInShipRoom || isInElevator || hasBeenHeld || !isInFactory || StartOfRound.Instance.inShipPhase || !StartOfRound.Instance.currentLevel.spawnEnemiesAndScrap)
+        {
+            return;
+        }
+        else 
+        {
+            StartCoroutine(SpawnExtraMagnetsAfterFrame());
+        }
     }
 
     private IEnumerator SpawnExtraMagnetsAfterFrame()
     {
         yield return new WaitForEndOfFrame();
         SpawnExtraMagnetsServerRpc();
-        spawnExtras = 2;
     }
 
     [ServerRpc]
@@ -138,7 +168,6 @@ public class FridgeMagnet() : GrabbableObject
         NetworkObject nObject = reference;
         FridgeMagnet newMagnet = nObject.gameObject.GetComponent<FridgeMagnet>();
 
-        newMagnet.spawnExtras = 2;
         newMagnet.SetScrapValue(value);
         RoundManager.Instance.totalScrapValueInLevel += newMagnet.scrapValue;
 
