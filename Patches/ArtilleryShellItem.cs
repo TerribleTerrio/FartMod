@@ -104,12 +104,20 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
     public override void GrabItem()
 	{
 		base.GrabItem();
+		RestartWaitToBeEaten();
+	}
+
+	public void RestartWaitToBeEaten(bool restart = true)
+	{
 		if (waitToBeEatenCoroutine != null)
 		{
 			StopCoroutine(waitToBeEatenCoroutine);
 			waitToBeEatenCoroutine = null;
 		}
-		waitToBeEatenCoroutine = StartCoroutine(WaitToBeEaten());
+		if (restart)
+		{
+			waitToBeEatenCoroutine = StartCoroutine(WaitToBeEaten());
+		}
 	}
 
 	private IEnumerator WaitToBeEaten()
@@ -124,16 +132,13 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		else
 		{
 			Debug.Log("In special animation with enemy while holding a bomb.");
+			RestartWaitToBeEaten();
 		}
 	}
 
 	public override void DiscardItem()
 	{
-		if (waitToBeEatenCoroutine != null)
-		{
-			StopCoroutine(waitToBeEatenCoroutine);
-			waitToBeEatenCoroutine = null;
-		}
+		RestartWaitToBeEaten(false);
 		if (playerHeldBy.isPlayerDead == true)
 		{
 			//DIED BY BLAST
