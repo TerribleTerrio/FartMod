@@ -18,10 +18,6 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
     public float tireRadius = 0;
 
-    public float forwardRollSpeed = 10f;
-
-    public float backwardRollSpeed = 6f;
-
     public float boostForce = 5f;
 
     public float playerPushCollisionCooldown = 1f;
@@ -318,7 +314,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
                 playerPushCollisionTimer = playerPushCollisionCooldown;
 
-                fallHeightPeak = 0f;
+                fallHeightPeak = physicsTire.transform.position.y;
 
                 //DISABLE TIRE ITEM MESH
                 EnableTireObjectMeshes(false);
