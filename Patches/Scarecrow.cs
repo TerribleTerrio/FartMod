@@ -536,17 +536,7 @@ public class Scarecrow : EnemyAI
 
     public bool useSaveFileForBehaviours = false;
 
-    public static string localSaveFileName = "ScarecrowGeneralSaveData";
-
-    public static string saveSlotSaveFileName0 = "Scarecrow.LCChallengeFile";
-
-    public static string saveSlotSaveFileName1 = "Scarecrow.LCSaveFile1";
-
-    public static string saveSlotSaveFileName2 = "Scarecrow.LCSaveFile2";
-
-    public static string saveSlotSaveFileName3 = "Scarecrow.LCSaveFile3";
-
-    public static string currentSaveSlotSaveFileName = "Scarecrow.LCSaveFile1";
+    public static string currentSaveFile = CoronaMod.Info.SaveFileName1;
 
     public static string musicSaveFileKey = "PlayedScarecrowMusic";
 
@@ -2937,7 +2927,7 @@ public class Scarecrow : EnemyAI
     {
         if (useSaveFileForMusic)
         {
-            if (ES3.Load(musicSaveFileKey, localSaveFileName, defaultValue: false))
+            if (ES3.Load(musicSaveFileKey, CoronaMod.Info.GeneralSaveFileName, defaultValue: false))
             {
                 DebugMsg("[SCARECROW]: Not playing music: You have already heard scarecrow music for the first time.");
                 yield break;
@@ -3028,7 +3018,7 @@ public class Scarecrow : EnemyAI
 
         if (useSaveFileForMusic)
         {
-            ES3.Save(musicSaveFileKey, true, localSaveFileName);
+            ES3.Save(musicSaveFileKey, true, CoronaMod.Info.GeneralSaveFileName);
             DebugMsg("[SCARECROW]: Saved: You have heard scarecrow music for the first time.");
         }
 
@@ -3293,15 +3283,15 @@ public class Scarecrow : EnemyAI
             SendTransmissionServerRpc(setTalkClip, setReplyClip);
             return;
         }
-        if (!ES3.KeyExists(talkSaveFileKey, localSaveFileName))
+        if (!ES3.KeyExists(talkSaveFileKey, CoronaMod.Info.GeneralSaveFileName))
         {
-            DebugMsg($"[SCARECROW]: {talkSaveFileKey} does not exist in {localSaveFileName}, first time?");
+            DebugMsg($"[SCARECROW]: {talkSaveFileKey} does not exist in {CoronaMod.Info.GeneralSaveFileName}, first time?");
             setTalkClip = Random.Range(0, talkClips.Length);
         }
         else
         {
-            DebugMsg($"[SCARECROW]: {talkSaveFileKey} exists in {localSaveFileName}");
-            talkClipsPlayed = ES3.Load<int[]>(talkSaveFileKey, localSaveFileName);
+            DebugMsg($"[SCARECROW]: {talkSaveFileKey} exists in {CoronaMod.Info.GeneralSaveFileName}");
+            talkClipsPlayed = ES3.Load<int[]>(talkSaveFileKey, CoronaMod.Info.GeneralSaveFileName);
             for (int i = 0; i < talkClips.Length; i++)
             {
                 if (!talkClipsPlayed.Contains(i))
@@ -3326,15 +3316,15 @@ public class Scarecrow : EnemyAI
                 setTalkClip = Random.Range(0, talkClips.Length);
             }
         }
-        if (!ES3.KeyExists(replySaveFileKey, localSaveFileName))
+        if (!ES3.KeyExists(replySaveFileKey, CoronaMod.Info.GeneralSaveFileName))
         {
-            DebugMsg($"[SCARECROW]: {replySaveFileKey} does not exist in {localSaveFileName}, first time?");
+            DebugMsg($"[SCARECROW]: {replySaveFileKey} does not exist in {CoronaMod.Info.GeneralSaveFileName}, first time?");
             setReplyClip = Random.Range(0, replyClips.Length);
         }
         else
         {
-            DebugMsg($"[SCARECROW]: {replySaveFileKey} exists in {localSaveFileName}");
-            replyClipsPlayed = ES3.Load<int[]>(replySaveFileKey, localSaveFileName);
+            DebugMsg($"[SCARECROW]: {replySaveFileKey} exists in {CoronaMod.Info.GeneralSaveFileName}");
+            replyClipsPlayed = ES3.Load<int[]>(replySaveFileKey, CoronaMod.Info.GeneralSaveFileName);
             for (int i = 0; i < replyClips.Length; i++)
             {
                 if (!replyClipsPlayed.Contains(i))
@@ -3361,8 +3351,8 @@ public class Scarecrow : EnemyAI
         }
         talkClipsPlayed = [.. talkClipsPlayed, setTalkClip];
         replyClipsPlayed = [.. replyClipsPlayed, setReplyClip];
-        ES3.Save(talkSaveFileKey, talkClipsPlayed, localSaveFileName);
-        ES3.Save(replySaveFileKey, replyClipsPlayed, localSaveFileName);
+        ES3.Save(talkSaveFileKey, talkClipsPlayed, CoronaMod.Info.GeneralSaveFileName);
+        ES3.Save(replySaveFileKey, replyClipsPlayed, CoronaMod.Info.GeneralSaveFileName);
         talkClip = setTalkClip;
         replyClip = setReplyClip;
         SendTransmissionServerRpc(setTalkClip, setReplyClip);
@@ -3857,13 +3847,13 @@ public class Scarecrow : EnemyAI
         }
         else
         {
-            if (!ES3.KeyExists(behaviourSaveFileKey, localSaveFileName))
+            if (!ES3.KeyExists(behaviourSaveFileKey, CoronaMod.Info.GeneralSaveFileName))
             {
                 chosenBehaviour = Random.Range(0, 5);
             }
             else
             {
-                behavioursUsed = ES3.Load<int[][]>(behaviourSaveFileKey, localSaveFileName);
+                behavioursUsed = ES3.Load<int[][]>(behaviourSaveFileKey, CoronaMod.Info.GeneralSaveFileName);
                 if (behavioursUsed[enemyChosenIndex].Count() > 0)
                 {
                     prevBehavioursSavedForChosenEnemy = true;
@@ -3892,10 +3882,10 @@ public class Scarecrow : EnemyAI
                     chosenBehaviour = Random.Range(0, 5);
                 }
             }
-            DebugMsg($"[SCARECROW]: Saving behaviour {chosenBehaviour} to enemy {enemyChosenIndex}'s behaviours used in {localSaveFileName}!");
+            DebugMsg($"[SCARECROW]: Saving behaviour {chosenBehaviour} to enemy {enemyChosenIndex}'s behaviours used in {CoronaMod.Info.GeneralSaveFileName}!");
             int[] newIndex = [.. behavioursUsed[enemyChosenIndex], chosenBehaviour];
             behavioursUsed[enemyChosenIndex] = newIndex;
-            ES3.Save(behaviourSaveFileKey, behavioursUsed, localSaveFileName);
+            ES3.Save(behaviourSaveFileKey, behavioursUsed, CoronaMod.Info.GeneralSaveFileName);
             return chosenBehaviour;
         }
     }
@@ -4263,13 +4253,12 @@ public class Scarecrow : EnemyAI
     [ServerRpc(RequireOwnership = false)]
     public void SetThreatenedValueServerRpc(bool load = false, int incrementAmount = 1)
     {
-        currentSaveSlotSaveFileName = GameNetworkManager.Instance.saveFileNum switch
+        currentSaveFile = GameNetworkManager.Instance.saveFileNum switch
         {
-            -1 => saveSlotSaveFileName0,
-            0 => saveSlotSaveFileName1,
-            1 => saveSlotSaveFileName2,
-            2 => saveSlotSaveFileName3,
-            _ => saveSlotSaveFileName1
+            0 => CoronaMod.Info.SaveFileName1,
+            1 => CoronaMod.Info.SaveFileName2,
+            2 => CoronaMod.Info.SaveFileName3,
+            _ => CoronaMod.Info.SaveFileName1
         };
         if (load)
         {
@@ -4278,16 +4267,16 @@ public class Scarecrow : EnemyAI
                 DebugMsg("[SCARECROW]: Not using save file threatened value!");
                 timesThreatenedInSaveFile = Random.Range(0, 8);
             }
-            else if (!ES3.KeyExists(threatenedSaveFileKey, currentSaveSlotSaveFileName))
+            else if (!ES3.KeyExists(threatenedSaveFileKey, currentSaveFile))
             {
                 DebugMsg("[SCARECROW]: No current save file threatened value, saving for the first time!");
                 timesThreatenedInSaveFile = 0;
-                ES3.Save(threatenedSaveFileKey, timesThreatenedInSaveFile, currentSaveSlotSaveFileName);
+                ES3.Save(threatenedSaveFileKey, timesThreatenedInSaveFile, currentSaveFile);
             }
             else
             {
                 DebugMsg("[SCARECROW]: Server loading threatened value from current save file!");
-                timesThreatenedInSaveFile = ES3.Load(threatenedSaveFileKey, currentSaveSlotSaveFileName, defaultValue: 0);
+                timesThreatenedInSaveFile = ES3.Load(threatenedSaveFileKey, currentSaveFile, defaultValue: 0);
                 timesThreatenedInSaveFile = (timesThreatenedInSaveFile > 0) ? timesThreatenedInSaveFile-- : 0;
             }
         }
