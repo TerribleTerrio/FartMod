@@ -85,6 +85,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         base.Start();
         ResetHaunt();
         StartOfRound.Instance.StartNewRoundEvent.AddListener(ResetHaunt);
+        CoronaMod.Patches.NetworkPatches.StartOfRoundPatch.EndRoundEvent.AddListener(ResetHaunt);
     }
 
     public void ResetHaunt()
@@ -325,7 +326,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         if (!haunted && Time.realtimeSinceStartup - lastHauntCheckTime > 30f)
         {
             lastHauntCheckTime = Time.realtimeSinceStartup;
-            if (FindObjectOfType<DressGirlAI>(includeInactive: true) != null)
+            if (RoundManager.Instance.SpawnedEnemies.Any(enemy => enemy is DressGirlAI))
             {
                 haunted = true;
                 lastSeenDuration *= 0.8f;
@@ -451,6 +452,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         }
     }
 
+    //TODO: What is this (ownerPos, ownerRot)? Did I just never implement this?
     public void MoveTowards(Vector3 position, Vector3 ownerPos, Quaternion ownerRot, bool silent, int speedIndex = -1, bool roaming = false, int timesBounced = 0, bool affectRotation = true)
     {
         if (moveCoroutine != null)
@@ -695,6 +697,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             {
                 Physics.Raycast(wallRay.GetPoint(wallCheck.distance * 0.5f) + Vector3.up, Vector3.down, out futureHit, 80f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore);
             }
+            //TODO: Get correct dropPos on moving physicsregion objects (elevator going up/down)
             if (!firstCheckFlag)
             {
                 firstCheckFlag = true;
@@ -722,6 +725,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                     }
                 }
             }
+            //TODO: Get correct dropPos on moving physicsregion objects (elevator going up/down)
             if ((Mathf.Abs(base.transform.position.y - futureHit.point.y) > 0.25f) && !dropFlag)
             {
                 dropFlag = true;

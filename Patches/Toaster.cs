@@ -142,7 +142,7 @@ public class Toaster : AnimatedItem, IHittable
             if (!haunted && Time.realtimeSinceStartup - lastHauntCheckTime > (hauntInterval / 2))
             {
                 lastHauntCheckTime = Time.realtimeSinceStartup;
-                if (FindObjectOfType<DressGirlAI>(includeInactive: true) != null)
+                if (RoundManager.Instance.SpawnedEnemies.Any(enemy => enemy is DressGirlAI))
                 {
                     haunted = true;
                 }
