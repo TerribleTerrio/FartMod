@@ -314,13 +314,12 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
                 playerPushCollisionTimer = playerPushCollisionCooldown;
 
-                fallHeightPeak = physicsTire.transform.position.y;
-
                 //DISABLE TIRE ITEM MESH
                 EnableTireObjectMeshes(false);
 
                 //SPAWN PHYSICS TIRE
                 SpawnPhysicsTire(true);
+                fallHeightPeak = physicsTire.transform.position.y;
                 tireRigidbody = physicsTire.GetComponent<Rigidbody>();
 
                 if (heldByPlayerOnServer)
