@@ -674,6 +674,84 @@ public class Toaster : AnimatedItem, IHittable
 			{
 				ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
 			}
+            return;
+        }
+
+        //ENEMY COLLISION
+        else if (otherObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
+        {
+            EnemyAICollisionDetect enemy = otherObject.GetComponent<EnemyAICollisionDetect>();
+
+            switch (enemy.mainScript)
+            {
+                case CrawlerAI crawler:
+                    if (crawler.hasEnteredChaseMode && inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    return;
+                
+                case MouthDogAI mouthDog:
+                    if (mouthDog.hasEnteredChaseModeFully && inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    if (mouthDog.inLunge)
+                    {
+                        ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
+                    }
+                    return;
+                
+                case ForestGiantAI:
+                    if (inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    return;
+
+                case CentipedeAI centipede:
+                    if (centipede.triggeredFall && inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    return;
+
+                case RadMechAI radMech:
+                    if (radMech.movingTowardsTargetPlayer && inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    if (radMech.chargingForward)
+                    {
+                        ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
+                    }
+                    return;
+
+                case JesterAI jester:
+                    if (jester.creatureAnimator.GetBool("poppedOut") && inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    return;
+
+                case SpringManAI springMan:
+                    if (!springMan.hasStopped && inserted)
+                    {
+                        EjectAndSync();
+                    }
+                    return;
+                
+                case CaveDwellerAI caveDweller:
+                    if (caveDweller.adultContainer.activeSelf && caveDweller.leaping)
+                    {
+                        if (inserted)
+                        {
+                            EjectAndSync();
+                        }
+                        ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
+                    }
+                    return;
+            }
         }
     }
 
