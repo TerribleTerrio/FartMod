@@ -377,29 +377,29 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             Debug.Log("[VASE]: Vase bumped by player.");
             PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
 
-            if (safePlaced)
+            if (hasHitGround && !(isHeld || isHeldByEnemy))
             {
-                Debug.Log("[VASE]: Vase was in safely placed state.");
-                WobbleAndSync(0);
-            }
-            else if (player.isSprinting)
-            {
-                Debug.Log("[VASE]: Player was sprinting.");
-                WobbleAndSync(2);
-            }
-            else if (player.isCrouching)
-            {
-                Debug.Log("[VASE]: Player was crouching.");
-                WobbleAndSync(0);
-            }
-            else
-            {
-                Debug.Log("[VASE]: Player was walking.");
-                WobbleAndSync(1);
-            }
+                if (safePlaced)
+                {
+                    Debug.Log("[VASE]: Vase was in safely placed state.");
+                    WobbleAndSync(0);
+                }
+                else if (player.isSprinting)
+                {
+                    Debug.Log("[VASE]: Player was sprinting.");
+                    WobbleAndSync(2);
+                }
+                else if (player.isCrouching)
+                {
+                    Debug.Log("[VASE]: Player was crouching.");
+                    WobbleAndSync(0);
+                }
+                else
+                {
+                    Debug.Log("[VASE]: Player was walking.");
+                    WobbleAndSync(1);
+                }
 
-            if (!(isHeld || isHeldByEnemy || !hasHitGround))
-            {
                 //PHYSICS FORCE
                 PlayerControllerB playerControllerB = player;
 
@@ -419,6 +419,21 @@ public class Vase : AnimatedItem, IHittable, ITouchable
                         }
                     }
                 }
+            }
+
+            float currentHeight = transform.position.y;
+            if (base.transform.parent != null)
+            {
+                currentHeight = base.transform.parent.InverseTransformPoint(transform.position).y;
+            }
+            float fallHeight = startFallingPosition.y - currentHeight;
+            Debug.Log($"[VASE]: Hit player after falling {fallHeight}.");
+
+            if (!hasHitGround && !(isHeld || isHeldByEnemy) && fallHeight > breakHeight && breakOnDrop)
+            {
+                Debug.Log("[VASE]: Broke on player!");
+                player.DamagePlayer(Mathf.RoundToInt(Mathf.Clamp(fallHeight*2, 10f, 30f)), hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning, 0, fallDamage:false);
+                ExplodeAndSync();
             }
         }
 
@@ -724,5 +739,26 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
         return false;
 	}
+
+    public void DamagePlayerAndSync(PlayerControllerB player, int damage)
+    {
+        int playerClientId = (int)player.playerClientId;
+        DamagePlayerServerRpc(playerClientId, damage);
+    }
+
+    [ServerRpc]
+    private void DamagePlayerServerRpc(int playerClientId, int damage)
+    {
+        DamagePlayerClientRpc(playerClientId, damage);
+    }
+
+    [ClientRpc]
+    private void DamagePlayerClientRpc(int playerClientId, int damage)
+    {
+        if ((int)GameNetworkManager.Instance.localPlayerController.playerClientId == playerClientId)
+        {
+            GameNetworkManager.Instance.localPlayerController.DamagePlayer(damage, hasDamageSFX: true, callRPC: true, CauseOfDeath.Bludgeoning, 0, fallDamage:false);
+        }
+    }
 
 }

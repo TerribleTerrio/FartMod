@@ -342,6 +342,7 @@ public class Rake : GrabbableObject, ITouchable
                 //DROP HELD ITEM OF ALL CLOSE PLAYERS
                 if (player.isHoldingObject)
                 {
+                    player.currentlyHeldObjectServer.UseItemOnClient();
                     player.DiscardHeldObject();
                 }
             }
