@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
@@ -19,6 +20,19 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 
 	private int psychoStage;
 
+    private bool disableCanvasFlag;
+
+    private Canvas? _elevatorPanelScreen;
+
+    public Canvas ElevatorPanelScreen
+    {
+        get
+        {
+            _elevatorPanelScreen ??= FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None).First(canvas => canvas.gameObject.name.Contains("ElevatorPanelScreen"));
+            return _elevatorPanelScreen;
+        }
+    }
+
     public override void Start()
     {
         base.Start();
@@ -28,12 +42,30 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
     public override void Update()
     {
         base.Update();
-        if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("HydraulicSteaming") || itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("HydraulicLoop"))
+        if (itemAnimator.GetCurrentAnimatorStateInfo(0).IsName("Hydraulic Idle"))
+        {
+            return;
+        }
+        if (itemAnimator.GetBool("steaming"))
         {
             if (!noiseOnCooldown)
             {
                 StartCoroutine(LoopNoiseOnCooldown(audibleNoiseCooldown));
             }
+            if (StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(base.transform.position) && !disableCanvasFlag)
+            {
+                disableCanvasFlag = true;
+                Debug.Log("[HYDRAULIC]: Disabling canvases!");
+                StartOfRound.Instance.upperMonitorsCanvas.transform.GetChild(0).gameObject.SetActive(false);
+                ElevatorPanelScreen.gameObject.SetActive(false);
+            }
+        }
+        else if (StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(base.transform.position) && disableCanvasFlag)
+        {
+            disableCanvasFlag = false;
+            Debug.Log("[HYDRAULIC]: Enabling canvases!");
+            StartOfRound.Instance.upperMonitorsCanvas.transform.GetChild(0).gameObject.SetActive(true);
+            ElevatorPanelScreen.gameObject.SetActive(true);
         }
     }
 
