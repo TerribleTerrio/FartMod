@@ -125,9 +125,19 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		yield return new WaitUntil(() => (bool)playerHeldBy.inAnimationWithEnemy);
 		if (playerHeldBy.inAnimationWithEnemy.enemyType.enemyName == "ForestGiant")
 		{
+			EnemyAI giant = playerHeldBy.inAnimationWithEnemy;
 			Debug.Log("FOREST GIANT EATING A BOMB!!!");
 			yield return new WaitForSeconds(4.4f);
-			ExplodeAndSync();
+			if ((bool)playerHeldBy.inAnimationWithEnemy || giant != null && (bool)giant.inSpecialAnimationWithPlayer)
+			{
+				Debug.Log("FOREST GIANT ATE A BOMB!!!");
+				ExplodeAndSync();
+			}
+			else
+			{
+				Debug.Log("FOREST GIANT NO LONGER EATING A BOMB!!!");
+				RestartWaitToBeEaten();
+			}
 		}
 		else
 		{
