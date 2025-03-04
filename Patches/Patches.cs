@@ -125,7 +125,17 @@ internal class LandminePatch
             otherObject.GetComponent<HydraulicStabilizer>()?.GoPsychoAndSync();
             otherObject.GetComponent<PunchingBag>()?.PunchAndSync(true, "Explosion");
             otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
-            otherObject.GetComponent<Tire>()?.BounceOff(explosionPosition, extraForce: 30f);
+            if (otherObject.GetComponent<Tire>() != null)
+            {
+                Tire tire = otherObject.GetComponent<Tire>();
+                if (tire.currentBehaviourStateIndex == 2 && tire.IsOwner)
+                {
+                    Vector3 expPosition = explosionPosition + -Vector3.up;
+                    float distance = Vector3.Distance(expPosition, tire.transform.position);
+                    float forceMult = (distance - 0f) / (damageRange - 0f) * (0f - 3f) + 3f;
+                    tire.BounceOff(expPosition, forceMultiplier: forceMult, bounceUp: true, extraForce: 50f);
+                }
+            }
             if (otherObject.GetComponent<Vase>() != null)
             {
                 if (Vector3.Distance(explosionPosition, otherObject.transform.position) < killRange)
@@ -264,6 +274,16 @@ internal class ShotgunPatch
             otherObject.GetComponent<Vase>()?.ExplodeAndSync();
             otherObject.GetComponent<Radiator>()?.FallOverAndSync(shotgunForward);
             otherObject.GetComponent<BalloonCollisionDetection>()?.mainScript.Pop();
+            if (otherObject.GetComponent<Tire>() != null)
+            {
+                Tire tire = otherObject.GetComponent<Tire>();
+                if (tire.currentBehaviourStateIndex == 2 && tire.IsOwner)
+                {
+                    float distance = Vector3.Distance(shotgunPosition, tire.transform.position);
+                    float forceMult = (distance - 0f) / (15f - 0f) * (0f - 1.5f) + 1.5f;
+                    tire.BounceOff(shotgunPosition, forceMultiplier: forceMult, extraForce: 20f);
+                }
+            }
             if (otherObject.GetComponent<PlayerControllerB>() != null)
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
