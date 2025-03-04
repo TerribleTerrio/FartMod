@@ -582,7 +582,7 @@ internal class MaskedPlayerEnemyPatch
     [HarmonyPostfix]
     static void ChooseShipHidingSpot(MaskedPlayerEnemy __instance)
     {
-        if (Fridge.Instance != null && Fridge.Instance.enemyInsideFridge == null)
+        if (Fridge.Instance != null && Fridge.Instance.enemyInsideFridge == null && Random.Range(0f, 100f) < 40f)
         {
             Debug.Log("[FRIDGE]: Masked choosing fridge as hiding spot!");
             __instance.shipHidingSpot = Fridge.Instance.ItemContainer.transform.position;
