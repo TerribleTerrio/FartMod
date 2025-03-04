@@ -255,51 +255,64 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
                 }
             }
         }
-        else if (other.gameObject.layer == 3)
+        else if (other.TryGetComponent<PlayerControllerB>(out var player))
         {
-            if (!other.TryGetComponent<PlayerControllerB>(out var player))
+            if (player.isJumping || player.isFallingFromJump || player.isFallingNoJump)
             {
                 return;
             }
-            else
+            playerId = player.playerClientId;
+            ResetAnimationsAndSync(silent: true, clearMemory: true);
+            if (player.isSprinting)
             {
-                if (player.isJumping || player.isFallingFromJump || player.isFallingNoJump)
+                chosenSpeed = 0;
+            }
+            if (!Physics.Linecast(base.transform.position, player.transform.position, out var _, 256, QueryTriggerInteraction.Ignore))
+            {
+                float physicsForce = chosenSpeed switch
                 {
-                    return;
-                }
-                playerId = player.playerClientId;
-                ResetAnimationsAndSync(silent: true, clearMemory: true);
-                if (player.isSprinting)
+                    0 => 1f,
+                    _ => 0.7f
+                };
+                float dist = Mathf.Clamp(Vector3.Distance(player.transform.position, base.transform.position), 0.3f, 0.6f);
+                Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
+                vector = new Vector3(vector.x, 0, vector.z);
+                if (vector.magnitude > 2f)
                 {
-                    chosenSpeed = 0;
-                }
-                if (!Physics.Linecast(base.transform.position, player.transform.position, out var _, 256, QueryTriggerInteraction.Ignore))
-                {
-                    float physicsForce = chosenSpeed switch
+                    if (vector.magnitude > 10f)
                     {
-                        0 => 1f,
-                        _ => 0.7f
-                    };
-                    float dist = Mathf.Clamp(Vector3.Distance(player.transform.position, base.transform.position), 0.3f, 0.6f);
-                    Vector3 vector = Vector3.Normalize(player.transform.position + Vector3.up * dist - base.transform.position) / (dist * 0.35f) * physicsForce;
-                    vector = new Vector3(vector.x, 0, vector.z);
-                    if (vector.magnitude > 2f)
+                        player.CancelSpecialTriggerAnimations();
+                    }
+                    if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
                     {
-                        if (vector.magnitude > 10f)
-                        {
-                            player.CancelSpecialTriggerAnimations();
-                        }
-                        if (!player.inVehicleAnimation || (player.externalForceAutoFade + vector).magnitude > 50f)
-                        {
-                            player.externalForceAutoFade += vector;
-                        }
+                        player.externalForceAutoFade += vector;
                     }
                 }
-                if (player.isCrouching)
+            }
+            if (player.isCrouching)
+            {
+                ResetAnimationsAndSync(silent: false, clearMemory: true);
+                return;
+            }
+        }
+        else if (other.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
+        {
+            float speed = other.GetComponent<Rigidbody>().velocity.magnitude;
+            if (speed < 4f)
+            {
+                if (!fallen && !isHeld && !isHeldByEnemy && hasHitGround && !StartOfRound.Instance.inShipPhase && StartOfRound.Instance.timeSinceRoundStarted > 2f)
                 {
-                    ResetAnimationsAndSync(silent: false, clearMemory: true);
-                    return;
+                    moveTimer = 0f;
+                    Vector3 moveDirection = other.transform.position - base.transform.position;
+                    Vector3 movePos = base.transform.position + (new Vector3(moveDirection.x, 0f, moveDirection.z) * speed);
+                    MoveTowardsAndSync(movePos, silent: false, speedIndex: 0);
                 }
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 5f);
+            }
+            else if (speed >= 4f)
+            {
+                FallOverAndSync(-(new Vector3(other.transform.position.x, 0f, other.transform.position.z) - new Vector3(transform.position.x, 0f, transform.position.z)));
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 10f);
             }
         }
         float chosenDistance = chosenSpeed switch {0 => sprintDistance, 1 => walkDistance, _ => crouchDistance};

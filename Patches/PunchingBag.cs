@@ -186,6 +186,21 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
             }
         }
 
+        else if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
+        {
+            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+            if (speed > 2f && speed < 4f)
+            {
+                PunchAndSync(false);
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 5f);
+            }
+            else if (speed >= 4f)
+            {
+                PunchAndSync(true);
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 10f);
+            }
+        }
+
         else if (otherObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
         {
             EnemyAICollisionDetect enemy = otherObject.GetComponent<EnemyAICollisionDetect>();

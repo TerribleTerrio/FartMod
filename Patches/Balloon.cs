@@ -1277,17 +1277,6 @@ public class Balloon : GrabbableObject
             return;
         }
 
-        //TIRE COLLISION
-        if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
-        {
-            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
-			if (speed >= 8f)
-			{
-				Pop();
-                return;
-			}
-        }
-
         //ENEMY COLLISION
         else if (otherObject.layer == 19 && otherObject.GetComponent<EnemyAICollisionDetect>() != null)
         {
@@ -1425,6 +1414,21 @@ public class Balloon : GrabbableObject
         else if (otherObject.TryGetComponent<BalloonCollisionDetection>(out var balloonCollision))
         {
             PushBalloon(otherObject.transform.position, 5);
+        }
+
+        //TIRE COLLISION
+        else if (otherObject.GetComponent<TireReferenceScript>() != null)
+        {
+            switch (otherObject.GetComponent<Rigidbody>().velocity.magnitude)
+            {
+                case < 4f:
+                    PushBalloon(otherObject.transform.position, 6*otherObject.GetComponent<Rigidbody>().velocity.magnitude);
+                    break;
+
+                case > 4f:
+                    Pop();
+                    break;
+            }
         }
 
         //ITEM COLLISION

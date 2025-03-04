@@ -185,13 +185,14 @@ public class Rake : GrabbableObject, ITouchable
         }
 
         //TIRE COLLISION
-        else if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        else if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
         {
             collidersTouching.Add(other);
 
             if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
             {
                 FlipAndSync();
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 7f);
                 return;
             }
         }

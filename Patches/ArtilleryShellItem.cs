@@ -413,12 +413,26 @@ public class ArtilleryShellItem : AnimatedItem, IHittable, ITouchable, ZappableO
 		GameObject otherObject = other.gameObject;
 
 		//TIRE COLLISION
-		if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+		if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript) && tireReferenceScript.mainScript.IsOwner)
 		{
 			float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
-			if (speed >= 8f)
+			if (speed > 2f)
 			{
-				ArmShellAndSync();
+				tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 5f);
+			}
+			if (speed > 4f && speed < 8f)
+			{
+				float c = UnityEngine.Random.Range(0,100);
+				if (c < explodeOnHitChance)
+				{
+					ArmShellAndSync();
+					return;
+				}
+			}
+			else if (speed >= 8f)
+			{
+				ExplodeAndSync();
+				return;
 			}
 		}
 

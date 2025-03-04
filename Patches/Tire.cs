@@ -1386,48 +1386,48 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             }
 
             //GRABBABLE OBJECT COLLISION
-            else if (otherObject.GetComponent<GrabbableObject>() != null)
-            {
-                GrabbableObject gObject = otherObject.GetComponent<GrabbableObject>();
-                Debug.Log("[TIRE]: Collided with grabbable object!");
+            // else if (otherObject.GetComponent<GrabbableObject>() != null)
+            // {
+            //     GrabbableObject gObject = otherObject.GetComponent<GrabbableObject>();
+            //     Debug.Log("[TIRE]: Collided with grabbable object!");
 
-                switch (gObject)
-                {
-                    case BowlingBall bowlingBall:
-                        if (!bowlingBall.hasHitGround && !bowlingBall.isHeld && !bowlingBall.isHeldByEnemy)
-                        {
+            //     switch (gObject)
+            //     {
+            //         case BowlingBall bowlingBall:
+            //             if (!bowlingBall.hasHitGround && !bowlingBall.isHeld && !bowlingBall.isHeldByEnemy)
+            //             {
 
-                        }
-                        return;
+            //             }
+            //             return;
 
-                    case SoccerBallProp ball:
-                        if (!ball.hasHitGround && !ball.isHeld && !ball.isHeldByEnemy)
-                        {
-                            BounceOff(ball.transform.position, forceMultiplier: 0.2f);
-                            return;
-                        }
-                        return;
+            //         case SoccerBallProp ball:
+            //             if (!ball.hasHitGround && !ball.isHeld && !ball.isHeldByEnemy)
+            //             {
+            //                 BounceOff(ball.transform.position, forceMultiplier: 0.2f);
+            //                 return;
+            //             }
+            //             return;
                     
-                    case HydraulicStabilizer hydraulic:
-                        BounceOff(hydraulic.transform.position, forceMultiplier: 1.25f);
-                        hydraulic.GoPsychoAndSync();
-                        return;
+            //         case HydraulicStabilizer hydraulic:
+            //             BounceOff(hydraulic.transform.position, forceMultiplier: 1.25f);
+            //             hydraulic.GoPsychoAndSync();
+            //             return;
 
-                    case Radiator radiator:
-                        BounceOff(radiator.transform.position, forceMultiplier: 0.75f);
-                        radiator.FallOverAndSync(-(new Vector3(physicsTire.transform.position.x, 0f, physicsTire.transform.position.z) - new Vector3(radiator.transform.position.x, 0f, radiator.transform.position.z)).normalized);
-                        return;
+            //         case Radiator radiator:
+            //             BounceOff(radiator.transform.position, forceMultiplier: 0.75f);
+            //             radiator.FallOverAndSync(-(new Vector3(physicsTire.transform.position.x, 0f, physicsTire.transform.position.z) - new Vector3(radiator.transform.position.x, 0f, radiator.transform.position.z)).normalized);
+            //             return;
                     
-                    case Tire tire:
-                        Debug.Log("[TIRE]: Collided with another tire!");
-                        if (tire.currentBehaviourStateIndex == 2)
-                        {
-                            NetworkObjectReference tireRef = tire.gameObject.GetComponent<NetworkObject>();
-                            CollideWithTireServerRpc(tireRef, tireRigidbody.velocity);
-                        }
-                        return;
-                }
-            }
+            //         case Tire tire:
+            //             Debug.Log("[TIRE]: Collided with another tire!");
+            //             if (tire.currentBehaviourStateIndex == 2)
+            //             {
+            //                 NetworkObjectReference tireRef = tire.gameObject.GetComponent<NetworkObject>();
+            //                 CollideWithTireServerRpc(tireRef, tireRigidbody.velocity);
+            //             }
+            //             return;
+            //     }
+            // }
 
             //TIRE COLLISION
             else if (otherObject.GetComponent<TireReferenceScript>() != null)

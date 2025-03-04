@@ -438,7 +438,7 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
 
         //TIRE COLLISION
-        else if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        else if (otherObject.GetComponent<TireReferenceScript>() != null)
         {
             Debug.Log("[VASE]: Bumped by tire.");
             float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;

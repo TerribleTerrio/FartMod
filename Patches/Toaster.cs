@@ -663,7 +663,7 @@ public class Toaster : AnimatedItem, IHittable
         GameObject otherObject = other.gameObject;
 
         //TIRE COLLISION
-        if (otherObject.layer == 3 && otherObject.name.Contains("PhysicsTire"))
+        if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
         {
             float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
             if (speed >= 4f && inserted)
@@ -673,6 +673,7 @@ public class Toaster : AnimatedItem, IHittable
 			if (speed >= 8f)
 			{
 				ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
+                EjectAndSync();
 			}
             return;
         }
