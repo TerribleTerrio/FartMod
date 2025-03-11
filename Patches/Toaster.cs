@@ -665,13 +665,15 @@ public class Toaster : AnimatedItem, IHittable
         //TIRE COLLISION
         if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
         {
-            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+            float speed = tireReferenceScript.mainScript.tireRigidbody.velocity.magnitude;
             if (speed >= 4f && inserted)
             {
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 2f);
                 EjectAndSync();
             }
 			if (speed >= 8f)
 			{
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 2f);
 				ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
                 EjectAndSync();
 			}

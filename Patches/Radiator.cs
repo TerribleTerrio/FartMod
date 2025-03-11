@@ -297,19 +297,19 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
         }
         else if (other.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
         {
-            float speed = other.GetComponent<Rigidbody>().velocity.magnitude;
-            if (speed < 4f)
+            float speed = tireReferenceScript.mainScript.tireRigidbody.velocity.magnitude;
+            if (speed < 5f)
             {
                 if (!fallen && !isHeld && !isHeldByEnemy && hasHitGround && !StartOfRound.Instance.inShipPhase && StartOfRound.Instance.timeSinceRoundStarted > 2f)
                 {
                     moveTimer = 0f;
-                    Vector3 moveDirection = other.transform.position - base.transform.position;
-                    Vector3 movePos = base.transform.position + (new Vector3(moveDirection.x, 0f, moveDirection.z) * speed);
+                    Vector3 moveDirection = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
+                    Vector3 movePos = base.transform.position - moveDirection * speed;
                     MoveTowardsAndSync(movePos, silent: false, speedIndex: 0);
                 }
-                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 5f);
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 3f);
             }
-            else if (speed >= 4f)
+            else if (speed >= 5f)
             {
                 FallOverAndSync(-(new Vector3(other.transform.position.x, 0f, other.transform.position.z) - new Vector3(transform.position.x, 0f, transform.position.z)));
                 tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 10f);

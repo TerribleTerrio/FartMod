@@ -192,7 +192,6 @@ public class Rake : GrabbableObject, ITouchable
             if (previousColliderCount < 1 && !onCooldown && !isHeld && !isHeldByEnemy && hasHitGround)
             {
                 FlipAndSync();
-                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 7f);
                 return;
             }
         }
@@ -247,17 +246,17 @@ public class Rake : GrabbableObject, ITouchable
 
     public void OnExit(Collider other)
     {
+        Debug.Log($"[RAKE]: Collider {other.gameObject} exited rake!");
         if (collidersTouching.Contains(other))
         {
+            Debug.Log($"[RAKE]: Collider {other.gameObject} removed from collidersTouching!");
             collidersTouching.Remove(other);
         }
 
-        if (previousColliderCount > 0 && collidersTouching.Count < 1 && !isHeld && !isHeldByEnemy && hasHitGround)
+        if (collidersTouching.Count < 1 && animator.GetCurrentAnimatorStateInfo(0).IsName("flip") && !isHeld && !isHeldByEnemy && hasHitGround)
         {
             FallAndSync();
         }
-
-        previousColliderCount = collidersTouching.Count();
     }
 
     public void FlipAndSync()
@@ -343,9 +342,26 @@ public class Rake : GrabbableObject, ITouchable
                 //DROP HELD ITEM OF ALL CLOSE PLAYERS
                 if (player.isHoldingObject)
                 {
+                    switch (player.currentlyHeldObjectServer)
+                    {
+                        case Tire tire:
+                            player.DiscardHeldObject();
+                        return;
+
+                        case JetpackItem jetpack:
+                            player.DiscardHeldObject();
+                        return;
+                    }
+
                     player.currentlyHeldObjectServer.UseItemOnClient();
                     player.DiscardHeldObject();
                 }
+            }
+
+            //FOR NEARBY TIRES
+            if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
+            {
+                tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 6f);
             }
 
             //FOR ALL NEARBY ENEMIES

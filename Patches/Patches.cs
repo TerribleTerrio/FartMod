@@ -130,10 +130,9 @@ internal class LandminePatch
                 Tire tire = otherObject.GetComponent<Tire>();
                 if (tire.currentBehaviourStateIndex == 2 && tire.IsOwner)
                 {
-                    Vector3 expPosition = explosionPosition + -Vector3.up;
-                    float distance = Vector3.Distance(expPosition, tire.transform.position);
+                    float distance = Vector3.Distance(explosionPosition, tire.transform.position);
                     float forceMult = (distance - 0f) / (damageRange - 0f) * (0f - 3f) + 3f;
-                    tire.BounceOff(expPosition, forceMultiplier: forceMult, bounceUp: true, extraForce: 50f);
+                    tire.BounceOff(explosionPosition, forceMultiplier: forceMult, bounceUp: true, extraForce: 10f, extraForceUpward: 25f, maxForceDirectional: 50f, maxForceUpward: 50f);
                 }
             }
             if (otherObject.GetComponent<Vase>() != null)

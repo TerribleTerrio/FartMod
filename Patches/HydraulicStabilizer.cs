@@ -229,7 +229,7 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
         //TIRE COLLISION
         if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
 		{
-			float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+			float speed = tireReferenceScript.mainScript.tireRigidbody.velocity.magnitude;
             if (speed >= 2f)
             {
                 tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 5f);
