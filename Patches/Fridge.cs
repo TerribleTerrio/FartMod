@@ -103,7 +103,7 @@ public class Fridge : NetworkBehaviour
 
     private float forceOpenDoorTimer;
 
-    private bool enemyOpeningDoor;
+    private EnemyAI? enemyOpeningDoor;
 
     private float forceOpenDoorTimeLimit;
 
@@ -943,6 +943,10 @@ public class Fridge : NetworkBehaviour
                         Debug.Log($"[FRIDGE]: enemyInsideFridge set to masked!");
                         StartCoroutine(CoronaMod.Patches.MaskedPlayerEnemyPatch.LetMaskedIntoFridge(masked));
                     }
+                    else if (DoorOpen && PlayerInsideFridge(out PlayerControllerB player))
+                    {
+                        PullPlayerOutOfFridge(player, masked);
+                    }
                     break;
                 case MouthDogAI dog:
                     if (dog.inLunge || dog.hasEnteredChaseModeFully)
@@ -969,7 +973,7 @@ public class Fridge : NetworkBehaviour
         {
             if (PlayerInsideFridge(out _))
             {
-                enemyOpeningDoor = true;
+                enemyOpeningDoor = masked;
                 forceOpenDoorTimer += Time.deltaTime;
                 if (forceOpenDoorTimer > forceOpenDoorTimeLimit * 1.5f)
                 {
@@ -989,12 +993,12 @@ public class Fridge : NetworkBehaviour
 
                 if (!PlayersInsideShip && DoorOpen)
                 {
-                    enemyOpeningDoor = false;
+                    enemyOpeningDoor = null;
                     ToggleFridgeDoor();
                 }
                 else if (PlayersInsideShip && DoorClosed)
                 {
-                    enemyOpeningDoor = true;
+                    enemyOpeningDoor = masked;
                     forceOpenDoorTimer += Time.deltaTime;
                     if (forceOpenDoorTimer > enemyInsideFridge?.ExitFridgeTime)
                     {
@@ -1026,7 +1030,6 @@ public class Fridge : NetworkBehaviour
     public void ForceOpenDoor(int loud = 0, float delay = 0f)
     {
         forceOpenDoorTimer = 0f;
-        enemyOpeningDoor = false;
         StartCoroutine(ForceOpenDoorWithDelay(loud, delay));
     }
 
@@ -1052,5 +1055,18 @@ public class Fridge : NetworkBehaviour
                 }
                 break;
         }
+        if (PlayerInsideFridge(out PlayerControllerB player) && enemyOpeningDoor != null)
+        {
+            PullPlayerOutOfFridge(player, enemyOpeningDoor);
+        }
+        enemyOpeningDoor = null;
+    }
+
+    public void PullPlayerOutOfFridge(PlayerControllerB player, EnemyAI enemyPulling)
+    {
+        player.transform.position = enemyPulling.transform.position;
+        player.transform.LookAt(enemyPulling.transform.position);
+        player.transform.eulerAngles = new Vector3(0f, player.transform.eulerAngles.y, 0f);
+        player.Crouch(false);
     }
 }
