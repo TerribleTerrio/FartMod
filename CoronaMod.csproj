@@ -53,7 +53,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Reference Include="MMHOOK_Assembly-CSharp"><HintPath>C:\Users\Rhees\AppData\Roaming\r2modmanPlus-local\LethalCompany\profiles\Fartmod\BepInEx\plugins\MMHOOK\MMHOOK_Assembly-CSharp.dll</HintPath></Reference>
+        <Reference Include="MMHOOK_Assembly-CSharp"><HintPath>.\bin\Debug\netstandard2.1\MMHOOK_Assembly-CSharp.dll</HintPath></Reference>
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
