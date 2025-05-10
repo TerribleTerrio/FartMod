@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using GameNetcodeStuff;
 using Unity.Netcode;
 using UnityEngine;
@@ -43,15 +44,19 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
     [Space(10f)]
     [Header("Movement")]
-    public float rollingTireSpeed = 10f;
+    private float rollSpeed;
 
-    private float rollingTireSpeedRamp = 0f;
+    public float rollingTireSpeed = 0.1f;
 
-    public float rollingTireAcceleration = 0.1f;
+    public float rollAcceleration = 1f;
+
+    public Vector3 rollForce;
 
     public float rollingTireRotationSpeed = 1f;
 
-    private float previousBackForthInput;
+    public float rollBumpCooldown = 0.5f;
+
+    private float rollBumpTimer = 0f;
 
     private bool pushed;
 
@@ -70,6 +75,10 @@ public class Tire : AnimatedItem, IHittable, ITouchable
     private Vector3 physicsTireServerPosition;
 
     private Quaternion physicsTireServerRotation;
+
+    [Space(10f)]
+    [Header("Animations")]
+    public Animator rollingTireAnimator;
 
     [Space(10f)]
     [Header("Audio")]
@@ -205,6 +214,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 if (base.IsOwner)
                 {
                     EnableTireObjectMeshesServerRpc(true);
+                    rollForce = new Vector3(0,0,0);
 
                     //COMING FROM ROLLING STATE
                     if (previousBehaviourStateIndex == 1)
@@ -297,7 +307,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 //ALL CLIENTS
                 itemAudio.PlayOneShot(switchToRollingCip);
                 PlayAudibleNoise(noiseRange, noiseLoudness);
-                rollingTireSpeedRamp = 0f;
+                rollSpeed = 0;
 
                 tireObject.transform.position = playerHeldBy.transform.position + playerHeldBy.transform.forward * tireRadius + Vector3.up * tireRadius;
                 tireObject.transform.rotation = playerHeldBy.transform.rotation;
@@ -321,7 +331,16 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
             //ALL CLIENTS
             RaycastHit groundInfo;
-            if (Physics.Raycast(tireObject.transform.position, -Vector3.up, out groundInfo, tireRadius*2 + 0.1f, 268438273, QueryTriggerInteraction.Ignore))
+
+            //CATCH IF TIRE IS NOT HELD BY PLAYER
+            if (playerHeldBy == null)
+            {
+                SetBehaviourStateServerRpc(0);
+                return;
+            }
+
+            Vector3 tireHoldPos = playerHeldBy.transform.position + (playerHeldBy.transform.forward * tireRadius) + (Vector3.up * tireRadius);
+            if (Physics.Raycast(tireHoldPos, -Vector3.up, out groundInfo, tireRadius*2 + 0.1f, 268438273, QueryTriggerInteraction.Ignore))
             {
                 touchingGround = true;
             }
@@ -329,70 +348,17 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             //OWNER ONLY
             if (base.IsOwner)
             {
-                //CATCH IF TIRE IS NOT HELD BY PLAYER
-                if (playerHeldBy == null)
+                //CHECK IF TIRE SHOULD BE DROPPED
+                if (!touchingGround || playerHeldBy.isJumping || playerHeldBy.isCrouching || playerHeldBy.isPlayerDead)
                 {
-                    SetBehaviourStateServerRpc(0);
+                    ReleaseRollingTire();
                     return;
                 }
 
-                //PUSH PLAYER BACK IF TIRE IS INSIDE COLLIDER
-                if (Physics.Raycast(tireObject.transform.position, playerHeldBy.transform.forward, tireRadius, 268438273, QueryTriggerInteraction.Ignore))
-                {
-                    playerHeldBy.externalForceAutoFade += -playerHeldBy.transform.forward * 0.1f * Time.deltaTime;
-                }
-
-                float steepness;
-
-                if (touchingGround)
-                {
-                    //WHEN TO DROP TIRE
-                    if (playerHeldBy.isJumping || playerHeldBy.isCrouching || playerHeldBy.isPlayerDead || (playerHeldBy.externalForces + playerHeldBy.externalForceAutoFade).magnitude > 10f)
-                    {
-                        if (IsInCollider())
-                        {
-                            Debug.Log("[TIRE]: Released while in collider!");
-                            tireObject.transform.position = playerHeldBy.transform.position;
-                        }
-                        SyncTireObjectTransformServerRpc();
-                        SetBehaviourStateServerRpc(2);
-                        return;
-                    }
-
-                    //PLACE ROLLING TIRE AHEAD OF PLAYER
-                    tireObject.transform.position = groundInfo.point + Vector3.up * tireRadius;
-
-                    if (IsInCollider())
-                    {
-                        playerHeldBy.externalForceAutoFade -= playerHeldBy.transform.forward * 2f * Time.deltaTime;
-                    }
-
-                    //ROLLING TIRE LOCOMOTION
-                    PlayerLookInputWhileRolling(0.1f);
-                    PlayerMoveInputWhileRolling(groundInfo);
-                }
                 else
                 {
-                    if (IsInCollider())
-                    {
-                        Debug.Log("[TIRE]: Released while in collider!");
-                        tireObject.transform.position = playerHeldBy.transform.position;
-                    }
-                    SyncTireObjectTransformServerRpc();
-                    SetBehaviourStateServerRpc(2);
-                    return;
-                }
-
-                if (playerHeldBy.isJumping || playerHeldBy.isCrouching || playerHeldBy.isPlayerDead || (playerHeldBy.externalForces + playerHeldBy.externalForceAutoFade).magnitude > 10f)
-                {
-                    if (IsInCollider())
-                    {
-                        Debug.Log("[TIRE]: Released while in collider!");
-                        tireObject.transform.position = playerHeldBy.transform.position;
-                    }
-                    SyncTireObjectTransformServerRpc();
-                    SetBehaviourStateServerRpc(2);
-                    return;
+                    //ROLLING TIRE PLAYER INPUT/MOVEMENT
+                    PlayerInputWhileRolling(groundInfo);
                 }
             }
 
@@ -424,33 +390,41 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     playerHeldBy.disableLookInput = false;
                     playerHeldBy.disableMoveInput = false;
                     // playerHeldBy.inSpecialInteractAnimation = false;
+                    PlayerControllerB playerPushedBy = playerHeldBy;
                     playerHeldBy.DiscardHeldObject();
                     parentObject = physicsTire.transform;
 
                     tireRigidbody.AddForce(playerRigidbody.velocity * 2f, ForceMode.Impulse);
+                    tireRigidbody.AddForce(rollForce * 500, ForceMode.Impulse);
+                    rollForce = new Vector3(0,0,0);
 
                     if (pushed)
                     {
-                        Vector3 force = previousPlayerHeldBy.transform.forward * pushForce;
+                        Vector3 force = playerPushedBy.transform.forward * pushForce;
+                        float sprintMeterUsed;
 
                         if (pushedWhileWalking)
                         {
                             if (pushedWhileSprinting)
                             {
+                                sprintMeterUsed = 0.3f;
                                 PlayPushSoundServerRpc(2);
                                 force *= 2f;
                             }
                             else
                             {
+                                sprintMeterUsed = 0.2f;
                                 PlayPushSoundServerRpc(1);
                             }
                         }
                         else
                         {
+                            sprintMeterUsed = 0.1f;
                             PlayPushSoundServerRpc(0);
                             force /= 2f;
                         }
 
+                        playerPushedBy.sprintMeter = Mathf.Clamp(playerPushedBy.sprintMeter - sprintMeterUsed, 0f, 1f);
                         force += Vector3.up;
                         tireRigidbody.AddForce(force, ForceMode.Impulse);
                     }
@@ -462,6 +436,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
                 //ALL CLIENTS
                 parentObject = physicsTire.transform;
+                rollSpeed = 0;
 
 
                 previousBehaviourStateIndex = currentBehaviourStateIndex;
@@ -485,7 +460,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
 
             //ALL CLIENTS
-            if (Physics.Raycast(physicsTire.transform.position, -Vector3.up, out groundInfo, tireRadius*2 + 0.1f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(physicsTire.transform.position, -Vector3.up, out groundInfo, tireRadius*2 + 0.13f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
             {
                 touchingGround = true;
             }
@@ -747,6 +722,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
     [ServerRpc(RequireOwnership = false)]
     private void CollideWithLocalPlayerServerRpc(int playerId)
     {
+        ChangeOwnershipOfProp((ulong)playerId);
         CollideWithLocalPlayerClientRpc(playerId);
     }
 
@@ -803,23 +779,23 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 player.DamagePlayer(damage, causeOfDeath: CauseOfDeath.Bludgeoning, force: pushForce);
             }
 
-            BounceOffPlayerServerRpc(player.transform.position, dirDifference);
+            // BounceOffPlayerServerRpc(player.transform.position, dirDifference);
         }
     }
 
     [ServerRpc(RequireOwnership = false)]
-    private void BounceOffPlayerServerRpc(Vector3 playerPos, float dirDifference)
+    private void BounceOffNonOwnerPlayerServerRpc(Vector3 playerPos, Vector3 tirePos, float dirDifference)
     {
-        BounceOffPlayerClientRpc(playerPos, dirDifference);
+        BounceOffNonOwnerPlayerClientRpc(playerPos, tirePos, dirDifference);
     }
 
     [ClientRpc]
-    private void BounceOffPlayerClientRpc(Vector3 playerPos, float dirDifference)
+    private void BounceOffNonOwnerPlayerClientRpc(Vector3 playerPos, Vector3 tirePos, float dirDifference)
     {
         if (IsOwner)
         {
-            Debug.Log("[TIRE]: Bouncing off player!");
-            BounceOff(playerPos, forceMultiplier: dirDifference);
+            Debug.Log("[TIRE]: Bouncing off non-owner player!");
+            BounceOff(playerPos, forceMultiplier: Mathf.Clamp(dirDifference, 0.5f, 1f), extraForce: 5f, overrideTirePosition: true, tirePosition: tirePos);
         }
     }
 
@@ -862,6 +838,21 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         }
     }
 
+    // [ServerRpc]
+    // private void DamageOtherPlayerServerRpc(int playerId)
+    // {
+    //     DamageOtherPlayerClientRpc(playerId);
+    // }
+
+    // [ClientRpc]
+    // private void DamageOtherPlayerClientRpc(int playerId)
+    // {
+    //     if ((int)StartOfRound.Instance.NetworkManager.LocalClientId == playerId)
+    //     {
+    //         StartOfRound.Instance.localPlayerController.DamagePlayer(1, causeOfDeath: CauseOfDeath.Bludgeoning);
+    //     }
+    // }
+
 
 
     //USING ITEM
@@ -872,7 +863,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             if (IsInCollider())
             {
                 Debug.Log("[TIRE]: No space for tire!");
-                StartCoroutine(ChangeCursorTipAndRevert("[No room!]"));
+                StartCoroutine(DisplayCursorTip("[No room!]"));
                 return;
             }
 
@@ -942,7 +933,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
     private bool IsInCollider()
     {
-        Collider[] foundColliders = Physics.OverlapBox(playerHeldBy.transform.position + playerHeldBy.transform.forward * tireRadius + Vector3.up * tireRadius, new Vector3(tireRadius/2f,tireRadius/2f,tireRadius/2f), playerHeldBy.transform.rotation, 1342179585, QueryTriggerInteraction.Ignore);
+        Collider[] foundColliders = Physics.OverlapBox(playerHeldBy.transform.position + playerHeldBy.transform.forward * tireRadius + Vector3.up * tireRadius, new Vector3(tireRadius/4f,tireRadius/4f,tireRadius/4f), playerHeldBy.transform.rotation, 1342179585, QueryTriggerInteraction.Ignore);
 
         if (foundColliders.Length > 0)
         {
@@ -1015,6 +1006,17 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         }
     }
 
+    private void ReleaseRollingTire()
+    {
+        if (IsInCollider())
+        {
+            Debug.Log("[TIRE]: Released while in collider!");
+            tireObject.transform.position = playerHeldBy.transform.position;
+        }
+        SyncTireObjectTransformServerRpc();
+        SetBehaviourStateServerRpc(2);
+    }
+
 
 
     //COLLISION
@@ -1050,7 +1052,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             {
                 PlayerControllerB player = otherObject.GetComponent<PlayerControllerB>();
 
-                //CHECK IF LOCAL PLAYER
+                //FOR CLIENT OF PLAYER COLLIDED WITH
                 if (player == GameNetworkManager.Instance.localPlayerController)
                 {
                     Debug.Log("[TIRE]: This player collided with tire!");
@@ -1058,12 +1060,16 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     //CHECK IF TIRE IS NOT ON COOLDOWN OR HELD
                     if ((collisionCooldownTimer > 0) || player == playerHeldBy)
                     {
-                        Debug.Log("[TIRE]: On cooldown or holding, aborting collision!");
                         return;
                     }
 
-                    CollideWithLocalPlayerServerRpc((int)player.playerClientId);
-                    collisionCooldownTimer = playerPushCollisionCooldown;
+                    else
+                    {
+                        // CollideWithLocalPlayerServerRpc((int)player.playerClientId);
+                        CollideWithPlayer();
+                        collisionCooldownTimer = playerPushCollisionCooldown;
+                        return;
+                    }
                 }
 
                 else
@@ -1417,8 +1423,14 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             //TIRE COLLISION
             else if (otherObject.GetComponent<TireReferenceScript>() != null)
             {
+                TireReferenceScript tireReferenceScript = otherObject.GetComponent<TireReferenceScript>();
+                if (tireReferenceScript.mainScript.gameObject == this.gameObject)
+                {
+                    return;
+                }
+
                 Debug.Log("[TIRE]: Collided with another tire!");
-                NetworkObjectReference tireRef = otherObject.GetComponent<TireReferenceScript>().mainScript.gameObject.GetComponent<NetworkObject>();
+                NetworkObjectReference tireRef = tireReferenceScript.mainScript.gameObject.GetComponent<NetworkObject>();
                 
                 if (collisionCooldownTimer > 0)
                 {
@@ -1442,11 +1454,57 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
     }
 
-    public void BounceOff(Vector3 otherPos, float forceMultiplier = 1f, float extraForce = 0, float minForceDirectional = 2f, float maxForceDirectional = 20f, float extraForceUpward = 0f, float minForceUpward = 2f, float maxForceUpward = 20f, bool bounceUp = true)
+    private void CollideWithPlayer()
+    {
+        PlayerControllerB player = GameNetworkManager.Instance.localPlayerController;
+        float dirDifference = (Vector3.Normalize(tireRigidbody.velocity) - Vector3.Normalize(player.walkForce)).magnitude;
+
+        int damage = Mathf.RoundToInt(Mathf.Clamp(tireRigidbody.velocity.magnitude - 5, 0f, 100f) * 5f * dirDifference);
+        Vector3 pushDirection = Vector3.Normalize(player.gameplayCamera.transform.position - transform.position);
+        Vector3 pushUpForce = new Vector3(0f,0f,0f);
+
+        if (player.jumpCoroutine != null)
+        {
+            pushDirection = Vector3.Normalize(new Vector3(pushDirection.x, 0f, pushDirection.z));
+        }
+        else
+        {
+            pushUpForce = Vector3.up * Mathf.Clamp(tireRigidbody.velocity.magnitude, 0f, 10f);
+        }
+
+        Vector3 pushDirectionForce = pushDirection * Mathf.Clamp(tireRigidbody.velocity.magnitude * 2, 10f, 100f);
+        Vector3 pushPlayerForce = (pushDirectionForce + pushUpForce) * dirDifference;
+
+        //PUSH PLAYER
+        PreventPlayerJump(player);
+        player.externalForceAutoFade += pushPlayerForce;
+
+        if (damage > 0)
+        {
+            player.DamagePlayer(damage, causeOfDeath: CauseOfDeath.Bludgeoning, force: pushPlayerForce);
+        }
+
+        //BOUNCE TIRE
+        // BounceOff(player.transform.position, forceMultiplier: Mathf.Clamp(dirDifference, 0.5f, 1f), extraForce: 5f);
+        if (IsOwner)
+        {
+            BounceOff(player.transform.position, forceMultiplier: Mathf.Clamp(dirDifference, 0.5f, 1f), extraForce: 5f);
+        }
+        else
+        {
+            BounceOffNonOwnerPlayerServerRpc(player.transform.position, physicsTire.transform.position, dirDifference);
+        }
+    }
+
+    public void BounceOff(Vector3 otherPos, float forceMultiplier = 1f, float extraForce = 0, float minForceDirectional = 2f, float maxForceDirectional = 20f, float extraForceUpward = 0f, float minForceUpward = 2f, float maxForceUpward = 20f, bool bounceUp = true, bool overrideTirePosition = false, Vector3? tirePosition = null)
     {
         Rigidbody rigidbody = physicsTire.GetComponent<Rigidbody>();
 
         Vector3 direction = physicsTire.transform.position - otherPos;
+        if (overrideTirePosition && tirePosition != null)
+        {
+            direction = (Vector3)tirePosition - otherPos;
+        }
         direction.y = 0f;
         Vector3 speed = rigidbody.velocity;
         speed.y = 0f;
@@ -1636,7 +1694,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         rollPitchCoroutine = null;
     }
 
-    private void PlayerLookInputWhileRolling(float xSensMultiplier = 0.5f)
+    private void HinderLookInput(float xSensMultiplier = 0.5f)
     {
         Vector2 lookVector = playerHeldBy.playerActions.Movement.Look.ReadValue<Vector2>() * 0.008f * IngamePlayerSettings.Instance.settings.lookSensitivity;
         lookVector.x *= xSensMultiplier;
@@ -1669,125 +1727,320 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         }
     }
 
-    private void PlayerMoveInputWhileRolling(RaycastHit groundInfo)
+    private void PlayerInputWhileRolling(RaycastHit groundInfo)
     {
+        HinderLookInput(0.1f);
+
         Vector2 moveVector = IngamePlayerSettings.Instance.playerInput.actions.FindAction("Move").ReadValue<Vector2>();
         float sprint = IngamePlayerSettings.Instance.playerInput.actions.FindAction("Sprint").ReadValue<float>();
 
-        if (moveVector.y > 0)
+        //CALCULATE TARGET ROLLING SPEED BASED ON CURRENT CONTEXT
+            float targetSpeed;
+
+            //CHECK IF MOVING
+            if (Math.Abs(moveVector.y) > 0.1f)
+            {
+                targetSpeed = 1f;
+
+                //SPRINTING
+                if (sprint > 0f)
+                {
+                    targetSpeed += 0.3f;
+                    playerHeldBy.sprintMeter = Mathf.Clamp(playerHeldBy.sprintMeter - Time.deltaTime / playerHeldBy.sprintTime * playerHeldBy.carryWeight * 1.5f, 0f, 1f);
+                }
+
+                //CARRY WEIGHT
+                targetSpeed -= Remap(playerHeldBy.carryWeight, 1f, 10f, 0f, 2f);
+
+                //TERRAIN
+                if (groundInfo.collider.gameObject.tag.Contains("Snow"))
+                {
+                    targetSpeed -= 0.15f;
+                }
+
+                //SLOPE
+                Vector3 compareVector = -playerHeldBy.transform.forward;
+                if (moveVector.y < 0)
+                {
+                    compareVector *= -1;
+                }
+                float slope = 90 - Vector3.Angle(groundInfo.normal, compareVector);
+                
+                if (slope > 0)
+                {
+                    targetSpeed += Remap(slope, 0, 30, 0, -1f);
+                }
+                else
+                {
+                    targetSpeed += Remap(slope, 0, -30, 0, 1);
+                }
+
+                //DIRECTION
+                if (moveVector.y < 0)
+                {
+                    targetSpeed *= -1;
+                }
+            }
+
+            //IF NOT MOVING
+            else
+            {
+                //SET TARGET SPEED TO 0
+                targetSpeed = 0f;
+            }
+
+        //LERP MOVEMENT SPEED TO TARGET SPEED
+
+            if (Math.Abs(targetSpeed - rollSpeed) > 0.1f)
+            {
+                //INCREASING SPEED
+                if (rollSpeed < targetSpeed)
+                {
+                    rollSpeed += rollAcceleration * Time.deltaTime;
+                }
+
+                //DECREASING SPEED
+                else
+                {
+                    rollSpeed -= rollAcceleration * Time.deltaTime * 0.5f;
+                }
+            }
+
+            else
+            {
+                rollSpeed = targetSpeed;
+            }
+
+        //MOVEMENT SPEED OVERRIDES
+        if (rollBumpTimer <= 0)
+        {
+
+            //CHECK IF MOVING FAST ENOUGH TO BUMP
+            bool bump = false;
+            if (rollSpeed > 0.9f)
+            {
+                bump = true;
+            }
+
+            //TIRE COLLISION
+
+                //CHECK FOR PLAYERS OR ENEMIES
+                RaycastHit bumpInfo;
+                if (Physics.Raycast(tireObject.transform.position + Vector3.up * 0.1f, playerHeldBy.transform.forward, out bumpInfo, tireRadius, CoronaMod.Masks.PlayerEnemies, QueryTriggerInteraction.Collide))
+                {
+                    float playerPushForce = 1f;
+                    GameObject otherObject = bumpInfo.collider.gameObject;
+
+                    Debug.Log($"[TIRE]: Bumped into {otherObject}.");
+
+                    //IF PLAYER
+                    if (otherObject.layer == 3 && bump)
+                    {
+                        if (otherObject.GetComponent<PlayerControllerB>() != null)
+                        {
+                            PlayerControllerB otherPlayer = otherObject.GetComponent<PlayerControllerB>();
+
+                            //BUMP OTHER PLAYER
+                            otherPlayer.externalForceAutoFade += playerHeldBy.transform.forward * playerPushForce * Time.deltaTime;
+                            // DamageOtherPlayerServerRpc((int)otherPlayer.playerClientId);
+                        }
+                    }
+
+                    //IF ENEMY
+                    else if (otherObject.layer == 19)
+                    {
+                        if (otherObject.GetComponent<EnemyAICollisionDetect>() != null)
+                        {
+                            playerPushForce = 2f;
+                            EnemyAI enemy = otherObject.GetComponent<EnemyAICollisionDetect>().mainScript;
+
+                            //SET PLAYER PUSH FORCE BASED ON ENEMY
+                            switch (enemy)
+                            {
+                                case SpringManAI springMan:
+                                    if (!springMan.hasStopped)
+                                    {
+                                        playerPushForce = 3f;
+                                    }
+                                    break;
+
+                                case JesterAI jester:
+                                    
+                                    if (jester.creatureAnimator.GetBool("poppedOut"))
+                                    {
+                                        playerPushForce = 4f;
+                                    }
+                                    else
+                                    {
+                                        playerPushForce = 1f;
+                                    }
+                                    break;
+                                
+                                case CaveDwellerAI caveDweller:
+                                    if (caveDweller.adultContainer.activeSelf)
+                                    {
+                                        playerPushForce = 3f;
+                                    }
+                                    break;
+                                
+                                case CrawlerAI crawler:
+                                    if (crawler.hasEnteredChaseMode)
+                                    {
+                                        playerPushForce = 4f;
+                                    }
+                                    break;
+
+                                case SandWormAI:
+                                    playerPushForce = 4f;
+                                    break;
+
+                                case MouthDogAI mouthDog:
+                                    if (mouthDog.hasEnteredChaseModeFully)
+                                    {
+                                        playerPushForce = 4f;
+                                    }
+                                    break;
+
+                                case ForestGiantAI:
+                                    playerPushForce = 3f;
+                                    break;
+
+                                case RadMechAI radMech:
+                                    if (radMech.chargingForward)
+                                    {
+                                        playerPushForce = 4f;
+                                    }
+                                    break;
+                            }
+
+                            //IF FAST ENOUGH TO BUMP
+                            if (bump)
+                            {
+                                //DAMAGE ENEMY
+                                enemy.HitEnemyOnLocalClient(1, playerHeldBy.transform.forward, playerHeldBy, playHitSFX: true);
+
+                                //INCREASE PLAYER PUSH FORCE
+                                playerPushForce *= 2;
+                            }
+                        }
+                    }
+
+                    //OVERRIDE ROLL SPEED AND BUMP PLAYERHELDBY
+                    rollSpeed = 0f;
+                    playerHeldBy.externalForceAutoFade += -playerHeldBy.transform.forward * playerPushForce;
+                    PlayHitSoundServerRpc(rollForce);
+                    rollBumpTimer = rollBumpCooldown;
+                }
+
+                //CHECK FOR TERRAIN
+                else if (Physics.Raycast(tireObject.transform.position + Vector3.up * 0.1f, playerHeldBy.transform.forward, out bumpInfo, tireRadius, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+                {
+                    float playerPushForce = 1f;
+
+                    if (bump)
+                    {
+                        playerPushForce = 2f;
+                    }
+
+                    //OVERRIDE ROLL SPEED AND BUMP PLAYERHELDBY
+                    rollSpeed = 0f;
+                    playerHeldBy.externalForceAutoFade += -playerHeldBy.transform.forward * playerPushForce;
+                    PlayHitSoundServerRpc(rollForce);
+                    rollBumpTimer = rollBumpCooldown;
+                }
+
+            //PLAYERHELDBY COLLISION
+
+                //RE-CHECK BUMP (INVERTED DIRECTION)
+                if (rollSpeed < -0.9f)
+                {
+                    bump = true;
+                }
+
+                //CHECK FOR PLAYERS OR ENEMIES
+                if (Physics.Raycast(playerHeldBy.playerEye.transform.position, -playerHeldBy.transform.forward, out bumpInfo, 1f, CoronaMod.Masks.PlayerEnemies, QueryTriggerInteraction.Collide))
+                {
+                    GameObject otherObject = bumpInfo.collider.gameObject;
+                    Debug.Log($"[TIRE]: Player bumped against {otherObject}!");
+
+                    if (otherObject != playerHeldBy.gameObject)
+                    {
+                        rollSpeed = 0f;
+                        float playerPushForce = 1f;
+
+                        if (bump)
+                        {
+                            ReleaseRollingTire();
+                            playerHeldBy.DamagePlayer(1, causeOfDeath: CauseOfDeath.Crushing);
+                            Debug.Log($"[TIRE]: Player squished against {otherObject}!");
+                        }
+
+                        //OVERRIDE ROLL SPEED AND BUMP PLAYERHELDBY
+                        rollSpeed = 0f;
+                        playerHeldBy.externalForceAutoFade += playerHeldBy.transform.forward * playerPushForce;
+                        PlayHitSoundServerRpc(rollForce);
+                        rollBumpTimer = rollBumpCooldown;
+                    }
+                }
+
+                //CHECK FOR TERRAIN
+                else if (Physics.Raycast(playerHeldBy.playerEye.transform.position, -playerHeldBy.transform.forward, out bumpInfo, 1f, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+                {
+                    GameObject otherObject = bumpInfo.collider.gameObject;
+                    Debug.Log($"[TIRE]: Player bumped against {otherObject}!");
+                    rollSpeed = 0f;
+                    float playerPushForce = 1f;
+
+                    if (bump)
+                    {
+                        ReleaseRollingTire();
+                        playerHeldBy.DamagePlayer(1, causeOfDeath: CauseOfDeath.Crushing);
+                        Debug.Log($"[TIRE]: Player squished against {otherObject}!");
+                    }
+
+                    //OVERRIDE ROLL SPEED AND BUMP PLAYERHELDBY
+                    rollSpeed = 0f;
+                    playerHeldBy.externalForceAutoFade += playerHeldBy.transform.forward * playerPushForce;
+                    PlayHitSoundServerRpc(rollForce);
+                    rollBumpTimer = rollBumpCooldown;
+                }
+        }
+
+        //BUMP COOLDOWN
+        if (rollBumpTimer > 0)
+        {
+            rollBumpTimer -= Time.deltaTime;
+        }
+
+        //IF BUMPED BY STRONG ENOUGH EXTERNAL FORCE
+        if (playerHeldBy.externalForceAutoFade.magnitude > 1f)
+        {
+            rollSpeed = 0;
+        }
+
+        //MOVE PLAYER WITH ROLL SPEED
+        rollForce = playerHeldBy.transform.forward * rollSpeed * rollingTireSpeed;
+        playerHeldBy.thisController.Move(rollForce);
+
+        //SET ANIMATION & PUSH AWAY FORCE
+        if (rollingTireAnimator != null)
+        {
+            rollingTireAnimator.SetFloat("rollSpeed", rollSpeed);
+            rollingTireAnimator.SetFloat("moveInputX", moveVector.x);
+            rollingTireAnimator.SetFloat("moveInputY", moveVector.y);
+            rollingTireAnimator.SetBool("sprinting", sprint > 0);
+        }
+
+        pushedWhileWalking = false;
+        pushedWhileSprinting = false;
+
+        if (moveVector.y > 0.1f)
         {
             pushedWhileWalking = true;
-            if (sprint > 0)
-            {
-                pushedWhileSprinting = true;
-            }
-            else
-            {
-                pushedWhileSprinting = false;
-            }
-        }
-        else
-        {
-            pushedWhileWalking = false;
-            pushedWhileSprinting = false;
+            pushedWhileSprinting = sprint > 0;
         }
 
-        //FIND STEEPNESS OF GROUND UNDER TIRE
-        Vector3 compareVector = -playerHeldBy.transform.forward;
-        if (moveVector.y < 0)
-        {
-            compareVector *= -1;
-        }
-        float steepness = 90 - Vector3.Angle(groundInfo.normal, compareVector);
-        Debug.Log($"[TIRE]: Steepness: {steepness}");
-
-        //CALCULATE MOVEMENT MULTIPLIER
-        float movementMultiplier = 1f;
-
-            //SPRINTING
-            if (sprint > 0f)
-            {
-                movementMultiplier += 0.3f;
-            }
-
-            //CARRY WEIGHT
-
-            //TERRAIN
-
-            //STEEPNESS
-            // if (steepness > 0)
-            // {
-            //     movementMultiplier *= Remap(steepness, 0f, 30f, 1f, 0f) * Time.deltaTime;
-            // }
-            // else if (steepness < 0)
-            // {
-            //     movementMultiplier *= Remap(steepness, 0f, -30f, 1f, 0f) * Time.deltaTime;
-            // }
-
-        Debug.Log($"[TIRE]: Movement multiplier: {movementMultiplier}");
-
-        //CALCULATE ACCELERATION
-        if (moveVector.y > 0f)
-        {
-            if (rollingTireSpeedRamp < 1f)
-            {
-                rollingTireSpeedRamp += rollingTireAcceleration * Time.deltaTime;
-            }
-            else
-            {
-                rollingTireSpeedRamp = 1f;
-            }
-        }
-        else if (moveVector.y < 0f && rollingTireSpeedRamp > -1f)
-        {
-            if (rollingTireSpeedRamp > -1f)
-            {
-                rollingTireSpeedRamp -= rollingTireAcceleration * Time.deltaTime;
-            }
-            else
-            {
-                rollingTireSpeedRamp = 1f;
-            }
-        }
-        else if (moveVector.y == 0)
-        {
-            if (rollingTireSpeedRamp > 0)
-            {
-                rollingTireSpeedRamp -= rollingTireAcceleration * Time.deltaTime;
-            }
-
-            else if (rollingTireSpeedRamp < 0)
-            {
-                rollingTireSpeedRamp += rollingTireAcceleration * Time.deltaTime;
-            }
-        }
-
-        //RESET ACCELERATION IF BUMPED BY EXTERNAL FORCES
-        Vector3 externalForces = new Vector3(playerHeldBy.externalForceAutoFade.x, 0f, playerHeldBy.externalForceAutoFade.z);
-        if (externalForces.magnitude > 1f)
-        {
-            rollingTireSpeedRamp = 0f;
-
-            // if (rollingTireSpeedRamp > 0f)
-            // {
-            //     rollingTireSpeedRamp -= rollingTireAcceleration * Time.deltaTime * 2f;
-            // }
-            
-            // else if (rollingTireSpeedRamp < 0f)
-            // {
-            //     rollingTireSpeedRamp += rollingTireAcceleration * Time.deltaTime * 2f;
-            // }
-        }
-
-        Debug.Log($"[TIRE]: Rolling speed ramp: {rollingTireSpeedRamp}");
-
-        //CALCULATE TOTAL ROLL FORCE
-        Vector3 rollForce = playerHeldBy.transform.forward * rollingTireSpeed * movementMultiplier * rollingTireSpeedRamp;
-
-        //MOVE PLAYER WITH ROLL FORCE
-        playerHeldBy.thisController.Move(rollForce * Time.deltaTime);
-
-        //ROTATE LEFT AND RIGHT
+        //ROTATE PLAYER LEFT AND RIGHT
         if (moveVector.x != 0)
         {
             float rotation = rollingTireRotationSpeed;
@@ -1799,30 +2052,26 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             playerHeldBy.transform.eulerAngles += new Vector3(0f, rotation, 0f);
         }
 
-        //ROTATE TIRE
-        if (moveVector.y != 0)
-        {
-            PlayAudibleNoise(noiseRange, noiseLoudness);
-            float rotation = rollForce.magnitude * 0.1f;
-            if (moveVector.y < 0)
-            {
-                rotation *= -1;
-            }
-            RotateTireObjectServerRpc(rotation);
-            tireObject.transform.eulerAngles += new Vector3(0,0,rotation);
-        }
+        //ROTATE TIRE VISUALLY
+        PlayAudibleNoise(noiseRange, noiseLoudness);
+        RotateTireObjectServerRpc(rollSpeed * 2f);
+        tireObject.transform.eulerAngles += new Vector3(0,0,rollSpeed * 2f);
 
         //TIRE AUDIO
         SetRollAudio(true, rollForce, groundInfo.collider.gameObject.tag);
     }
 
-    private IEnumerator ChangeCursorTipAndRevert(string cursorTip)
+    private IEnumerator DisplayCursorTip(string cursorTip)
     {
         playerHeldBy.cursorTip.text = cursorTip;
-        yield return new WaitWhile(() => playerHeldBy.playerActions.Movement.Use.ReadValue<bool>());
+        while(playerHeldBy.playerActions.Movement.ActivateItem.IsPressed())
+        {
+            Debug.Log("[TIRE]: Player holding use!");
+            yield return new WaitForEndOfFrame();
+            playerHeldBy.cursorTip.text = cursorTip;
+        }
         playerHeldBy.cursorTip.text = "";
     }
-
 
 
 
