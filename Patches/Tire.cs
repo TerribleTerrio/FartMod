@@ -214,7 +214,6 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 if (base.IsOwner)
                 {
                     EnableTireObjectMeshesServerRpc(true);
-                    rollForce = new Vector3(0,0,0);
 
                     //COMING FROM ROLLING STATE
                     if (previousBehaviourStateIndex == 1)
@@ -222,8 +221,11 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                         if (playerHeldBy != null)
                         {
                             playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (itemProperties.weight - 1f), 1f, 10f);
+                            playerHeldBy.externalForceAutoFade += rollForce * 2;
                         }
                     }
+
+                    rollForce = new Vector3(0,0,0);
 
                     //COMING FROM PHYSICS STATE
                     if (previousBehaviourStateIndex == 2)
@@ -385,6 +387,11 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 {
                     fallHeightPeak = physicsTire.transform.position.y;
                     Rigidbody playerRigidbody = playerHeldBy.playerRigidbody;
+
+                    if (previousBehaviourStateIndex == 1)
+                    {
+                        playerHeldBy.externalForceAutoFade += rollForce * 2;
+                    }
 
                     playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (itemProperties.weight - 1f), 1f, 10f);
                     playerHeldBy.disableLookInput = false;
@@ -1731,8 +1738,22 @@ public class Tire : AnimatedItem, IHittable, ITouchable
     {
         HinderLookInput(0.1f);
 
+        if (playerHeldBy.isExhausted || rollSpeed > 2.5f)
+        {
+            ReleaseRollingTire();
+            return;
+        }
+
         Vector2 moveVector = IngamePlayerSettings.Instance.playerInput.actions.FindAction("Move").ReadValue<Vector2>();
         float sprint = IngamePlayerSettings.Instance.playerInput.actions.FindAction("Sprint").ReadValue<float>();
+
+        //STORE VALUE FOR SLOPE
+        Vector3 compareVector = -playerHeldBy.transform.forward;
+        if (moveVector.y < 0)
+        {
+            compareVector *= -1;
+        }
+        float slope = 90 - Vector3.Angle(groundInfo.normal, compareVector);
 
         //CALCULATE TARGET ROLLING SPEED BASED ON CURRENT CONTEXT
             float targetSpeed;
@@ -1742,15 +1763,15 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             {
                 targetSpeed = 1f;
 
+                //CARRY WEIGHT
+                targetSpeed *= Remap(playerHeldBy.carryWeight, 1f, 3f, 1f, 0.3f);
+
                 //SPRINTING
                 if (sprint > 0f)
                 {
                     targetSpeed += 0.3f;
                     playerHeldBy.sprintMeter = Mathf.Clamp(playerHeldBy.sprintMeter - Time.deltaTime / playerHeldBy.sprintTime * playerHeldBy.carryWeight * 1.5f, 0f, 1f);
                 }
-
-                //CARRY WEIGHT
-                targetSpeed -= Remap(playerHeldBy.carryWeight, 1f, 10f, 0f, 2f);
 
                 //TERRAIN
                 if (groundInfo.collider.gameObject.tag.Contains("Snow"))
@@ -1759,26 +1780,24 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 }
 
                 //SLOPE
-                Vector3 compareVector = -playerHeldBy.transform.forward;
-                if (moveVector.y < 0)
-                {
-                    compareVector *= -1;
-                }
-                float slope = 90 - Vector3.Angle(groundInfo.normal, compareVector);
-                
                 if (slope > 0)
                 {
                     targetSpeed += Remap(slope, 0, 30, 0, -1f);
                 }
                 else
                 {
-                    targetSpeed += Remap(slope, 0, -30, 0, 1);
+                    targetSpeed += Remap(slope, 0, -30, 0, 2);
                 }
 
                 //DIRECTION
                 if (moveVector.y < 0)
                 {
                     targetSpeed *= -1;
+                    targetSpeed = Math.Clamp(targetSpeed, -3, 0);
+                }
+                else
+                {
+                    targetSpeed = Math.Clamp(targetSpeed, 0, 3);
                 }
             }
 
@@ -1788,6 +1807,8 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 //SET TARGET SPEED TO 0
                 targetSpeed = 0f;
             }
+
+            Debug.Log($"[TIRE]: Target speed: {targetSpeed}");
 
         //LERP MOVEMENT SPEED TO TARGET SPEED
 
@@ -2016,6 +2037,13 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         if (playerHeldBy.externalForceAutoFade.magnitude > 1f)
         {
             rollSpeed = 0;
+        }
+
+        //RELEASE TIRE IF PULLING UPHILL
+        if (moveVector.y < 0 && slope > 20f && rollSpeed > -0.1)
+        {
+            ReleaseRollingTire();
+            return;
         }
 
         //MOVE PLAYER WITH ROLL SPEED
