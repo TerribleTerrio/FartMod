@@ -16,6 +16,8 @@ public static class Masks
 
     public const int DefaultRoomCollidersRailingVehicle = 1342179585;
 
+    public const int DefaultRoomCollidersRailingVehicleInteractableObjects = 1342180097;
+
     public const int DefaultTriggers = 8193;
     
     public const int PropsRoomInteractableObjectVehicle = 1073742656;
