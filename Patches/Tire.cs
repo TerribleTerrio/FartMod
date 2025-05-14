@@ -219,7 +219,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                         if (playerHeldBy != null)
                         {
                             playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (itemProperties.weight - 1f), 1f, 10f);
-                            playerHeldBy.externalForceAutoFade += rollingTireCurrentForce * 5;
+                            playerHeldBy.externalForceAutoFade += rollingTireCurrentForce * 10;
                         }
                     }
 
@@ -397,7 +397,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
                     if (previousBehaviourStateIndex == 1)
                     {
-                        playerHeldBy.externalForceAutoFade += rollingTireCurrentForce * 5;
+                        playerHeldBy.externalForceAutoFade += rollingTireCurrentForce * 10;
                     }
 
                     playerHeldBy.carryWeight = Mathf.Clamp(playerHeldBy.carryWeight + (itemProperties.weight - 1f), 1f, 10f);
@@ -1135,33 +1135,45 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             if (otherObject.GetComponent<EnemyAICollisionDetect>() != null)
             {
                 collisionCooldownTimer = 0f;
-                float speed = physicsTire.GetComponent<Rigidbody>().velocity.magnitude;
+                float speed = tireRigidbody.velocity.magnitude;
                 EnemyAICollisionDetect enemy = otherObject.GetComponent<EnemyAICollisionDetect>();
                 
                 if (enemy.mainScript as SandSpiderAI != null)
                 {
                     BounceOff(enemy.mainScript.transform.position, extraForce: 3);
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 6, playHitSFX: true);
+                    }
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
+                    }
+
                     return;
                 }
 
                 if (enemy.mainScript as FlowermanAI != null)
                 {
                     FlowermanAI flowerman = enemy.mainScript as FlowermanAI;
-                    if (tireRigidbody.velocity.magnitude > 5)
+
+                    if (speed > 10)
                     {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 5f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 5f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
+                        enemy.mainScript.HitEnemy(force: 8, playHitSFX: true);
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 3);
                     }
-                    if (flowerman.isInAngerMode)
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 3);
+                    }
+                    else if (flowerman.isInAngerMode)
                     {
                         BounceOff(enemy.mainScript.transform.position, extraForce: 3);
-                        return;
                     }
-                    else
-                    {
-                        return;
-                    }
+
+                    return;
                 }
 
                 if (enemy.mainScript as ButlerEnemyAI != null)
@@ -1174,37 +1186,49 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     {
                         BounceOff(enemy.mainScript.transform.position, extraForce: 3);
                     }
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 6, playHitSFX: true);
+                    }
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
+                    }
+
                     return;
                 }
 
                 else if (enemy.mainScript as SpringManAI != null)
                 {
                     SpringManAI springman = enemy.mainScript as SpringManAI;
+
                     if (!springman.hasStopped)
                     {
                         BounceOff(enemy.mainScript.transform.position);
-                        return;
                     }
                     else
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 3);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 10);
                     }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as JesterAI != null)
                 {
                     JesterAI jester = enemy.mainScript as JesterAI;
+
                     if (jester.creatureAnimator.GetBool("poppedOut"))
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 6);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 15);
                     }
                     else
                     {
                         BounceOff(enemy.mainScript.transform.position);
-                        return;
                     }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as DressGirlAI != null)
@@ -1219,12 +1243,6 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
                     if (caveDweller.hasPlayerFoundBaby)
                     {
-                        if (tireRigidbody.velocity.magnitude > 2)
-                        {
-                            float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 2f, 10f);
-                            int damage = Mathf.RoundToInt(Remap(clampedSpeed, 2f, 10f, 1f, 2f));
-                            enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
-                        }
                         if (caveDweller.playerHolding)
                         {
                             return;
@@ -1232,67 +1250,95 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                         else
                         {
                             BounceOff(enemy.mainScript.transform.position);
-                            return;
+                        }
+
+                        if (speed > 10)
+                        {
+                            enemy.mainScript.HitEnemy(force: 8, playHitSFX: true);
+                        }
+                        else if (speed > 6)
+                        {
+                            enemy.mainScript.HitEnemy(force: 4, playHitSFX: true);
+                        }
+                        else if (speed > 3)
+                        {
+                            enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
                         }
                     }
 
                     else if (caveDweller.adultContainer.activeSelf)
                     {
-                        if (tireRigidbody.velocity.magnitude > 5)
+                        if (caveDweller.leaping)
                         {
-                            float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 5f, 30f);
-                            int damage = Mathf.RoundToInt(Remap(clampedSpeed, 5f, 30f, 1f, 3f));
-                            enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
+                            BounceOff(enemy.mainScript.transform.position, extraForce: 20f);
                         }
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 5f);
-                        return;
+                        else
+                        {
+                            BounceOff(enemy.mainScript.transform.position, extraForce: 12f);
+                        }
+
+                        if (speed > 10)
+                        {
+                            enemy.mainScript.HitEnemy(force: 8, playHitSFX: true);
+                        }
+
+                        else if (speed > 6)
+                        {
+                            enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                        }
                     }
-                    else
-                    {
-                        return;
-                    }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as MaskedPlayerEnemy != null)
                 {
                     MaskedPlayerEnemy masked = enemy.mainScript as MaskedPlayerEnemy;
-                    if (tireRigidbody.velocity.magnitude > 3)
-                    {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 3f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 3f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
-                    }
+
                     if (masked.sprinting)
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 2f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 5f);
                     }
                     else
                     {
                         BounceOff(enemy.mainScript.transform.position);
-                        return;
                     }
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 10, playHitSFX: true);
+                    }
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 3, playHitSFX: true);
+                    }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as CrawlerAI != null)
                 {
                     CrawlerAI crawler = enemy.mainScript as CrawlerAI;
-                    if (tireRigidbody.velocity.magnitude > 6)
-                    {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 6f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 6f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
-                    }
+
                     if (crawler.hasEnteredChaseMode)
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 5f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 15f);
                     }
                     else
                     {
                         BounceOff(enemy.mainScript.transform.position);
-                        return;
                     }
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 5, playHitSFX: true);
+                    }
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
+                    }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as SandWormAI != null)
@@ -1303,149 +1349,198 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
                 else if (enemy.mainScript as MouthDogAI != null)
                 {
-                    if (tireRigidbody.velocity.magnitude > 10)
-                    {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 10f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 10f, 30f, 1f, 2f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
-                    }
                     MouthDogAI mouthDog = enemy.mainScript as MouthDogAI;
+
                     if (mouthDog.inLunge)
                     {
                         BounceOff(enemy.mainScript.transform.position, extraForce: 35f);
-                        return;
                     }
                     else if (mouthDog.hasEnteredChaseModeFully)
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 15f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 20f);
                     }
                     else
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 5f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 10f);
                     }
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 5, playHitSFX: true);
+                    }
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                    }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as ForestGiantAI != null)
                 {
                     ForestGiantAI forestGiant = enemy.mainScript as ForestGiantAI;
+
                     if (forestGiant.chasingPlayer)
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 15f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 20f);
                     }
                     else
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 5f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 10f);
                     }
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 3, playHitSFX: true);
+                    }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as RadMechAI != null)
                 {
                     RadMechAI radMech = enemy.mainScript as RadMechAI;
+
                     if (radMech.chargingForward)
                     {
                         BounceOff(enemy.mainScript.transform.position, extraForce: 35f);
-                        return;
                     }
                     else if (radMech.isAlerted)
                     {
                         BounceOff(enemy.mainScript.transform.position, extraForce: 15f);
-                        return;
                     }
                     else
                     {
-                        BounceOff(enemy.mainScript.transform.position, extraForce: 5f);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, extraForce: 10f);
                     }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as FlowerSnakeEnemy != null)
                 {
                     FlowerSnakeEnemy flowerSnake = enemy.mainScript as FlowerSnakeEnemy;
-                    if (tireRigidbody.velocity.magnitude > 3)
-                    {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 3f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 3f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
-                    }
+
                     if (flowerSnake.clingingToPlayer)
                     {
                         return;
                     }
-                    else if (flowerSnake.leaping)
+
+                    if (flowerSnake.leaping)
                     {
-                        BounceOff(enemy.mainScript.transform.position);
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, forceMultiplier: 0.5f, extraForce: 1f);
                     }
                     else
                     {
-                        return;
+                        BounceOff(enemy.mainScript.transform.position, forceMultiplier: 0.5f);
                     }
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 10, playHitSFX: true);
+                    }
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 4, playHitSFX: true);
+                    }
+                    else if (speed > 3)
+                    {
+                        enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
+                    }
+
+                    return;
                 }
 
                 else if (enemy.mainScript as CentipedeAI != null)
                 {
-                    if (tireRigidbody.velocity.magnitude > 5)
+                    BounceOff(enemy.mainScript.transform.position, extraForce: 5);
+
+                    if (speed > 10)
                     {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 5f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 5f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
+                        enemy.mainScript.HitEnemy(force: 8, playHitSFX: true);
                     }
-                    BounceOff(enemy.mainScript.transform.position);
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                    }
+                    else if (speed > 3)
+                    {
+                        enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
+                    }
+
                     return;
                 }
 
                 else if (enemy.mainScript as BaboonBirdAI != null)
                 {
-                    if (tireRigidbody.velocity.magnitude > 5)
+                    BounceOff(enemy.mainScript.transform.position, extraForce: 8);
+
+                    if (speed > 10)
                     {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 5f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 5f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
+                        enemy.mainScript.HitEnemy(force: 4, playHitSFX: true);
                     }
-                    BounceOff(enemy.mainScript.transform.position, extraForce: 3);
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                    }
+
                     return;
                 }
 
                 else if (enemy.mainScript as Scarecrow != null)
                 {
-                    if (tireRigidbody.velocity.magnitude > 3)
+                    BounceOff(enemy.mainScript.transform.position, extraForce: 5);
+
+                    if (speed > 10)
+                    {
+                        enemy.mainScript.HitEnemy(force: 3, playHitSFX: true);
+                    }
+                    else if (speed > 6)
                     {
                         enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
                     }
-                    BounceOff(enemy.mainScript.transform.position);
+
                     return;
                 }
 
                 else if (enemy.mainScript as HoarderBugAI != null)
                 {
-                    if (tireRigidbody.velocity.magnitude > 5)
+                    BounceOff(enemy.mainScript.transform.position, extraForce: 5);
+
+                    if (speed > 10)
                     {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 5f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 5f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
+                        enemy.mainScript.HitEnemy(force: 8, playHitSFX: true);
                     }
-                    BounceOff(enemy.mainScript.transform.position);
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                    }
+
                     return;
                 }
 
                 else if (enemy.mainScript as NutcrackerEnemyAI != null)
                 {
-                    BounceOff(enemy.mainScript.transform.position, extraForce: 2);
+                    BounceOff(enemy.mainScript.transform.position, extraForce: 10);
                 }
 
                 else if (enemy.mainScript as PufferAI != null)
                 {
-                    if (tireRigidbody.velocity.magnitude > 5)
+                    BounceOff(enemy.mainScript.transform.position, extraForce: 5);
+
+                    if (speed > 10)
                     {
-                        float clampedSpeed = Mathf.Clamp(tireRigidbody.velocity.magnitude, 5f, 30f);
-                        int damage = Mathf.RoundToInt(Remap(clampedSpeed, 5f, 30f, 1f, 3f));
-                        enemy.mainScript.HitEnemy(force: damage, playHitSFX: true);
+                        enemy.mainScript.HitEnemy(force: 8, playHitSFX: true);
                     }
-                    BounceOff(enemy.mainScript.transform.position);
+                    else if (speed > 6)
+                    {
+                        enemy.mainScript.HitEnemy(force: 2, playHitSFX: true);
+                    }
+                    else if (speed > 3)
+                    {
+                        enemy.mainScript.HitEnemy(force: 1, playHitSFX: true);
+                    }
+
                     return;
                 }
             }
@@ -1664,7 +1759,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             BounceOff(playerWhoHit.gameplayCamera.transform.position, forceMultiplier: force, extraForce: 5f);
         }
 
-        return true;
+        return false;
 	}
 
     private void ForcePlayerJump(PlayerControllerB player)
@@ -1881,10 +1976,50 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     playerHeldBy.sprintMeter = Mathf.Clamp(playerHeldBy.sprintMeter - Time.deltaTime / playerHeldBy.sprintTime * playerHeldBy.carryWeight * 1.5f, 0f, 1f);
                 }
 
-                //TERRAIN
-                if (groundInfo.collider.gameObject.tag.Contains("Snow"))
+                //INJURED
+                if (playerHeldBy.criticallyInjured)
                 {
-                    targetSpeed -= 0.15f;
+                    targetSpeed -= 0.5f;
+                }
+
+                //TERRAIN
+                switch (groundInfo.collider.gameObject.tag)
+                {
+                    case "Metal":
+                        targetSpeed += 0.1f;
+                        break;
+
+                    case "Concrete":
+                        targetSpeed += 0.1f;
+                        break;
+
+                    case "Puddle":
+                        targetSpeed -= 0.25f;
+                        break;
+
+                    case "Gravel":
+                        targetSpeed -= 0.15f;
+                        break;
+
+                    case "Aluminum":
+                        targetSpeed += 0.1f;
+                        break;
+
+                    case "Tiles":
+                        targetSpeed += 0.1f;
+                        break;
+
+                    case "Wood":
+                        targetSpeed += 0.1f;
+                        break;
+
+                    case "Rock":
+                        targetSpeed += 0.1f;
+                        break;
+
+                    case "Snow":
+                        targetSpeed -= 0.15f;
+                        break;
                 }
 
                 //SLOPE
@@ -1916,8 +2051,6 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                 targetSpeed = 0f;
             }
 
-            // Debug.Log($"[TIRE]: Target speed: {targetSpeed}");
-
         //LERP MOVEMENT SPEED TO TARGET SPEED
 
             if (Math.Abs(targetSpeed - rollingTireCurrentSpeed) > 0.1f)
@@ -1944,7 +2077,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
             //CHECK IF MOVING FAST ENOUGH TO BUMP
             bool bump = false;
-            if (Math.Abs(rollingTireCurrentSpeed) > 0.9f)
+            if (Math.Abs(rollingTireCurrentSpeed) > 1.1f)
             {
                 bump = true;
             }
@@ -1961,14 +2094,16 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     Debug.Log($"[TIRE]: Bumped into {otherObject}.");
 
                     //IF PLAYER
-                    if (otherObject.layer == 3 && bump)
+                    if (otherObject.layer == 3 && otherObject.GetComponent<PlayerControllerB>() != null && Math.Abs(rollingTireCurrentSpeed) > 0.3f)
                     {
-                        if (otherObject.GetComponent<PlayerControllerB>() != null)
-                        {
-                            PlayerControllerB otherPlayer = otherObject.GetComponent<PlayerControllerB>();
+                        PlayerControllerB otherPlayer = otherObject.GetComponent<PlayerControllerB>();
 
-                            //BUMP OTHER PLAYER
-                            otherPlayer.externalForceAutoFade += playerHeldBy.transform.forward * playerPushForce * Time.deltaTime;
+                        //BUMP OTHER PLAYER
+                        otherPlayer.externalForceAutoFade += playerHeldBy.transform.forward * playerPushForce * Time.deltaTime;
+
+                        //DAMAGE OTHER PLAYER
+                        if (bump)
+                        {
                             // DamageOtherPlayerServerRpc((int)otherPlayer.playerClientId);
                         }
                     }
@@ -2047,7 +2182,14 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                                 enemy.HitEnemyOnLocalClient(1, playerHeldBy.transform.forward, playerHeldBy, playHitSFX: true);
 
                                 //INCREASE PLAYER PUSH FORCE
-                                playerPushForce *= 2;
+                                playerPushForce += 1;
+
+                                //ADD FORCE AND RELEASE TIRE
+                                rollingTireCurrentSpeed = 0f;
+                                playerHeldBy.externalForceAutoFade += -playerHeldBy.transform.forward * playerPushForce;
+                                PlayHitSoundServerRpc(rollingTireCurrentForce);
+                                rollingTireBumpSoundTimer = rollingTireBumpSoundCooldown;
+                                ReleaseRollingTire();
                             }
                         }
                     }
@@ -2160,18 +2302,9 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         rollingTireCurrentForce = playerHeldBy.transform.forward * rollingTireCurrentSpeed * rollingTireSpeed;
         playerHeldBy.thisController.Move(rollingTireCurrentForce);
 
-        //SET ANIMATION & PUSH AWAY FORCE
-        if (rollingTireAnimator != null)
-        {
-            rollingTireAnimator.SetFloat("rollingTireCurrentSpeed", rollingTireCurrentSpeed);
-            rollingTireAnimator.SetFloat("moveInputX", moveVector.x);
-            rollingTireAnimator.SetFloat("moveInputY", moveVector.y);
-            rollingTireAnimator.SetBool("sprinting", sprint > 0);
-        }
-
+        //SET PUSH AWAY FORCE
         pushedWhileWalking = false;
         pushedWhileSprinting = false;
-
         if (moveVector.y > 0.1f)
         {
             pushedWhileWalking = true;
@@ -2243,6 +2376,16 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         else if (blockedByColliderRight && rollingTireLeftRightSpeedCurrent > 0f)
         {
             rollingTireLeftRightSpeedCurrent = 0f;
+        }
+
+        //SET ANIMATION VALUES
+        if (rollingTireAnimator != null)
+        {
+            rollingTireAnimator.SetFloat("rollingTireCurrentSpeed", rollingTireCurrentSpeed);
+            rollingTireAnimator.SetFloat("rollingTireLeftRightSpeed", rollingTireLeftRightSpeedCurrent);
+            rollingTireAnimator.SetFloat("moveInputX", moveVector.x);
+            rollingTireAnimator.SetFloat("moveInputY", moveVector.y);
+            rollingTireAnimator.SetBool("sprinting", sprint > 0);
         }
 
         //HINDER LEFT/RIGHT MOUSE
