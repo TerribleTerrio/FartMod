@@ -48,6 +48,8 @@ public class Tire : AnimatedItem, IHittable, ITouchable
 
     private float rollingAudibleNoiseTimer = 0f;
 
+    private bool disablePhysics = false;
+
     [Space(10f)]
     [Header("Movement")]
     private float rollingTireCurrentSpeed;
@@ -155,7 +157,17 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         if (isInShipRoom)
         {
             yield return new WaitUntil(() => !StartOfRound.Instance.inShipPhase);
+            Debug.Log("[TIRE]: Temporarily disabling rigidbody physics!");
+            if (base.IsOwner)
+            {
+                disablePhysics = true;
+            }
             yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsAnimator.GetBool("Closed"));
+            Debug.Log("[TIRE]: Re-enabling rigidbody physics!");
+            if (base.IsOwner)
+            {
+                disablePhysics = false;
+            }
         }
     }
 
@@ -165,8 +177,18 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         if (isInShipRoom)
         {
             yield return new WaitUntil(() => RoundManager.Instance.playersManager.shipDoorsAnimator.GetBool("Closed"));
+            Debug.Log("[TIRE]: Temporarily disabling rigidbody physics!");
+            if (base.IsOwner)
+            {
+                disablePhysics = true;
+            }
             yield return new WaitForSeconds(1f);
             yield return new WaitUntil(() => !StartOfRound.Instance.shipDoorsEnabled);
+            Debug.Log("[TIRE]: Re-enabling rigidbody physics!");
+            if (base.IsOwner)
+            {
+                disablePhysics = false;
+            }
         }
     }
 
@@ -198,6 +220,19 @@ public class Tire : AnimatedItem, IHittable, ITouchable
         for (int i = 0; i < rollingAudioSources.Length; i++)
         {
             rollingAudioSources[i].pitch = rollingAudioPitch;
+        }
+
+        if (!isInShipRoom && StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(base.transform.position))
+        {
+            if (!scrapPersistedThroughRounds)
+            {
+                RoundManager.Instance.CollectNewScrapForThisRound(this);
+            }
+            isInShipRoom = true;
+        }
+        else if (isInShipRoom && !StartOfRound.Instance.shipInnerRoomBounds.bounds.Contains(base.transform.position))
+        {
+            isInShipRoom = false;
         }
 
         bool touchingGround = false;
@@ -514,41 +549,44 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     SetBehaviourStateServerRpc(0);
                 }
 
-                //PARENT TO PHYSICSREGION
-                // if (Physics.Raycast(physicsTire.transform.position, -Vector3.up, out var physRegionCheck, tireRadius*2 + 0.1f, 1342179585, QueryTriggerInteraction.Ignore))
-                // {
-                //     if (physRegionCheck.collider.transform.GetComponentInChildren<PlayerPhysicsRegion>() != null)
-                //     {
-                //         PlayerPhysicsRegion physicsRegion = physRegionCheck.collider.gameObject.transform.GetComponentInChildren<PlayerPhysicsRegion>();
-                //         Debug.Log("[TIRE]: Found player physics region! Parenting physics tire.");
-                //         if (transform.parent != physicsRegion.transform)
-                //         {
-                //             transform.parent = physicsRegion.transform;
-                //         }
-                //     }
-                // }
-                // else if (transform.parent != null)
-                // {
-                //     transform.parent = null;
-                // }
-
-                //CHECK IF INSIDE SHIP
-                if (isInShipRoom)
+                if (disablePhysics && !tireRigidbody.isKinematic)
                 {
-                    //CHECK IF SHIP IS MOVING
-                    if (StartOfRound.Instance.shipIsLeaving || (!StartOfRound.Instance.shipHasLanded && !StartOfRound.Instance.inShipPhase))
+                    tireRigidbody.isKinematic = true;
+                }
+                else if (!disablePhysics && tireRigidbody.isKinematic)
+                {
+                    tireRigidbody.isKinematic = false;
+                }
+
+                //CHECK IF ON SHIP
+                if (isInElevator)
+                {
+                    if (physicsTire.transform.parent != StartOfRound.Instance.elevatorTransform)
                     {
-                        if (!tireRigidbody.isKinematic)
-                        {
-                            tireRigidbody.isKinematic = true;
-                        }
+                        Debug.Log("[TIRE]: Setting physics tire parent to elevator transform.");
+                        physicsTire.transform.SetParent(StartOfRound.Instance.elevatorTransform, true);
                     }
-                    else
+                    // //CHECK IF SHIP IS MOVING
+                    // if (StartOfRound.Instance.shipIsLeaving || (!StartOfRound.Instance.shipHasLanded && !StartOfRound.Instance.inShipPhase))
+                    // {
+                    //     if (!tireRigidbody.isKinematic)
+                    //     {
+                    //         tireRigidbody.isKinematic = true;
+                    //     }
+                    // }
+                    // else
+                    // {
+                    //     if (tireRigidbody.isKinematic)
+                    //     {
+                    //         tireRigidbody.isKinematic = false;
+                    //     }
+                    // }
+                }
+                else
+                {
+                    if (physicsTire.transform.parent == StartOfRound.Instance.elevatorTransform)
                     {
-                        if (tireRigidbody.isKinematic)
-                        {
-                            tireRigidbody.isKinematic = false;
-                        }
+                        physicsTire.transform.SetParent(StartOfRound.Instance.propsContainer, true);
                     }
                 }
 
@@ -1533,6 +1571,7 @@ public class Tire : AnimatedItem, IHittable, ITouchable
             {
                 GrabbableObject gObject = otherObject.GetComponent<GrabbableObject>();
                 Debug.Log("[TIRE]: Collided with grabbable object!");
+                float speed = tireRigidbody.velocity.magnitude;
 
                 switch (gObject)
                 {
@@ -2084,11 +2123,25 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                         int damageOtherPlayer = 0;
                         if (bump)
                         {
-                            damageOtherPlayer = 5;
+                            damageOtherPlayer = 3;
                         }
 
                         //BUMP OTHER PLAYER
                         BumpPlayerServerRpc((int)otherPlayer.playerClientId, playerPushForce, damageOtherPlayer);
+                    }
+
+                    //IF TIRE
+                    if (otherObject.GetComponent<TireReferenceScript>() != null)
+                    {
+                        Tire otherTire = otherObject.GetComponent<TireReferenceScript>().mainScript;
+                        float bounceOffForce = 1f;
+
+                        if (bump)
+                        {
+                            bounceOffForce = 5f;
+                        }
+
+                        otherTire.BounceOff(transform.position, extraForce: bounceOffForce);
                     }
 
                     //IF ENEMY
@@ -2204,6 +2257,87 @@ public class Tire : AnimatedItem, IHittable, ITouchable
                     {
                         PlayHitSoundServerRpc(rollingTireCurrentForce);
                         rollingTireBumpSoundTimer = rollingTireBumpSoundCooldown;
+                    }
+                }
+
+                //CHECK FOR ITEMS
+                else if (Physics.Raycast(tireObject.transform.position - Vector3.up * 0.2f, playerHeldBy.transform.forward, out bumpInfo, tireRadius, 64, QueryTriggerInteraction.Collide))
+                {
+                    Debug.Log("[TIRE]: Item raycast found collider!");
+                    if (bumpInfo.collider.gameObject.GetComponent<GrabbableObject>() != null)
+                    {
+                        GrabbableObject gObject = bumpInfo.collider.gameObject.GetComponent<GrabbableObject>();
+                        Debug.Log($"[TIRE]: Item raycast found item {gObject.name}!");
+
+                        float playerPushForce = 1f;
+
+                        void resetRollSpeedAndBump()
+                        {
+                            rollingTireCurrentSpeed = 0f;
+                            playerHeldBy.externalForceAutoFade += -playerHeldBy.transform.forward * playerPushForce;
+                            if (rollingTireBumpSoundTimer <= 0)
+                            {
+                                PlayHitSoundServerRpc(rollingTireCurrentForce);
+                                rollingTireBumpSoundTimer = rollingTireBumpSoundCooldown;
+                            }
+                        }
+
+                        if (bump)
+                        {
+                            playerPushForce = 2f;
+                        }
+
+                        switch (gObject)
+                        {
+                            case ArtilleryShellItem artilleryShell:
+                                if (bump)
+                                {
+                                    float c = UnityEngine.Random.Range(0,100);
+                                    if (c < artilleryShell.explodeOnHitChance)
+                                    {
+                                        artilleryShell.ArmShellAndSync();
+                                    }
+                                }
+                                resetRollSpeedAndBump();
+                                return;
+
+                            case HydraulicStabilizer hydraulic:
+                                if (bump)
+                                {
+                                    hydraulic.GoPsychoAndSync();
+                                }
+                                resetRollSpeedAndBump();
+                                return;
+
+                            case Radiator radiator:
+                                if (bump)
+                                {
+                                    radiator.FallOverAndSync(playerHeldBy.transform.forward);
+                                }
+                                resetRollSpeedAndBump();
+                                return;
+                            
+                            case Toaster toaster:
+                                if (bump)
+                                {
+                                    if (toaster.inserted)
+                                    {
+                                        toaster.EjectAndSync();
+                                    }
+                                    resetRollSpeedAndBump();
+                                }
+                                return;
+
+                            case Vase vase:
+                                int wobbleType = 1;
+                                if (bump)
+                                {
+                                    wobbleType = 2;
+                                }
+                                vase.WobbleAndSync(wobbleType);
+                                resetRollSpeedAndBump();
+                                return;
+                        }
                     }
                 }
 

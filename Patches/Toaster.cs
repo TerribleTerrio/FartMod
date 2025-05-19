@@ -28,7 +28,7 @@ public class Toaster : AnimatedItem, IHittable
 
     public bool jumpOnPop = true;
 
-    private bool inserted;
+    public bool inserted;
 
     private List<PlayerControllerB> playersInPopRange;
 
