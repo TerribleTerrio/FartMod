@@ -12,14 +12,6 @@ internal class NetworkPatches
     internal class GameNetworkManagerPatch
     {
         [HarmonyPostfix]
-        [HarmonyPatch("Start")]
-        static void AddToPrefabs(ref GameNetworkManager __instance)
-        {
-            NetworkManager.Singleton.AddNetworkPrefab(CoronaMod.Instance.networkPrefab);
-            Debug.Log("Network prefab added to network manager!");
-        }
-
-        [HarmonyPostfix]
         [HarmonyPatch("ResetSavedGameValues")]
         static void ResetFileParams(ref GameNetworkManager __instance)
         {
@@ -86,12 +78,12 @@ internal class NetworkPatches
         [HarmonyPatch("Awake")]
         static void SpawnNetworkHandler()
         {
-            if (NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer)
-            {
-                var networkHandlerHost = Object.Instantiate(CoronaMod.Instance.networkPrefab, Vector3.zero, Quaternion.identity);
-                networkHandlerHost.GetComponent<NetworkObject>().Spawn();
-                Debug.Log("Network prefab spawned during StartOfRound Start!");
-            }
+            // if (NetworkManager.Singleton.IsHost || NetworkManager.Singleton.IsServer)
+            // {
+            //     var networkHandlerHost = Object.Instantiate(CoronaMod.Instance.networkPrefab, Vector3.zero, Quaternion.identity);
+            //     networkHandlerHost.GetComponent<NetworkObject>().Spawn();
+            //     Debug.Log("Network prefab spawned during StartOfRound Start!");
+            // }
         }
 
         [HarmonyPatch("ShipHasLeft")]

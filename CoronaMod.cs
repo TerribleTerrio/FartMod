@@ -136,12 +136,6 @@ public class CoronaMod : BaseUnityPlugin
 
         nls = BepInEx.Logging.Logger.CreateLogSource(modGUID);
 
-        //IMPORT CUSTOM NETWORK OBJECT
-        string assetDir = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "networkbundle");
-        AssetBundle networkBundle = AssetBundle.LoadFromFile(assetDir);
-        networkPrefab = networkBundle.LoadAsset<GameObject>("Assets/LethalCompany/Mods/FartPlanet/Scripts/NetworkHandler.prefab");
-        networkPrefab.AddComponent<NetworkHandler>();
-
         //REGISTER UNLOCKABLES
         string unlockableDir = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "unlockablebundle");        
         AssetBundle unlockableBundle = AssetBundle.LoadFromFile(unlockableDir);
