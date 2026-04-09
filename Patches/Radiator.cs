@@ -302,10 +302,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             {
                 if (!fallen && !isHeld && !isHeldByEnemy && hasHitGround && !StartOfRound.Instance.inShipPhase && StartOfRound.Instance.timeSinceRoundStarted > 2f)
                 {
-                    moveTimer = 0f;
-                    Vector3 moveDirection = Vector3.Normalize(new Vector3(other.transform.position.x, base.transform.position.y, other.transform.position.z) - base.transform.position);
-                    Vector3 movePos = base.transform.position - moveDirection * speed;
-                    MoveTowardsAndSync(movePos, silent: false, speedIndex: 0);
+                    chosenSpeed = 0;
                 }
                 tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 3f);
             }
@@ -313,6 +310,7 @@ public class Radiator : GrabbableObject, IHittable, ITouchable
             {
                 FallOverAndSync(-(new Vector3(other.transform.position.x, 0f, other.transform.position.z) - new Vector3(transform.position.x, 0f, transform.position.z)));
                 tireReferenceScript.mainScript.BounceOff(base.transform.position, extraForce: 10f);
+                return;
             }
         }
         float chosenDistance = chosenSpeed switch {0 => sprintDistance, 1 => walkDistance, _ => crouchDistance};

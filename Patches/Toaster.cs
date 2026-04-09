@@ -754,6 +754,17 @@ public class Toaster : AnimatedItem, IHittable
                         ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
                     }
                     return;
+
+                case GiantKiwiAI giantKiwi:
+                    if (giantKiwi.attacking)
+                    {
+                        if (inserted)
+                        {
+                            EjectAndSync();
+                        }
+                        ZapAndSync(0.5f, submergedEffect: false, fryOwner: true);
+                    }
+                    return;
             }
         }
     }

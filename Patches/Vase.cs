@@ -33,6 +33,8 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public bool breakInOrbit = false;
 
+    private Coroutine preventGrabCoroutine;
+
     [Space(10f)]
     [Header("Shatter Prefabs")]
     public GameObject walkShatterPrefab;
@@ -102,6 +104,11 @@ public class Vase : AnimatedItem, IHittable, ITouchable
 
     public void CancelWobble()
     {
+        if (preventGrabCoroutine != null)
+        {
+            StopCoroutine(preventGrabCoroutine);
+            preventGrabCoroutine = null;
+        }
         safePlaced = true;
         itemAnimator.SetTrigger("Stop");
     }
@@ -157,6 +164,16 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         safePlaced = false;
     }
 
+    public IEnumerator PreventGrabWithDelay()
+    {
+        yield return new WaitForEndOfFrame();
+        float delay = itemAnimator.GetCurrentAnimatorStateInfo(0).length - 0.2f;
+        yield return new WaitForSeconds(delay);
+        Debug.Log("[VASE]: Toggled grabbing off before shattering!");
+        grabbable = false;
+        grabbableToEnemies = false;
+    }
+
     public void Wobble(int type)
     {
         if (!CanWobble())
@@ -176,10 +193,12 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         case 1:
             itemAnimator.SetTrigger("WobbleWalk");
             shatterPrefab = walkShatterPrefab;
+            preventGrabCoroutine = StartCoroutine(PreventGrabWithDelay());
             break;
         case 2:
             itemAnimator.SetTrigger("WobbleSprint");
             shatterPrefab = sprintShatterPrefab;
+            preventGrabCoroutine = StartCoroutine(PreventGrabWithDelay());
             break;
         }
 
@@ -229,18 +248,12 @@ public class Vase : AnimatedItem, IHittable, ITouchable
     public void ShatterServerRpc(int clientWhoSentRpc, bool explode = false)
     {
         ShatterClientRpc(clientWhoSentRpc, explode);
-		StartCoroutine(DespawnAfterFrame());
-    }
-
-	public IEnumerator DespawnAfterFrame()
-	{
-		yield return new WaitForEndOfFrame();
-        if (base.gameObject.GetComponent<NetworkObject>().IsSpawned)
+		if (base.gameObject.GetComponent<NetworkObject>().IsSpawned)
         {
             Debug.Log("[VASE]: Despawning!");
             base.gameObject.GetComponent<NetworkObject>().Despawn();
         }
-	}
+    }
 
     [ClientRpc]
     public void ShatterClientRpc(int clientWhoSentRpc, bool explode = false)
@@ -438,10 +451,10 @@ public class Vase : AnimatedItem, IHittable, ITouchable
         }
 
         //TIRE COLLISION
-        else if (otherObject.GetComponent<TireReferenceScript>() != null)
+        else if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript) && tireReferenceScript.mainScript.IsOwner)
         {
             Debug.Log("[VASE]: Bumped by tire.");
-            float speed = otherObject.GetComponent<Rigidbody>().velocity.magnitude;
+            float speed = tireReferenceScript.mainScript.tireRigidbody.velocity.magnitude;
             if (speed < 2f)
             {
                 WobbleAndSync(0);
@@ -636,6 +649,18 @@ public class Vase : AnimatedItem, IHittable, ITouchable
             else if (enemy.mainScript.enemyType.enemyName == "Centipede")
             {
                 WobbleAndSync(0);
+            }
+            else if (enemy.mainScript.enemyType.enemyName == "GiantKiwi")
+            {
+                GiantKiwiAI giantKiwi = enemy.mainScript as GiantKiwiAI;
+                if (giantKiwi.attacking)
+                {
+                    ExplodeAndSync();
+                }
+                else
+                {
+                    WobbleAndSync(2);
+                }
             }
             else
             {

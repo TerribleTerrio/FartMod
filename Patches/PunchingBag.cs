@@ -75,7 +75,7 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
             return;
         }
 
-        if (punchSource == "Shotgun" || punchSource == "Explosion" || punchSource == "Lunging dog" || punchSource == "Chasing dog")
+        if (punchSource == "Shotgun" || punchSource == "Explosion" || punchSource == "Lunging dog" || punchSource == "Chasing dog" || punchSource == "Attacking kiwi")
         {
             if (canBeBroken)
             {
@@ -228,6 +228,18 @@ public class PunchingBag : NetworkBehaviour, IHittable, ITouchable
                 else
                 {
                     PunchAndSync(false);
+                }
+            }
+            else if (enemy.mainScript.enemyType.enemyName == "GiantKiwi")
+            {
+                GiantKiwiAI kiwi = enemy.mainScript as GiantKiwiAI;
+                if (kiwi.attacking)
+                {
+                    PunchAndSync(true, "Attacking kiwi");
+                }
+                else
+                {
+                    PunchAndSync(true);
                 }
             }
             else

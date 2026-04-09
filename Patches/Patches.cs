@@ -95,6 +95,59 @@ internal class NetworkPatches
     }
 }
 
+[HarmonyPatch(typeof(PlayerControllerB), "LateUpdate")]
+public static class RestrictTireMovementPatch
+{
+    private static float previousYaw;
+    private static Vector3 previousPosition;
+
+    static void Prefix(PlayerControllerB __instance)
+    {
+        if (!ShouldRestrict(__instance))
+            return;
+
+        previousYaw = __instance.transform.eulerAngles.y;
+        previousPosition = __instance.transform.position;
+    }
+
+    static void Postfix(PlayerControllerB __instance)
+    {
+        if (!ShouldRestrict(__instance))
+            return;
+
+        //DAMPEN ROTATION
+        float currentYaw = __instance.transform.eulerAngles.y;
+        float dampenedYaw = Mathf.LerpAngle(previousYaw, currentYaw, 0.08f);
+        Vector3 bodyRot = __instance.transform.eulerAngles;
+        __instance.transform.eulerAngles = new Vector3(bodyRot.x, dampenedYaw, bodyRot.z);
+        Transform camContainer = __instance.cameraContainerTransform;
+        Vector3 camRot = camContainer.eulerAngles;
+        camContainer.eulerAngles = new Vector3(camRot.x, dampenedYaw, camRot.z);
+
+        //DAMPEN LEFT RIGHT
+        Transform t = __instance.transform;
+        Vector3 currentPosition = t.position;
+        Vector3 delta = currentPosition - previousPosition;
+        Vector3 forward = t.forward;
+        Vector3 right = t.right;
+        Vector3 forwardMovement = Vector3.Project(delta, forward);
+        Vector3 strafeMovement = Vector3.Project(delta, right);
+        strafeMovement *= 0.15f;
+        t.position = previousPosition + forwardMovement + strafeMovement;
+    }
+
+    static bool ShouldRestrict(PlayerControllerB player)
+    {
+        if (player.currentlyHeldObjectServer != null && player.currentlyHeldObjectServer.itemProperties.itemName == "Truck Tire")
+        {
+            // Debug.Log("player holding tire, attempting to dampen horizontal look");
+            Tire tire = player.currentlyHeldObjectServer as Tire;
+            return tire.currentBehaviourStateIndex == 1;
+        }
+        return false;
+    }
+}
+
 [HarmonyPatch(typeof(Landmine))]
 internal class LandminePatch
 {

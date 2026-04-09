@@ -226,6 +226,114 @@ public class HydraulicStabilizer : AnimatedItem, IHittable, ITouchable, Zappable
 	{
         GameObject otherObject = other.gameObject;
 
+        if (!(otherObject.layer == 3 || otherObject.layer == 6 || otherObject.layer == 19))
+        {
+            return;
+        }
+
+        //ENEMY COLLISION
+        if (other.TryGetComponent<EnemyAICollisionDetect>(out var enemy))
+        {
+            if (enemy.mainScript.TryGetComponent<ButlerEnemyAI>(out var butler))
+            {
+                if (butler.creatureAnimator.GetBool("Running"))
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            // else if (enemy.mainScript.TryGetComponent<SpringManAI>(out var springMan))
+            // {
+            //     if (!springMan.hasStopped)
+            //     {
+            //         GoPsychoAndSync();
+            //     }
+            // }
+            else if (enemy.mainScript.TryGetComponent<JesterAI>(out var jester))
+            {
+                if (jester.creatureAnimator.GetBool("poppedOut"))
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            else if (enemy.mainScript.TryGetComponent<CaveDwellerAI>(out var maneater))
+            {
+                if (maneater.leaping)
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            // else if (enemy.mainScript.TryGetComponent<CrawlerAI>(out var crawler))
+            // {
+            //     if (crawler.hasEnteredChaseMode)
+            //     {
+            //         GoPsychoAndSync();
+            //     }
+            // }
+            else if (enemy.mainScript.TryGetComponent<MouthDogAI>(out var mouthDog))
+            {
+                if (mouthDog.inLunge || mouthDog.hasEnteredChaseModeFully)
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            else if (enemy.mainScript.TryGetComponent<ForestGiantAI>(out var forestGiant))
+            {
+                if (forestGiant.chasingPlayer)
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            else if (enemy.mainScript.TryGetComponent<RadMechAI>(out var radMech))
+            {
+                if (radMech.isActiveAndEnabled)
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            else if (enemy.mainScript.TryGetComponent<FlowerSnakeEnemy>(out var flowerSnake))
+            {
+                if (flowerSnake.leaping)
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+            else if (enemy.mainScript.TryGetComponent<GiantKiwiAI>(out var giantKiwi))
+            {
+                if (giantKiwi.attacking)
+                {
+                    GoPsychoAndSync();
+                    return;
+                }
+            }
+        }
+
+        //ITEM COLLISION
+        if (other.gameObject.layer == 6)
+        {
+            if (other.TryGetComponent<GrabbableObject>(out var gObject) && !Physics.Linecast(other.gameObject.transform.position + Vector3.up * 0.5f, base.transform.position + Vector3.up, CoronaMod.Masks.DefaultRoomCollidersRailingVehicle, QueryTriggerInteraction.Ignore))
+            {
+                if (gObject.TryGetComponent<SoccerBallProp>(out var ball))
+                {
+                    if (ball.hasHitGround || ball.isHeld || ball.isHeldByEnemy)
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        ball.BeginKickBall(base.transform.position + Vector3.up, hitByEnemy: false);
+                        return;
+                    }
+                }
+            }
+        }
+
         //TIRE COLLISION
         if (otherObject.TryGetComponent<TireReferenceScript>(out var tireReferenceScript))
 		{

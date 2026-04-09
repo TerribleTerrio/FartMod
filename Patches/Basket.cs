@@ -267,7 +267,7 @@ public class Basket : AnimatedItem
             if (Physics.Raycast(playerHeldBy.gameplayCamera.transform.position, playerHeldBy.gameplayCamera.transform.forward, out var hitInfo, 4f, CoronaMod.Masks.PropsRoomVehicle, QueryTriggerInteraction.Collide))
             {
                 GrabbableObject gObject = hitInfo.collider.gameObject.GetComponent<GrabbableObject>();
-                if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy)
+                if (!(gObject == null) && !(gObject == this) && gObject.itemProperties.isScrap && !gObject.isHeld && !gObject.isHeldByEnemy && gObject.grabbable)
                 {
                     for (int i = 0; i < excludedItems.Length; i++)
                     {
