@@ -19,5 +19,6 @@ CoronaMod.code-workspace
 FartMod.code-workspace
 CoronaMod.csproj
 **/.vs
+**/.vscode
 **/Backup
 UpgradeLog.htm
